@@ -4,17 +4,28 @@ import (
 	"errors"
 	"net"
 	"os"
+	"time"
 
 	"github.com/katalix/sl2tpd/internal/nll2tp"
 	"golang.org/x/sys/unix"
 )
 
-type L2tpTunnel struct {
+type l2tpControlPlane struct {
 	local, remote *net.UDPAddr
 	fd            int
 	file          *os.File
+}
+
+type l2tpDataPlane struct {
+	local, remote *net.UDPAddr
 	nl            *nll2tp.Conn
-	cfg           nll2tp.TunnelConfig
+	cfg           *nll2tp.TunnelConfig
+	isUp          bool
+}
+
+type L2tpTunnel struct {
+	dp *l2tpDataPlane
+	cp *l2tpControlPlane
 }
 
 // Create a new client-mode managed L2TP tunnel.
@@ -26,6 +37,7 @@ func NewClientL2tpTunnel(nl *nll2tp.Conn,
 	version nll2tp.L2tpProtocolVersion,
 	encap nll2tp.L2tpEncapType,
 	dbg_flags nll2tp.L2tpDebugFlags) (*L2tpTunnel, error) {
+	// TODO: need protocol implementation
 	return nil, errors.New("not implemented")
 }
 
@@ -36,10 +48,38 @@ func NewClientL2tpTunnel(nl *nll2tp.Conn,
 // messages.
 func NewQuiescentL2tpTunnel(nl *nll2tp.Conn,
 	local_addr, remote_addr string,
+	tid, ptid nll2tp.L2tpTunnelID,
 	version nll2tp.L2tpProtocolVersion,
 	encap nll2tp.L2tpEncapType,
 	dbg_flags nll2tp.L2tpDebugFlags) (*L2tpTunnel, error) {
-	return nil, errors.New("not implemented")
+
+	cp, err := newL2tpControlPlane(local_addr, remote_addr, false)
+	if err != nil {
+		return nil, err
+	}
+
+	dp, err := newL2tpDataPlane(nl, local_addr, remote_addr, &nll2tp.TunnelConfig{
+		Tid:         tid,
+		Ptid:        ptid,
+		Version:     version,
+		Encap:       encap,
+		Debug_flags: dbg_flags})
+	if err != nil {
+		cp.Close()
+		return nil, err
+	}
+
+	err = dp.Up(cp.fd)
+	if err != nil {
+		cp.Close()
+		dp.Close()
+		return nil, err
+	}
+
+	return &L2tpTunnel{
+		dp: dp,
+		cp: cp,
+	}, nil
 }
 
 // Create a new unmanaged L2TP tunnel.
@@ -51,45 +91,112 @@ func NewQuiescentL2tpTunnel(nl *nll2tp.Conn,
 // are not practically useful.
 func NewStaticL2tpTunnel(nl *nll2tp.Conn,
 	local_addr, remote_addr string,
-	tid nll2tp.L2tpTunnelID,
-	ptid nll2tp.L2tpTunnelID,
+	tid, ptid nll2tp.L2tpTunnelID,
 	encap nll2tp.L2tpEncapType,
 	dbg_flags nll2tp.L2tpDebugFlags) (*L2tpTunnel, error) {
 
-	nlcfg := nll2tp.TunnelConfig{
+	dp, err := newL2tpDataPlane(nl, local_addr, remote_addr, &nll2tp.TunnelConfig{
 		Tid:         tid,
 		Ptid:        ptid,
 		Version:     nll2tp.ProtocolVersion3,
 		Encap:       encap,
-		Debug_flags: dbg_flags}
-
-	local, remote, err := initTunnelAddr(local_addr, remote_addr)
+		Debug_flags: dbg_flags})
 	if err != nil {
 		return nil, err
 	}
 
-	// since this is a static tunnel we don't create a socket
-	err = nl.CreateStaticTunnel(&local.IP, uint16(local.Port),
-		&remote.IP, uint16(remote.Port),
-		&nlcfg)
+	err = dp.UpStatic()
 	if err != nil {
+		dp.Close()
 		return nil, err
 	}
 
-	return &L2tpTunnel{
-		local:  local,
-		remote: remote,
-		fd:     -1,
-		nl:     nl,
-		cfg:    nlcfg}, nil
+	return &L2tpTunnel{dp: dp}, nil
+}
+
+// Obtain local address
+func (cp *l2tpControlPlane) LocalAddr() net.Addr {
+	return cp.local
+}
+
+// Obtain remote address
+func (cp *l2tpControlPlane) RemoteAddr() net.Addr {
+	return cp.remote
+}
+
+// Read data from the connection.
+func (cp *l2tpControlPlane) Read(b []byte) (n int, err error) {
+	return cp.file.Read(b)
+}
+
+// Write data to the connection
+func (cp *l2tpControlPlane) Write(b []byte) (n int, err error) {
+	return cp.file.Write(b)
+}
+
+// Set deadline for read and write operations
+func (cp *l2tpControlPlane) SetDeadline(t time.Time) error {
+	return cp.file.SetDeadline(t)
+}
+
+// Set deadline for read operations
+func (cp *l2tpControlPlane) SetReadDeadline(t time.Time) error {
+	return cp.file.SetReadDeadline(t)
+}
+
+// Set deadline for write operations
+func (cp *l2tpControlPlane) SetWriteDeadline(t time.Time) error {
+	return cp.file.SetWriteDeadline(t)
+}
+
+// Close the control plane
+func (cp *l2tpControlPlane) Close() error {
+	// TODO: kick the protocol to shut down
+	return cp.file.Close() // TODO: verify this closes the underlying fd
+}
+
+// Close the data plane
+func (dp *l2tpDataPlane) Close() error {
+	if dp.isUp {
+		return dp.nl.DeleteTunnel(dp.cfg)
+	}
+	return nil
 }
 
 // Close an L2TP tunnel.
-func (t *L2tpTunnel) Close() {
-	t.nl.DeleteTunnel(&t.cfg)
-	if t.file != nil {
-		t.file.Close() // TODO: closes underlying fd?
+func (t *L2tpTunnel) Close() error {
+	if t.cp != nil {
+		if err := t.cp.Close(); err != nil {
+			return err
+		}
 	}
+	if t.dp != nil {
+		if err := t.dp.Close(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Bring up the data plane: managed tunnel
+func (dp *l2tpDataPlane) Up(tunnel_sk int) error {
+	err := dp.nl.CreateManagedTunnel(tunnel_sk, dp.cfg)
+	if err == nil {
+		dp.isUp = true
+	}
+	return err
+}
+
+// Bring up the data plane: unmanaged tunnel
+func (dp *l2tpDataPlane) UpStatic() error {
+	err := dp.nl.CreateStaticTunnel(
+		&dp.local.IP, uint16(dp.local.Port),
+		&dp.remote.IP, uint16(dp.remote.Port),
+		dp.cfg)
+	if err == nil {
+		dp.isUp = true
+	}
+	return err
 }
 
 func netAddrToUnix(addr *net.UDPAddr) (unix.Sockaddr, error) {
@@ -168,6 +275,11 @@ func tunnelSocket(local, remote *net.UDPAddr, connect bool) (fd int, err error) 
 		return -1, err
 	}
 
+	if err = unix.SetNonblock(fd, true); err != nil {
+		unix.Close(fd)
+		return -1, err
+	}
+
 	err = unix.Bind(fd, addr)
 	if err != nil {
 		unix.Close(fd)
@@ -190,4 +302,41 @@ func tunnelSocketConnect(fd int, remote *net.UDPAddr) error {
 		return err
 	}
 	return unix.Connect(fd, addr)
+}
+
+func newL2tpControlPlane(local_addr, remote_addr string, connect bool) (*l2tpControlPlane, error) {
+
+	local, remote, err := initTunnelAddr(local_addr, remote_addr)
+	if err != nil {
+		return nil, err
+	}
+
+	fd, err := tunnelSocket(local, remote, connect)
+	if err != nil {
+		return nil, err
+	}
+
+	return &l2tpControlPlane{
+		local:  local,
+		remote: remote,
+		fd:     fd,
+		file:   os.NewFile(uintptr(fd), "l2tp"),
+	}, nil
+}
+
+func newL2tpDataPlane(nl *nll2tp.Conn,
+	local_addr, remote_addr string,
+	cfg *nll2tp.TunnelConfig) (*l2tpDataPlane, error) {
+
+	local, remote, err := initTunnelAddr(local_addr, remote_addr)
+	if err != nil {
+		return nil, err
+	}
+
+	return &l2tpDataPlane{
+		local:  local,
+		remote: remote,
+		nl:     nl,
+		cfg:    cfg,
+	}, nil
 }
