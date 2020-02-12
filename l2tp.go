@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net"
 	"os"
+	"syscall"
 	"time"
 
 	"github.com/katalix/sl2tpd/internal/nll2tp"
@@ -153,6 +154,11 @@ func (cp *l2tpControlPlane) SetWriteDeadline(t time.Time) error {
 func (cp *l2tpControlPlane) Close() error {
 	// TODO: kick the protocol to shut down
 	return cp.file.Close() // TODO: verify this closes the underlying fd
+}
+
+// SyscallConn interface for control plane
+func (cp *l2tpControlPlane) SyscallConn() (syscall.RawConn, error) {
+	return cp.file.SyscallConn()
 }
 
 // Close the data plane
