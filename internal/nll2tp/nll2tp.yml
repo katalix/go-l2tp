@@ -1,0 +1,26 @@
+---
+GENERATOR:
+    PackageName: nll2tp
+    PackageDescription: "Package nll2tp provides Go bindings for the Linux L2TP GeNetlink API"
+    PackageLicense: "TODO"
+    Options:
+        SafeStrings: true
+
+PARSER:
+    IncludePaths: [/usr/include, /usr/include/x86_64-linux-gnu]
+    SourcesPaths: [l2tp.h]
+
+TRANSLATOR:
+    ConstRules:
+        defines: expand
+        enum: expand
+    Rules:
+        const:
+            - {transform: lower}
+            - {action: accept, from: "^L2TP_"}
+            - {action: replace, from: "^l2tp_", to: _}
+            - {transform: export}
+        type:
+            - {transform: export}
+        post-global:
+            - {load: snakecase}
