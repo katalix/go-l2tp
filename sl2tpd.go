@@ -40,7 +40,7 @@ func main() {
 	}
 	defer nlconn.Close()
 
-	t1, err := NewStaticL2tpTunnel(nlconn, local_addr, peer_addr, 42, 1, nll2tp.EncaptypeUdp, 0)
+	t1, err := NewQuiescentL2tpTunnel(nlconn, local_addr, peer_addr, 42, 1, nll2tp.ProtocolVersion3, nll2tp.EncaptypeUdp, 0)
 	if err != nil {
 		panic(err)
 	}
@@ -49,5 +49,15 @@ func main() {
 		panic(err)
 	}
 	fmt.Println(out)
+
+	for {
+		buf := make([]byte, 1024)
+		nb, err := t1.cp.Read(buf)
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println(nb, buf)
+	}
+
 	t1.Close()
 }
