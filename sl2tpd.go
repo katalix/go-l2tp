@@ -9,16 +9,16 @@ import (
 )
 
 func ipL2tpShowTunnel(tid nll2tp.L2tpTunnelID) (out string, err error) {
-	var tid_s string
-	var arg string
+	var tidStr string
+	var tidArgStr string
 	var sout bytes.Buffer
 
 	if tid > 0 {
-		arg = "tunnel_id"
-		tid_s = fmt.Sprintf("%d", tid)
+		tidArgStr = "tunnel_id"
+		tidStr = fmt.Sprintf("%d", tid)
 	}
 
-	cmd := exec.Command("sudo", "ip", "l2tp", "show", "tunnel", arg, tid_s)
+	cmd := exec.Command("sudo", "ip", "l2tp", "show", "tunnel", tidArgStr, tidStr)
 	cmd.Stdout = &sout
 
 	err = cmd.Run()
@@ -31,8 +31,8 @@ func ipL2tpShowTunnel(tid nll2tp.L2tpTunnelID) (out string, err error) {
 
 func main() {
 
-	local_addr := "127.0.0.1:5000"
-	peer_addr := "localhost:5001"
+	localAddr := "127.0.0.1:6000"
+	remoteAddr := "localhost:5000"
 
 	nlconn, err := nll2tp.Dial()
 	if err != nil {
@@ -40,7 +40,7 @@ func main() {
 	}
 	defer nlconn.Close()
 
-	t1, err := NewQuiescentL2tpTunnel(nlconn, local_addr, peer_addr, 42, 1, nll2tp.ProtocolVersion3, nll2tp.EncaptypeUdp, 0)
+	t1, err := NewQuiescentL2tpTunnel(nlconn, localAddr, remoteAddr, 42, 1, nll2tp.ProtocolVersion3, nll2tp.EncaptypeUdp, 0)
 	if err != nil {
 		panic(err)
 	}

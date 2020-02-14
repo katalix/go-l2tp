@@ -10,38 +10,69 @@ import (
 	"github.com/mdlayher/netlink/nlenc"
 )
 
+// L2tpProtocolVersion describes the RFC version of the tunnel:
+// L2TPv2 is described by RFC2661, while L2TPv3 is described by
+// RFC3931.
 type L2tpProtocolVersion uint32
+
+// L2tpTunnelID represents the numeric identifier of an L2TP tunnel.
+// This ID is used in L2TP control and data packet headers and AVPs,
+// and is unique to the host.
 type L2tpTunnelID uint32
+
+// L2tpSessionID represents the numeric identifier of an L2TP session.
+// This ID is used in L2TP control and data packet headers and AVPs,
+// and is unique to the tunnel for L2TPv2, or the host for L2TPv3.
 type L2tpSessionID uint32
 
 const (
+	// ProtocolVersion2 specifies L2TPv2 RFC2661
 	ProtocolVersion2 = 2
+	// ProtocolVersion3 specifies L2TPv3 RFC3931
 	ProtocolVersion3 = 3
 )
 
+// TunnelConfig encapsulates genetlink parameters for L2TP tunnel commands.
 type TunnelConfig struct {
-	Tid         L2tpTunnelID
-	Ptid        L2tpTunnelID
-	Version     L2tpProtocolVersion
-	Encap       L2tpEncapType
-	Debug_flags L2tpDebugFlags
+	// Tid is the host's L2TP ID for the tunnel.
+	Tid L2tpTunnelID
+	// Ptid is the peer's L2TP ID for the tunnel
+	Ptid L2tpTunnelID
+	// Version is the tunnel protocol version (L2TPv2 or L2TPv3)
+	Version L2tpProtocolVersion
+	// Encap specifies the tunnel encapsulation type.
+	// For L2TPv3 this may be UDP or IP.
+	// For L2TPv2 this may only be UDP.
+	Encap L2tpEncapType
+	// DebugFlags specifies the kernel debugging flags to use for the tunnel instance.
+	DebugFlags L2tpDebugFlags
 }
 
+// SessionConfig encapsulates genetlink parameters for L2TP session commands.
 type SessionConfig struct {
-	Tid             L2tpTunnelID
-	Ptid            L2tpTunnelID
-	Sid             L2tpSessionID
-	Psid            L2tpSessionID
-	Pseudowire_type L2tpPwtype
-	Debug_flags     L2tpDebugFlags
+	// Tid is the host's L2TP ID for the tunnel containing the session.
+	Tid L2tpTunnelID
+	// Ptid is the peer's L2TP ID for the tunnel containing the session.
+	Ptid L2tpTunnelID
+	// Sid is the host's L2TP ID for the session.
+	Sid L2tpSessionID
+	// Psid is the peer's L2TP ID for the session.
+	Psid L2tpSessionID
+	// PseudowireType specifies the type of traffic carried by the session.
+	// For L2TPv3 this may be PPP or Ethernet.
+	// For L2TPv2 this may be PPP only.
+	PseudowireType L2tpPwtype
+	// DebugFlags specifies the kernel debugging flags to use for the session instance.
+	DebugFlags L2tpDebugFlags
 }
 
+// Conn represents the genetlink L2TP connection to the kernel.
 type Conn struct {
-	genl_family genetlink.Family
-	c           *genetlink.Conn
+	genlFamily genetlink.Family
+	c          *genetlink.Conn
 }
 
-// Create a new genetlink L2TP connection to the kernel
+// Dial creates a new genetlink L2TP connection to the kernel.
 func Dial() (*Conn, error) {
 	c, err := genetlink.Dial(nil)
 	if err != nil {
@@ -55,8 +86,8 @@ func Dial() (*Conn, error) {
 	}
 
 	return &Conn{
-		genl_family: id,
-		c:           c,
+		genlFamily: id,
+		c:          c,
 	}, nil
 }
 
@@ -65,7 +96,11 @@ func (c *Conn) Close() {
 	c.c.Close()
 }
 
-// Create a new managed tunnel instance in the kernel
+// CreateManagedTunnel creates a new managed tunnel instance in the kernel.
+// A "managed" tunnel is one whose tunnel socket fd is created and managed
+// by a userspace process.  A managed tunnel's lifetime is bound by the lifetime
+// of the tunnel socket fd, and may optionally be destroyed using explicit
+// netlink commands.
 func (c *Conn) CreateManagedTunnel(fd int, config *TunnelConfig) (err error) {
 	if fd < 0 {
 		return errors.New("Managed tunnel needs a valid socket file descriptor")
@@ -82,24 +117,27 @@ func (c *Conn) CreateManagedTunnel(fd int, config *TunnelConfig) (err error) {
 	}))
 }
 
-// Create a new static tunnel instance in the kernel
-func (c *Conn) CreateStaticTunnel(local_addr *net.IP, local_port uint16,
-	peer_addr *net.IP, peer_port uint16,
+// CreateStaticTunnel creates a new static tunnel instance in the kernel.
+// A "static" tunnel is one whose tunnel socket fd is implicitly created
+// by the kernel.  A static tunnel must be explicitly deleted using netlink
+// commands.
+func (c *Conn) CreateStaticTunnel(localAddr *net.IP, localPort uint16,
+	peerAddr *net.IP, peerPort uint16,
 	config *TunnelConfig) (err error) {
 
-	if local_addr == nil {
+	if localAddr == nil {
 		return errors.New("Unmanaged tunnel needs a valid local address")
 	}
-	if local_port == 0 {
+	if localPort == 0 {
 		return errors.New("Unmanaged tunnel needs a valid local port")
 	}
-	if peer_addr == nil {
+	if peerAddr == nil {
 		return errors.New("Unmanaged tunnel needs a valid peer address")
 	}
-	if peer_port == 0 {
+	if peerPort == 0 {
 		return errors.New("Unmanaged tunnel needs a valid peer port")
 	}
-	if ipAddrLen(local_addr) != ipAddrLen(peer_addr) {
+	if ipAddrLen(localAddr) != ipAddrLen(peerAddr) {
 		return errors.New("Local and peer IP addresses must be of the same address family")
 	}
 
@@ -110,20 +148,22 @@ func (c *Conn) CreateStaticTunnel(local_addr *net.IP, local_port uint16,
 
 	return c.createTunnel(append(attr, netlink.Attribute{
 		Type: AttrIpSaddr,
-		Data: ipAddrBytes(local_addr),
+		Data: ipAddrBytes(localAddr),
 	}, netlink.Attribute{
 		Type: AttrUdpSport,
-		Data: nlenc.Uint16Bytes(local_port),
+		Data: nlenc.Uint16Bytes(localPort),
 	}, netlink.Attribute{
 		Type: AttrIpDaddr,
-		Data: ipAddrBytes(peer_addr),
+		Data: ipAddrBytes(peerAddr),
 	}, netlink.Attribute{
 		Type: AttrUdpDport,
-		Data: nlenc.Uint16Bytes(peer_port),
+		Data: nlenc.Uint16Bytes(peerPort),
 	}))
 }
 
-// Delete a tunnel instance in the kernel
+// DeleteTunnel deletes a tunnel instance from the kernel.
+// Deleting a tunnel instance implicitly destroys any sessions
+// running in that tunnel.
 func (c *Conn) DeleteTunnel(config *TunnelConfig) error {
 	if config == nil {
 		return errors.New("Invalid nil tunnel config")
@@ -142,16 +182,18 @@ func (c *Conn) DeleteTunnel(config *TunnelConfig) error {
 	_, err = c.c.Execute(genetlink.Message{
 		Header: genetlink.Header{
 			Command: CmdTunnelDelete,
-			Version: c.genl_family.Version,
+			Version: c.genlFamily.Version,
 		},
 		Data: b,
 	},
-		c.genl_family.ID,
+		c.genlFamily.ID,
 		netlink.Request|netlink.Acknowledge)
 	return err
 }
 
-// Create a session instance in the kernel
+// CreateSession creates a session instance in the kernel.
+// The parent tunnel instance referenced by the tunnel IDs in
+// the session configuration must already exist in the kernel.
 func (c *Conn) CreateSession(config *SessionConfig) error {
 	if config == nil {
 		return errors.New("Invalid nil session config")
@@ -159,7 +201,7 @@ func (c *Conn) CreateSession(config *SessionConfig) error {
 	return nil
 }
 
-// Delete a session instance in the kernel
+// DeleteSession deletes a session instance from the kernel.
 func (c *Conn) DeleteSession(config *SessionConfig) error {
 	if config == nil {
 		return errors.New("Invalid nil session config")
@@ -176,12 +218,12 @@ func (c *Conn) createTunnel(attr []netlink.Attribute) error {
 	req := genetlink.Message{
 		Header: genetlink.Header{
 			Command: CmdTunnelCreate,
-			Version: c.genl_family.Version,
+			Version: c.genlFamily.Version,
 		},
 		Data: b,
 	}
 
-	_, err = c.c.Execute(req, c.genl_family.ID, netlink.Request|netlink.Acknowledge)
+	_, err = c.c.Execute(req, c.genlFamily.ID, netlink.Request|netlink.Acknowledge)
 	return err
 }
 
@@ -236,7 +278,7 @@ func tunnelCreateAttr(config *TunnelConfig) ([]netlink.Attribute, error) {
 		},
 		{
 			Type: AttrDebug,
-			Data: nlenc.Uint32Bytes(uint32(config.Debug_flags)),
+			Data: nlenc.Uint32Bytes(uint32(config.DebugFlags)),
 		},
 	}, nil
 }
