@@ -2,7 +2,7 @@ package main
 
 import (
 	"errors"
-	"fmt"
+	//"fmt"
 	"net"
 	"os"
 	"syscall"
@@ -16,6 +16,8 @@ type l2tpControlPlane struct {
 	local, remote *net.UDPAddr
 	fd            int
 	file          *os.File
+	rc            syscall.RawConn
+	connected     bool
 }
 
 type l2tpDataPlane struct {
@@ -133,12 +135,66 @@ func (cp *l2tpControlPlane) RemoteAddr() net.Addr {
 
 // Read data from the connection.
 func (cp *l2tpControlPlane) Read(b []byte) (n int, err error) {
-	return cp.file.Read(b)
+	n, _, err = cp.ReadFrom(b)
+	return n, err
+}
+
+// Read data and sender address from the connection
+func (cp *l2tpControlPlane) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
+	n, sa, err := cp.recvfrom(p)
+	if err != nil {
+		return n, nil, err
+	}
+
+	addr, err = unixToNetAddr(sa)
+	if err != nil {
+		return n, nil, err
+	}
+
+	return n, addr, nil
+}
+
+func (cp *l2tpControlPlane) recvfrom(p []byte) (n int, addr unix.Sockaddr, err error) {
+	cerr := cp.rc.Read(func(fd uintptr) bool {
+		n, addr, err = unix.Recvfrom(int(fd), p, unix.MSG_NOSIGNAL)
+		return err != unix.EAGAIN && err != unix.EWOULDBLOCK
+	})
+	if err != nil {
+		return n, addr, err
+	}
+	return n, addr, cerr
 }
 
 // Write data to the connection
 func (cp *l2tpControlPlane) Write(b []byte) (n int, err error) {
-	return cp.file.Write(b)
+	if cp.connected {
+		return cp.file.Write(b)
+	}
+	return cp.WriteTo(b, cp.remote)
+}
+
+// WriteTo writes a packet with payload p to addr.
+func (cp *l2tpControlPlane) WriteTo(p []byte, addr net.Addr) (n int, err error) {
+	uaddr, ok := addr.(*net.UDPAddr)
+	if !ok {
+		return 0, unix.EINVAL
+	}
+	sa, err := netAddrToUnix(uaddr)
+	if err != nil {
+		return 0, err
+	}
+	return len(p), cp.sendto(p, sa)
+}
+
+func (cp *l2tpControlPlane) sendto(p []byte, to unix.Sockaddr) (err error) {
+	cerr := cp.rc.Write(func(fd uintptr) bool {
+		err = unix.Sendto(int(fd), p, unix.MSG_NOSIGNAL, to)
+		return err != unix.EAGAIN && err != unix.EWOULDBLOCK
+	})
+	if err != nil {
+		return err
+	}
+	return cerr
 }
 
 // Set deadline for read and write operations
@@ -160,11 +216,6 @@ func (cp *l2tpControlPlane) SetWriteDeadline(t time.Time) error {
 func (cp *l2tpControlPlane) Close() error {
 	// TODO: kick the protocol to shut down
 	return cp.file.Close() // TODO: verify this closes the underlying fd
-}
-
-// SyscallConn interface for control plane
-func (cp *l2tpControlPlane) SyscallConn() (syscall.RawConn, error) {
-	return cp.file.SyscallConn()
 }
 
 // Close the data plane
@@ -211,6 +262,29 @@ func (dp *l2tpDataPlane) UpStatic() error {
 	return err
 }
 
+func unixToNetAddr(addr unix.Sockaddr) (*net.UDPAddr, error) {
+	if addr != nil {
+		if sa4, ok := addr.(*unix.SockaddrInet4); ok {
+			return &net.UDPAddr{
+				IP:   net.IP{sa4.Addr[0], sa4.Addr[1], sa4.Addr[2], sa4.Addr[3]},
+				Port: sa4.Port,
+			}, nil
+		} else if sa6, ok := addr.(*unix.SockaddrInet6); ok {
+			// TODO: SockaddrInet6 has a uint32 ZoneId, while UDPAddr
+			// has a Zone string.  How to convert between the two?
+			return &net.UDPAddr{
+				IP: net.IP{
+					sa6.Addr[0], sa6.Addr[1], sa6.Addr[2], sa6.Addr[3],
+					sa6.Addr[4], sa6.Addr[5], sa6.Addr[6], sa6.Addr[7],
+					sa6.Addr[8], sa6.Addr[9], sa6.Addr[10], sa6.Addr[11],
+					sa6.Addr[12], sa6.Addr[13], sa6.Addr[14], sa6.Addr[15]},
+				Port: sa6.Port,
+			}, nil
+		}
+	}
+	return nil, errors.New("Unhandled address family")
+}
+
 func netAddrToUnix(addr *net.UDPAddr) (unix.Sockaddr, error) {
 	if addr != nil {
 		if b := addr.IP.To4(); b != nil {
@@ -219,6 +293,8 @@ func netAddrToUnix(addr *net.UDPAddr) (unix.Sockaddr, error) {
 				Addr: [4]byte{b[0], b[1], b[2], b[3]},
 			}, nil
 		} else if b := addr.IP.To16(); b != nil {
+			// TODO: SockaddrInet6 has a uint32 ZoneId, while UDPAddr
+			// has a Zone string.  How to convert between the two?
 			return &unix.SockaddrInet6{
 				Port: addr.Port,
 				Addr: [16]byte{
@@ -247,6 +323,10 @@ func ipAddrLen(addr *net.IP) uint {
 }
 
 func initTunnelAddr(localAddr, remoteAddr string) (local, remote *net.UDPAddr, err error) {
+	// TODO: we need to handle the possibility of the local address being
+	// unset (i.e. autobind).  This code will "work" for localAddr having a
+	// len() of 0, yielding INADDR_ANY semantics.  Which is probably not what
+	// we want: better to avoid the bind call if we want to autobind.
 	ul, err := net.ResolveUDPAddr("udp", localAddr)
 	if err != nil {
 		return nil, nil, err
@@ -328,11 +408,20 @@ func newL2tpControlPlane(localAddr, remoteAddr string, connect bool) (*l2tpContr
 		return nil, err
 	}
 
+	file := os.NewFile(uintptr(fd), "l2tp")
+	sc, err := file.SyscallConn()
+	if err != nil {
+		unix.Close(fd)
+		return nil, err
+	}
+
 	return &l2tpControlPlane{
-		local:  local,
-		remote: remote,
-		fd:     fd,
-		file:   os.NewFile(uintptr(fd), "l2tp"),
+		local:     local,
+		remote:    remote,
+		fd:        fd,
+		file:      file,
+		rc:        sc,
+		connected: connect,
 	}, nil
 }
 
