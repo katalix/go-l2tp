@@ -25,15 +25,18 @@ type AVPDataType int
 
 type avpInfo struct {
 	avpType     AVPType
-	vendorID    AVPVendorID
+	VendorID    AVPVendorID
 	isMandatory bool
 	dataType    AVPDataType
 }
 
+// Don't be tempted to try to make the fields in this structure private:
+// doing so breaks the reflection properties which binary.Read depends upon
+// for extracting the header from the bytearray.
 type avpHeader struct {
 	FlagLen  avpFlagLen
 	VendorID AVPVendorID
-	AVPType  AVPType
+	AvpType  AVPType
 }
 
 type avpPayload struct {
@@ -55,105 +58,105 @@ const (
 )
 
 const (
-	// AVPDataTypeEmpty represents an AVP with no value
-	AVPDataTypeEmpty = iota
-	// AVPDataTypeUint8 represents an AVP carrying a single uint8 value
-	AVPDataTypeUint8
-	// AVPDataTypeUint16 represents an AVP carrying a single uint16 value
-	AVPDataTypeUint16
-	// AVPDataTypeUint32 represents an AVP carrying a single uint32 value
-	AVPDataTypeUint32
-	// AVPDataTypeUint64 represents an AVP carrying a single uint64 value
-	AVPDataTypeUint64
-	// AVPDataTypeString represents an AVP carrying an ASCII string
-	AVPDataTypeString
-	// AVPDataTypeBytes represents an AVP carrying a raw byte array
-	AVPDataTypeBytes
-	// AVPDataTypeUnimplemented represents an AVP carrying a currently unimplemented data type
-	AVPDataTypeUnimplemented
-	// AVPDataTypeIllegal represents an AVP carrying an illegal data type.
+	// AvpDataTypeEmpty represents an AVP with no value
+	AvpDataTypeEmpty = iota
+	// AvpDataTypeUint8 represents an AVP carrying a single uint8 value
+	AvpDataTypeUint8
+	// AvpDataTypeUint16 represents an AVP carrying a single uint16 value
+	AvpDataTypeUint16
+	// AvpDataTypeUint32 represents an AVP carrying a single uint32 value
+	AvpDataTypeUint32
+	// AvpDataTypeUint64 represents an AVP carrying a single uint64 value
+	AvpDataTypeUint64
+	// AvpDataTypeString represents an AVP carrying an ASCII string
+	AvpDataTypeString
+	// AvpDataTypeBytes represents an AVP carrying a raw byte array
+	AvpDataTypeBytes
+	// AvpDataTypeUnimplemented represents an AVP carrying a currently unimplemented data type
+	AvpDataTypeUnimplemented
+	// AvpDataTypeIllegal represents an AVP carrying an illegal data type.
 	// AVPs falling into this category are typically those with currently
 	// reserved IDs as per the RFCs.
-	AVPDataTypeIllegal
+	AvpDataTypeIllegal
 )
 
 var avpInfoTable = [...]avpInfo{
-	{avpType: AvpTypeMessage, vendorID: VendorIDIetf, isMandatory: true, dataType: AVPDataTypeUint16},
-	{avpType: AvpTypeResultCode, vendorID: VendorIDIetf, isMandatory: true, dataType: AVPDataTypeUnimplemented}, // TODO
-	{avpType: AvpTypeProtocolVersion, vendorID: VendorIDIetf, isMandatory: false, dataType: AVPDataTypeBytes},
-	{avpType: AvpTypeFramingCap, vendorID: VendorIDIetf, isMandatory: true, dataType: AVPDataTypeUint32},
-	{avpType: AvpTypeBearerCap, vendorID: VendorIDIetf, isMandatory: true, dataType: AVPDataTypeUint32},
-	{avpType: AvpTypeTiebreaker, vendorID: VendorIDIetf, isMandatory: false, dataType: AVPDataTypeUnimplemented}, // TODO
-	{avpType: AvpTypeFirmwareRevision, vendorID: VendorIDIetf, isMandatory: false, dataType: AVPDataTypeUint16},
-	{avpType: AvpTypeHostName, vendorID: VendorIDIetf, isMandatory: true, dataType: AVPDataTypeString},
-	{avpType: AvpTypeVendorName, vendorID: VendorIDIetf, isMandatory: false, dataType: AVPDataTypeString},
-	{avpType: AvpTypeTunnelID, vendorID: VendorIDIetf, isMandatory: true, dataType: AVPDataTypeUint16},
-	{avpType: AvpTypeRxWindowSize, vendorID: VendorIDIetf, isMandatory: true, dataType: AVPDataTypeUint16},
-	{avpType: AvpTypeChallenge, vendorID: VendorIDIetf, isMandatory: true, dataType: AVPDataTypeBytes},
-	{avpType: AvpTypeQ931CauseCode, vendorID: VendorIDIetf, isMandatory: true, dataType: AVPDataTypeUnimplemented}, // TODO
-	{avpType: AvpTypeChallengeResponse, vendorID: VendorIDIetf, isMandatory: true, dataType: AVPDataTypeBytes},
-	{avpType: AvpTypeSessionID, vendorID: VendorIDIetf, isMandatory: true, dataType: AVPDataTypeUint16},
-	{avpType: AvpTypeCallSerialNumber, vendorID: VendorIDIetf, isMandatory: true, dataType: AVPDataTypeUint32},
-	{avpType: AvpTypeMinimumBps, vendorID: VendorIDIetf, isMandatory: true, dataType: AVPDataTypeUint32},
-	{avpType: AvpTypeMaximumBps, vendorID: VendorIDIetf, isMandatory: true, dataType: AVPDataTypeUint32},
-	{avpType: AvpTypeBearerType, vendorID: VendorIDIetf, isMandatory: true, dataType: AVPDataTypeUint32},
-	{avpType: AvpTypeFramingType, vendorID: VendorIDIetf, isMandatory: true, dataType: AVPDataTypeUint32},
-	{avpType: AvpTypePacketProcDelay, vendorID: VendorIDIetf, isMandatory: false, dataType: AVPDataTypeUnimplemented}, // TODO
-	{avpType: AvpTypeCalledNumber, vendorID: VendorIDIetf, isMandatory: true, dataType: AVPDataTypeString},
-	{avpType: AvpTypeCallingNumber, vendorID: VendorIDIetf, isMandatory: true, dataType: AVPDataTypeString},
-	{avpType: AvpTypeSubAddress, vendorID: VendorIDIetf, isMandatory: true, dataType: AVPDataTypeString},
-	{avpType: AvpTypeConnectSpeed, vendorID: VendorIDIetf, isMandatory: true, dataType: AVPDataTypeUint32},
-	{avpType: AvpTypePhysicalChannelID, vendorID: VendorIDIetf, isMandatory: false, dataType: AVPDataTypeUint32},
-	{avpType: AvpTypeInitialRcvdLcpConfreq, vendorID: VendorIDIetf, isMandatory: false, dataType: AVPDataTypeBytes},
-	{avpType: AvpTypeLastSentLcpConfreq, vendorID: VendorIDIetf, isMandatory: false, dataType: AVPDataTypeBytes},
-	{avpType: AvpTypeLastRcvdLcpConfreq, vendorID: VendorIDIetf, isMandatory: false, dataType: AVPDataTypeBytes},
-	{avpType: AvpTypeProxyAuthType, vendorID: VendorIDIetf, isMandatory: false, dataType: AVPDataTypeUint16},
-	{avpType: AvpTypeProxyAuthName, vendorID: VendorIDIetf, isMandatory: false, dataType: AVPDataTypeString},
-	{avpType: AvpTypeProxyAuthChallenge, vendorID: VendorIDIetf, isMandatory: false, dataType: AVPDataTypeBytes},
-	{avpType: AvpTypeProxyAuthID, vendorID: VendorIDIetf, isMandatory: false, dataType: AVPDataTypeBytes},
-	{avpType: AvpTypeProxyAuthResponse, vendorID: VendorIDIetf, isMandatory: false, dataType: AVPDataTypeBytes},
-	{avpType: AvpTypeCallErrors, vendorID: VendorIDIetf, isMandatory: true, dataType: AVPDataTypeUnimplemented}, // TODO
-	{avpType: AvpTypeAccm, vendorID: VendorIDIetf, isMandatory: true, dataType: AVPDataTypeUnimplemented},       // TODO
-	{avpType: AvpTypeRandomVector, vendorID: VendorIDIetf, isMandatory: true, dataType: AVPDataTypeBytes},
-	{avpType: AvpTypePrivGroupID, vendorID: VendorIDIetf, isMandatory: false, dataType: AVPDataTypeString},
-	{avpType: AvpTypeRxConnectSpeed, vendorID: VendorIDIetf, isMandatory: false, dataType: AVPDataTypeUint32},
-	{avpType: AvpTypeSequencingRequired, vendorID: VendorIDIetf, isMandatory: true, dataType: AVPDataTypeEmpty},
-	{avpType: AvpTypeUnused40, vendorID: VendorIDIetf, isMandatory: false, dataType: AVPDataTypeIllegal},
-	{avpType: AvpTypeUnused41, vendorID: VendorIDIetf, isMandatory: false, dataType: AVPDataTypeIllegal},
-	{avpType: AvpTypeUnused42, vendorID: VendorIDIetf, isMandatory: false, dataType: AVPDataTypeIllegal},
-	{avpType: AvpTypeUnused43, vendorID: VendorIDIetf, isMandatory: false, dataType: AVPDataTypeIllegal},
-	{avpType: AvpTypeUnused44, vendorID: VendorIDIetf, isMandatory: false, dataType: AVPDataTypeIllegal},
-	{avpType: AvpTypeUnused45, vendorID: VendorIDIetf, isMandatory: false, dataType: AVPDataTypeIllegal},
-	{avpType: AvpTypeUnused46, vendorID: VendorIDIetf, isMandatory: false, dataType: AVPDataTypeIllegal},
-	{avpType: AvpTypeUnused47, vendorID: VendorIDIetf, isMandatory: false, dataType: AVPDataTypeIllegal},
-	{avpType: AvpTypeUnused48, vendorID: VendorIDIetf, isMandatory: false, dataType: AVPDataTypeIllegal},
-	{avpType: AvpTypeUnused49, vendorID: VendorIDIetf, isMandatory: false, dataType: AVPDataTypeIllegal},
-	{avpType: AvpTypeUnused50, vendorID: VendorIDIetf, isMandatory: false, dataType: AVPDataTypeIllegal},
-	{avpType: AvpTypeUnused51, vendorID: VendorIDIetf, isMandatory: false, dataType: AVPDataTypeIllegal},
-	{avpType: AvpTypeUnused52, vendorID: VendorIDIetf, isMandatory: false, dataType: AVPDataTypeIllegal},
-	{avpType: AvpTypeUnused53, vendorID: VendorIDIetf, isMandatory: false, dataType: AVPDataTypeIllegal},
-	{avpType: AvpTypeUnused54, vendorID: VendorIDIetf, isMandatory: false, dataType: AVPDataTypeIllegal},
-	{avpType: AvpTypeUnused55, vendorID: VendorIDIetf, isMandatory: false, dataType: AVPDataTypeIllegal},
-	{avpType: AvpTypeUnused56, vendorID: VendorIDIetf, isMandatory: false, dataType: AVPDataTypeIllegal},
-	{avpType: AvpTypeUnused57, vendorID: VendorIDIetf, isMandatory: false, dataType: AVPDataTypeIllegal},
-	{avpType: AvpTypeExtended, vendorID: VendorIDIetf, isMandatory: false, dataType: AVPDataTypeIllegal},
-	{avpType: AvpTypeMessageDigest, vendorID: VendorIDIetf, isMandatory: false, dataType: AVPDataTypeBytes},
-	{avpType: AvpTypeRouterID, vendorID: VendorIDIetf, isMandatory: false, dataType: AVPDataTypeUint32},
-	{avpType: AvpTypeAssignedConnID, vendorID: VendorIDIetf, isMandatory: false, dataType: AVPDataTypeUint32},
-	{avpType: AvpTypePseudowireCaps, vendorID: VendorIDIetf, isMandatory: false, dataType: AVPDataTypeUnimplemented},
-	{avpType: AvpTypeLocalSessionID, vendorID: VendorIDIetf, isMandatory: false, dataType: AVPDataTypeUint32},
-	{avpType: AvpTypeRemoteSessionID, vendorID: VendorIDIetf, isMandatory: false, dataType: AVPDataTypeUint32},
-	{avpType: AvpTypeAssignedCookie, vendorID: VendorIDIetf, isMandatory: false, dataType: AVPDataTypeBytes},
-	{avpType: AvpTypeRemoteEndID, vendorID: VendorIDIetf, isMandatory: false, dataType: AVPDataTypeBytes},
-	{avpType: AvpTypeUnused67, vendorID: VendorIDIetf, isMandatory: false, dataType: AVPDataTypeIllegal},
-	{avpType: AvpTypePseudowireType, vendorID: VendorIDIetf, isMandatory: false, dataType: AVPDataTypeUint16},
-	{avpType: AvpTypeL2specificSublayer, vendorID: VendorIDIetf, isMandatory: false, dataType: AVPDataTypeUint16},
-	{avpType: AvpTypeDataSequencing, vendorID: VendorIDIetf, isMandatory: false, dataType: AVPDataTypeUint16},
-	{avpType: AvpTypeCircuitStatus, vendorID: VendorIDIetf, isMandatory: false, dataType: AVPDataTypeUint16},
-	{avpType: AvpTypePreferredLanguage, vendorID: VendorIDIetf, isMandatory: false, dataType: AVPDataTypeBytes},
-	{avpType: AvpTypeControlAuthNonce, vendorID: VendorIDIetf, isMandatory: false, dataType: AVPDataTypeBytes},
-	{avpType: AvpTypeTxConnectSpeedBps, vendorID: VendorIDIetf, isMandatory: false, dataType: AVPDataTypeUint64},
-	{avpType: AvpTypeRxConnectSpeedBps, vendorID: VendorIDIetf, isMandatory: false, dataType: AVPDataTypeUint64},
+	{avpType: AvpTypeMessage, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeUint16},
+	{avpType: AvpTypeResultCode, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeUnimplemented}, // TODO
+	{avpType: AvpTypeProtocolVersion, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeBytes},
+	{avpType: AvpTypeFramingCap, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeUint32},
+	{avpType: AvpTypeBearerCap, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeUint32},
+	{avpType: AvpTypeTiebreaker, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeUnimplemented}, // TODO
+	{avpType: AvpTypeFirmwareRevision, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeUint16},
+	{avpType: AvpTypeHostName, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeString},
+	{avpType: AvpTypeVendorName, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeString},
+	{avpType: AvpTypeTunnelID, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeUint16},
+	{avpType: AvpTypeRxWindowSize, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeUint16},
+	{avpType: AvpTypeChallenge, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeBytes},
+	{avpType: AvpTypeQ931CauseCode, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeUnimplemented}, // TODO
+	{avpType: AvpTypeChallengeResponse, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeBytes},
+	{avpType: AvpTypeSessionID, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeUint16},
+	{avpType: AvpTypeCallSerialNumber, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeUint32},
+	{avpType: AvpTypeMinimumBps, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeUint32},
+	{avpType: AvpTypeMaximumBps, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeUint32},
+	{avpType: AvpTypeBearerType, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeUint32},
+	{avpType: AvpTypeFramingType, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeUint32},
+	{avpType: AvpTypePacketProcDelay, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeUnimplemented}, // TODO
+	{avpType: AvpTypeCalledNumber, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeString},
+	{avpType: AvpTypeCallingNumber, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeString},
+	{avpType: AvpTypeSubAddress, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeString},
+	{avpType: AvpTypeConnectSpeed, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeUint32},
+	{avpType: AvpTypePhysicalChannelID, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeUint32},
+	{avpType: AvpTypeInitialRcvdLcpConfreq, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeBytes},
+	{avpType: AvpTypeLastSentLcpConfreq, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeBytes},
+	{avpType: AvpTypeLastRcvdLcpConfreq, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeBytes},
+	{avpType: AvpTypeProxyAuthType, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeUint16},
+	{avpType: AvpTypeProxyAuthName, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeString},
+	{avpType: AvpTypeProxyAuthChallenge, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeBytes},
+	{avpType: AvpTypeProxyAuthID, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeBytes},
+	{avpType: AvpTypeProxyAuthResponse, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeBytes},
+	{avpType: AvpTypeCallErrors, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeUnimplemented}, // TODO
+	{avpType: AvpTypeAccm, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeUnimplemented},       // TODO
+	{avpType: AvpTypeRandomVector, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeBytes},
+	{avpType: AvpTypePrivGroupID, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeString},
+	{avpType: AvpTypeRxConnectSpeed, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeUint32},
+	{avpType: AvpTypeSequencingRequired, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeEmpty},
+	{avpType: AvpTypeUnused40, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeIllegal},
+	{avpType: AvpTypeUnused41, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeIllegal},
+	{avpType: AvpTypeUnused42, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeIllegal},
+	{avpType: AvpTypeUnused43, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeIllegal},
+	{avpType: AvpTypeUnused44, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeIllegal},
+	{avpType: AvpTypeUnused45, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeIllegal},
+	{avpType: AvpTypeUnused46, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeIllegal},
+	{avpType: AvpTypeUnused47, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeIllegal},
+	{avpType: AvpTypeUnused48, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeIllegal},
+	{avpType: AvpTypeUnused49, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeIllegal},
+	{avpType: AvpTypeUnused50, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeIllegal},
+	{avpType: AvpTypeUnused51, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeIllegal},
+	{avpType: AvpTypeUnused52, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeIllegal},
+	{avpType: AvpTypeUnused53, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeIllegal},
+	{avpType: AvpTypeUnused54, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeIllegal},
+	{avpType: AvpTypeUnused55, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeIllegal},
+	{avpType: AvpTypeUnused56, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeIllegal},
+	{avpType: AvpTypeUnused57, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeIllegal},
+	{avpType: AvpTypeExtended, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeIllegal},
+	{avpType: AvpTypeMessageDigest, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeBytes},
+	{avpType: AvpTypeRouterID, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeUint32},
+	{avpType: AvpTypeAssignedConnID, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeUint32},
+	{avpType: AvpTypePseudowireCaps, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeUnimplemented},
+	{avpType: AvpTypeLocalSessionID, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeUint32},
+	{avpType: AvpTypeRemoteSessionID, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeUint32},
+	{avpType: AvpTypeAssignedCookie, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeBytes},
+	{avpType: AvpTypeRemoteEndID, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeBytes},
+	{avpType: AvpTypeUnused67, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeIllegal},
+	{avpType: AvpTypePseudowireType, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeUint16},
+	{avpType: AvpTypeL2specificSublayer, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeUint16},
+	{avpType: AvpTypeDataSequencing, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeUint16},
+	{avpType: AvpTypeCircuitStatus, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeUint16},
+	{avpType: AvpTypePreferredLanguage, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeBytes},
+	{avpType: AvpTypeControlAuthNonce, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeBytes},
+	{avpType: AvpTypeTxConnectSpeedBps, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeUint64},
+	{avpType: AvpTypeRxConnectSpeedBps, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeUint64},
 }
 
 // AVP type identifiers as per RFC2661 and RFC3931, representing the
@@ -514,23 +517,23 @@ func (avp AVP) String() string {
 // Implements the fmt.Stringer() interface.
 func (t AVPDataType) String() string {
 	switch t {
-	case AVPDataTypeEmpty:
+	case AvpDataTypeEmpty:
 		return "no data"
-	case AVPDataTypeUint8:
+	case AvpDataTypeUint8:
 		return "uint8"
-	case AVPDataTypeUint16:
+	case AvpDataTypeUint16:
 		return "uint16"
-	case AVPDataTypeUint32:
+	case AvpDataTypeUint32:
 		return "uint32"
-	case AVPDataTypeUint64:
+	case AvpDataTypeUint64:
 		return "uint64"
-	case AVPDataTypeString:
+	case AvpDataTypeString:
 		return "string"
-	case AVPDataTypeBytes:
+	case AvpDataTypeBytes:
 		return "byte array"
-	case AVPDataTypeUnimplemented:
+	case AvpDataTypeUnimplemented:
 		return "unimplemented AVP data type"
-	case AVPDataTypeIllegal:
+	case AvpDataTypeIllegal:
 		return "illegal AVP"
 	}
 	return "Unrecognised AVP data type"
@@ -541,9 +544,9 @@ func (hdr avpHeader) String() string {
 	h := "-"
 	var t string
 	if hdr.VendorID == VendorIDIetf {
-		t = fmt.Sprintf("%s", hdr.AVPType)
+		t = fmt.Sprintf("%s", hdr.AvpType)
 	} else {
-		t = fmt.Sprintf("Vendor %d AVP %d", hdr.VendorID, uint16(hdr.AVPType))
+		t = fmt.Sprintf("Vendor %d AVP %d", hdr.VendorID, uint16(hdr.AvpType))
 	}
 	if hdr.isMandatory() {
 		m = "M"
@@ -560,24 +563,24 @@ func (p avpPayload) String() string {
 	str.WriteString(fmt.Sprintf("(%s) ", p.dataType))
 
 	switch p.dataType {
-	case AVPDataTypeUint8:
+	case AvpDataTypeUint8:
 		v, _ := p.toUint8()
 		str.WriteString(fmt.Sprintf("%d", v))
-	case AVPDataTypeUint16:
+	case AvpDataTypeUint16:
 		v, _ := p.toUint16()
 		str.WriteString(fmt.Sprintf("%d", v))
-	case AVPDataTypeUint32:
+	case AvpDataTypeUint32:
 		v, _ := p.toUint32()
 		str.WriteString(fmt.Sprintf("%d", v))
-	case AVPDataTypeUint64:
+	case AvpDataTypeUint64:
 		v, _ := p.toUint64()
 		str.WriteString(fmt.Sprintf("%d", v))
-	case AVPDataTypeString:
+	case AvpDataTypeString:
 		s, _ := p.toString()
 		str.WriteString(s)
-	case AVPDataTypeBytes:
+	case AvpDataTypeBytes:
 		str.WriteString(fmt.Sprintf("%s", p.data))
-	case AVPDataTypeEmpty, AVPDataTypeUnimplemented, AVPDataTypeIllegal:
+	case AvpDataTypeEmpty, AvpDataTypeUnimplemented, AvpDataTypeIllegal:
 		str.WriteString("")
 	}
 
@@ -612,7 +615,7 @@ func (avp *AVP) IsHidden() bool {
 
 // Type returns the type identifier for the AVP.
 func (avp *AVP) Type() AVPType {
-	return avp.header.AVPType
+	return avp.header.AvpType
 }
 
 // VendorID returns the vendor ID for the AVP.
@@ -622,9 +625,9 @@ func (avp *AVP) VendorID() AVPVendorID {
 	return avp.header.VendorID
 }
 
-func getAVPInfo(avpType AVPType, vendorID AVPVendorID) (*avpInfo, error) {
+func getAVPInfo(avpType AVPType, VendorID AVPVendorID) (*avpInfo, error) {
 	for _, info := range avpInfoTable {
-		if info.avpType == avpType && info.vendorID == vendorID {
+		if info.avpType == avpType && info.VendorID == VendorID {
 			return &info, nil
 		}
 	}
@@ -647,7 +650,7 @@ func ParseAVPBuffer(b []byte) (avps []AVP, err error) {
 		}
 
 		// Look up the AVP
-		info, err := getAVPInfo(h.AVPType, h.VendorID)
+		info, err := getAVPInfo(h.AvpType, h.VendorID)
 		if err != nil {
 			if h.isMandatory() {
 				return nil, err
@@ -724,7 +727,7 @@ func (p *avpPayload) toString() (out string, err error) {
 // It is an error to call this function on an AVP which doesn't
 // contain a uint16 payload.
 func (avp *AVP) DecodeUint16Data() (value uint16, err error) {
-	if !avp.IsDataType(AVPDataTypeUint16) {
+	if !avp.IsDataType(AvpDataTypeUint16) {
 		return 0, errors.New("AVP data is not of type uint16, cannot decode")
 	}
 	return avp.payload.toUint16()
@@ -734,7 +737,7 @@ func (avp *AVP) DecodeUint16Data() (value uint16, err error) {
 // It is an error to call this function on an AVP which doesn't
 // contain a uint32 payload.
 func (avp *AVP) DecodeUint32Data() (value uint32, err error) {
-	if !avp.IsDataType(AVPDataTypeUint32) {
+	if !avp.IsDataType(AvpDataTypeUint32) {
 		return 0, errors.New("AVP data is not of type uint32, cannot decode")
 	}
 	return avp.payload.toUint32()
@@ -744,7 +747,7 @@ func (avp *AVP) DecodeUint32Data() (value uint32, err error) {
 // It is an error to call this function on an AVP which doesn't
 // contain a string payload.
 func (avp *AVP) DecodeStringData() (value string, err error) {
-	if !avp.IsDataType(AVPDataTypeString) {
+	if !avp.IsDataType(AvpDataTypeString) {
 		return "", errors.New("AVP data is not of type string, cannot decode")
 	}
 	return avp.payload.toString()
