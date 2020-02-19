@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 )
@@ -62,7 +63,60 @@ func TestParseAVPBuffer(t *testing.T) {
 		got, err := ParseAVPBuffer(c.in)
 		if err == nil {
 			if !reflect.DeepEqual(got, c.want) {
-				t.Errorf("ParseAVPBuffer() == %q, want %q", got, c.want)
+				t.Errorf("ParseAVPBuffer() == %q; want %q", got, c.want)
+			}
+		} else {
+			t.Errorf("ParseAVPBuffer(%q) failed: %q", c.in, err)
+		}
+	}
+}
+
+type avpMetadata struct {
+	mandatory, hidden bool
+	typ               AVPType
+	vid               AVPVendorID
+	dtyp              AVPDataType
+	nbytes            int
+}
+
+func (md avpMetadata) String() string {
+	return fmt.Sprintf("%s %s mandatory: %v, hidden: %v, dtyp: %v, len: %v", md.vid, md.typ, md.mandatory, md.hidden, md.dtyp, md.nbytes)
+}
+
+func TestAVPMetadata(t *testing.T) {
+	cases := []struct {
+		in   []byte
+		want []avpMetadata
+	}{
+		{
+			in: []byte{0x80, 0x0c, 0x00, 0x00, 0x00, 0x07, 0x6f, 0x70, 0x65, 0x6e, 0x76, 0x33}, // hostname AVP
+			want: []avpMetadata{
+				avpMetadata{mandatory: true, hidden: false, typ: AvpTypeHostName, vid: VendorIDIetf, dtyp: AvpDataTypeString, nbytes: 6},
+			},
+		},
+		{
+			in: []byte{0x80, 0x08, 0x00, 0x00, 0x00, 0x0a, 0x00, 0x0a}, // receive window size
+			want: []avpMetadata{
+				avpMetadata{mandatory: true, hidden: false, typ: AvpTypeRxWindowSize, vid: VendorIDIetf, dtyp: AvpDataTypeUint16, nbytes: 2},
+			},
+		},
+	}
+	for _, c := range cases {
+		got, err := ParseAVPBuffer(c.in)
+		if err == nil {
+			for i, gi := range got {
+				dtyp, buf := gi.RawData()
+				gotmd := avpMetadata{
+					mandatory: gi.IsMandatory(),
+					hidden:    gi.IsHidden(),
+					typ:       gi.Type(),
+					vid:       gi.VendorID(),
+					dtyp:      dtyp,
+					nbytes:    len(buf),
+				}
+				if !reflect.DeepEqual(gotmd, c.want[i]) {
+					t.Errorf("metadata == %s; want %s", gotmd, c.want[i])
+				}
 			}
 		} else {
 			t.Errorf("ParseAVPBuffer(%q) failed: %q", c.in, err)
