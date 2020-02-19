@@ -123,3 +123,30 @@ func TestAVPMetadata(t *testing.T) {
 		}
 	}
 }
+
+func TestAVPTypeStringer(t *testing.T) {
+	for i := AvpTypeMessage; i < AvpTypeMax; i++ {
+		s := i.String()
+		if len(s) == 0 {
+			t.Errorf("AVPType stringer returned empty string for value %d", uint16(i))
+		}
+	}
+}
+
+func TestAVPMsgTypeStringer(t *testing.T) {
+	for i := AvpMsgTypeIllegal; i < AvpMsgTypeMax; i++ {
+		s := i.String()
+		if len(s) == 0 {
+			t.Errorf("AVPMsgType stringer returned empty string for value %d", uint16(i))
+		}
+	}
+}
+
+func TestAVPDataTypeStringer(t *testing.T) {
+	for i := AvpDataTypeEmpty; i < AvpDataTypeMax; i++ {
+		s := i.String()
+		if len(s) == 0 {
+			t.Errorf("AVPDataType stringer returned empty string for value %d", uint16(i))
+		}
+	}
+}

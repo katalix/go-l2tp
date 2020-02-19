@@ -59,25 +59,27 @@ const (
 
 const (
 	// AvpDataTypeEmpty represents an AVP with no value
-	AvpDataTypeEmpty = iota
+	AvpDataTypeEmpty AVPDataType = 0
 	// AvpDataTypeUint8 represents an AVP carrying a single uint8 value
-	AvpDataTypeUint8
+	AvpDataTypeUint8 AVPDataType = 1
 	// AvpDataTypeUint16 represents an AVP carrying a single uint16 value
-	AvpDataTypeUint16
+	AvpDataTypeUint16 AVPDataType = 2
 	// AvpDataTypeUint32 represents an AVP carrying a single uint32 value
-	AvpDataTypeUint32
+	AvpDataTypeUint32 AVPDataType = 3
 	// AvpDataTypeUint64 represents an AVP carrying a single uint64 value
-	AvpDataTypeUint64
+	AvpDataTypeUint64 AVPDataType = 4
 	// AvpDataTypeString represents an AVP carrying an ASCII string
-	AvpDataTypeString
+	AvpDataTypeString AVPDataType = 5
 	// AvpDataTypeBytes represents an AVP carrying a raw byte array
-	AvpDataTypeBytes
+	AvpDataTypeBytes AVPDataType = 6
 	// AvpDataTypeUnimplemented represents an AVP carrying a currently unimplemented data type
-	AvpDataTypeUnimplemented
+	AvpDataTypeUnimplemented AVPDataType = 7
 	// AvpDataTypeIllegal represents an AVP carrying an illegal data type.
 	// AVPs falling into this category are typically those with currently
 	// reserved IDs as per the RFCs.
-	AvpDataTypeIllegal
+	AvpDataTypeIllegal AVPDataType = 8
+	// AvpDataTypeMax is a sentinel value for test purposes
+	AvpDataTypeMax AVPDataType = 9
 )
 
 var avpInfoTable = [...]avpInfo{
@@ -238,7 +240,7 @@ const (
 	AvpTypeControlAuthNonce      AVPType = 73
 	AvpTypeTxConnectSpeedBps     AVPType = 74
 	AvpTypeRxConnectSpeedBps     AVPType = 75
-	AvpTypeNumAvps               AVPType = 76
+	AvpTypeMax                   AVPType = 76
 )
 
 // AVP message types as per RFC2661 and RFC3931, representing the various
@@ -274,7 +276,7 @@ const (
 	AvpMsgTypeMsen       AVPMsgType = 27
 	AvpMsgTypeCsun       AVPMsgType = 28
 	AvpMsgTypeCsurq      AVPMsgType = 29
-	AvpMsgTypeCount      AVPMsgType = 30
+	AvpMsgTypeMax        AVPMsgType = 30
 )
 
 // String converts an AVPType identifier into a human-readable string.
@@ -501,8 +503,6 @@ func (t AVPMsgType) String() string {
 		return "AvpMsgTypeCsun"
 	case AvpMsgTypeCsurq:
 		return "AvpMsgTypeCsurq"
-	case AvpMsgTypeCount:
-		return "AvpMsgTypeCount"
 	}
 	return ""
 }
