@@ -513,6 +513,15 @@ func (avp AVP) String() string {
 	return fmt.Sprintf("%s %s", avp.header, avp.payload)
 }
 
+// String represents the vendor ID as a human-readable string.
+// Implements the fmt.Stringer() interface.
+func (v AVPVendorID) String() string {
+	if v == VendorIDIetf {
+		return "IETF"
+	}
+	return fmt.Sprintf("Vendor %d", v)
+}
+
 // String represents the AVP data type as a human-readable string.
 // Implements the fmt.Stringer() interface.
 func (t AVPDataType) String() string {
