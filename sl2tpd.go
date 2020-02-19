@@ -55,20 +55,8 @@ func main() {
 		panic(err)
 	}
 
-	for i, avp := range avps {
-		var m, h string
-		if avp.IsMandatory() {
-			m = "M"
-		} else {
-			m = "."
-		}
-		if avp.IsHidden() {
-			h = "H"
-		} else {
-			h = "."
-		}
-		_, buffer := avp.RawData()
-		fmt.Printf("%d : %s%s : %d bytes, %s\n", i, m, h, len(buffer), avp.Type().String())
+	for _, avp := range avps {
+		fmt.Println(avp)
 		if avp.Type() == AvpTypeFirmwareRevision {
 			if rev, err := avp.DecodeUint16Data(); err == nil {
 				fmt.Printf("  firmware rev %d\n", rev)

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 )
 
 type avpFlagLen uint16
@@ -35,11 +36,15 @@ type avpHeader struct {
 	AVPType  AVPType
 }
 
-// AVP represents a single AVP in an L2TP control message
-type AVP struct {
-	header   avpHeader
+type avpPayload struct {
 	dataType AVPDataType
 	data     []byte
+}
+
+// AVP represents a single AVP in an L2TP control message
+type AVP struct {
+	header  avpHeader
+	payload avpPayload
 }
 
 const (
@@ -270,6 +275,7 @@ const (
 )
 
 // String converts an AVPType identifier into a human-readable string.
+// Implements the fmt.Stringer() interface.
 func (t AVPType) String() string {
 	switch t {
 	case AvpTypeMessage:
@@ -429,6 +435,7 @@ func (t AVPType) String() string {
 }
 
 // String converts an AVPMsgType identifier into a human-readable string.
+// Implements the fmt.Stringer() interface.
 func (t AVPMsgType) String() string {
 	switch t {
 	case AvpMsgTypeIllegal:
@@ -495,6 +502,86 @@ func (t AVPMsgType) String() string {
 		return "AvpMsgTypeCount"
 	}
 	return ""
+}
+
+// String represents the AVP as a human-readable string.
+// Implements the fmt.Stringer() interface.
+func (avp AVP) String() string {
+	return fmt.Sprintf("%s %s", avp.header, avp.payload)
+}
+
+// String represents the AVP data type as a human-readable string.
+// Implements the fmt.Stringer() interface.
+func (t AVPDataType) String() string {
+	switch t {
+	case AVPDataTypeEmpty:
+		return "no data"
+	case AVPDataTypeUint8:
+		return "uint8"
+	case AVPDataTypeUint16:
+		return "uint16"
+	case AVPDataTypeUint32:
+		return "uint32"
+	case AVPDataTypeUint64:
+		return "uint64"
+	case AVPDataTypeString:
+		return "string"
+	case AVPDataTypeBytes:
+		return "byte array"
+	case AVPDataTypeUnimplemented:
+		return "unimplemented AVP data type"
+	case AVPDataTypeIllegal:
+		return "illegal AVP"
+	}
+	return "Unrecognised AVP data type"
+}
+
+func (hdr avpHeader) String() string {
+	m := "-"
+	h := "-"
+	var t string
+	if hdr.VendorID == VendorIDIetf {
+		t = fmt.Sprintf("%s", hdr.AVPType)
+	} else {
+		t = fmt.Sprintf("Vendor %d AVP %d", hdr.VendorID, uint16(hdr.AVPType))
+	}
+	if hdr.isMandatory() {
+		m = "M"
+	}
+	if hdr.isHidden() {
+		h = "H"
+	}
+	return fmt.Sprintf("%s [%s%s]", t, m, h)
+}
+
+func (p avpPayload) String() string {
+	var str strings.Builder
+
+	str.WriteString(fmt.Sprintf("(%s) ", p.dataType))
+
+	switch p.dataType {
+	case AVPDataTypeUint8:
+		v, _ := p.toUint8()
+		str.WriteString(fmt.Sprintf("%d", v))
+	case AVPDataTypeUint16:
+		v, _ := p.toUint16()
+		str.WriteString(fmt.Sprintf("%d", v))
+	case AVPDataTypeUint32:
+		v, _ := p.toUint32()
+		str.WriteString(fmt.Sprintf("%d", v))
+	case AVPDataTypeUint64:
+		v, _ := p.toUint64()
+		str.WriteString(fmt.Sprintf("%d", v))
+	case AVPDataTypeString:
+		s, _ := p.toString()
+		str.WriteString(s)
+	case AVPDataTypeBytes:
+		str.WriteString(fmt.Sprintf("%s", p.data))
+	case AVPDataTypeEmpty, AVPDataTypeUnimplemented, AVPDataTypeIllegal:
+		str.WriteString("")
+	}
+
+	return str.String()
 }
 
 func (h *avpHeader) isMandatory() bool {
@@ -575,9 +662,11 @@ func ParseAVPBuffer(b []byte) (avps []AVP, err error) {
 		}
 
 		avps = append(avps, AVP{
-			header:   h,
-			dataType: info.dataType,
-			data:     b[cursor : cursor+int64(h.dataLen())],
+			header: h,
+			payload: avpPayload{
+				dataType: info.dataType,
+				data:     b[cursor : cursor+int64(h.dataLen())],
+			},
 		})
 
 		// Step on to the next AVP in the buffer
@@ -591,49 +680,72 @@ func ParseAVPBuffer(b []byte) (avps []AVP, err error) {
 // RawData returns the data type for the AVP, along with the raw byte
 // slice for the data carried by the AVP.
 func (avp *AVP) RawData() (dataType AVPDataType, buffer []byte) {
-	return avp.dataType, avp.data
+	return avp.payload.dataType, avp.payload.data
 }
 
 // IsDataType returns true if the AVP holds the specified data type.
 func (avp *AVP) IsDataType(dt AVPDataType) bool {
-	return avp.dataType == dt
+	return avp.payload.dataType == dt
+}
+
+func (p *avpPayload) toUint8() (out uint8, err error) {
+	return p.data[0], nil
+}
+
+func (p *avpPayload) toUint16() (out uint16, err error) {
+	r := bytes.NewReader(p.data)
+	if err = binary.Read(r, binary.BigEndian, &out); err != nil {
+		return 0, err
+	}
+	return out, err
+}
+
+func (p *avpPayload) toUint32() (out uint32, err error) {
+	r := bytes.NewReader(p.data)
+	if err = binary.Read(r, binary.BigEndian, &out); err != nil {
+		return 0, err
+	}
+	return out, err
+}
+
+func (p *avpPayload) toUint64() (out uint64, err error) {
+	r := bytes.NewReader(p.data)
+	if err = binary.Read(r, binary.BigEndian, &out); err != nil {
+		return 0, err
+	}
+	return out, err
+}
+
+func (p *avpPayload) toString() (out string, err error) {
+	return string(p.data), nil
 }
 
 // DecodeUint16Data decodes an AVP holding a uint16 value.
 // It is an error to call this function on an AVP which doesn't
 // contain a uint16 payload.
 func (avp *AVP) DecodeUint16Data() (value uint16, err error) {
-	if avp.dataType != AVPDataTypeUint16 {
+	if !avp.IsDataType(AVPDataTypeUint16) {
 		return 0, errors.New("AVP data is not of type uint16, cannot decode")
 	}
-	r := bytes.NewReader(avp.data)
-	if err = binary.Read(r, binary.BigEndian, &value); err != nil {
-		return 0, err
-	}
-	return value, err
+	return avp.payload.toUint16()
 }
 
 // DecodeUint32Data decodes an AVP holding a uint32 value.
 // It is an error to call this function on an AVP which doesn't
 // contain a uint32 payload.
 func (avp *AVP) DecodeUint32Data() (value uint32, err error) {
-	if avp.dataType != AVPDataTypeUint32 {
+	if !avp.IsDataType(AVPDataTypeUint32) {
 		return 0, errors.New("AVP data is not of type uint32, cannot decode")
 	}
-	r := bytes.NewReader(avp.data)
-	if err = binary.Read(r, binary.BigEndian, &value); err != nil {
-		return 0, err
-	}
-	return value, err
+	return avp.payload.toUint32()
 }
 
 // DecodeStringData decodes an AVP holding a string value.
 // It is an error to call this function on an AVP which doesn't
 // contain a string payload.
 func (avp *AVP) DecodeStringData() (value string, err error) {
-	if avp.dataType != AVPDataTypeString {
+	if !avp.IsDataType(AVPDataTypeString) {
 		return "", errors.New("AVP data is not of type string, cannot decode")
 	}
-	value = string(avp.data)
-	return value, nil
+	return avp.payload.toString()
 }
