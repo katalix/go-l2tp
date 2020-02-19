@@ -638,7 +638,6 @@ func getAVPInfo(avpType AVPType, VendorID AVPVendorID) (*avpInfo, error) {
 // into an array of AVP instances.
 func ParseAVPBuffer(b []byte) (avps []AVP, err error) {
 	r := bytes.NewReader(b)
-	fmt.Println(r.Len(), r.Size(), len(b))
 	for r.Len() >= avpHeaderLen {
 		var h avpHeader
 		var info *avpInfo
