@@ -63,7 +63,7 @@ func TestRequiresRoot(t *testing.T) {
 			//{nll2tp.ProtocolVersion3, nll2tp.EncaptypeIp},
 		}
 		for _, c := range cases {
-			tunl, err := NewQuiescentL2tpTunnel(nlconn, local, peer, 42, 42, c.version, c.encap, 0)
+			tunl, err := NewQuiescentTunnel(nlconn, local, peer, 42, 42, c.version, c.encap, 0)
 			if err == nil {
 				if tunl != nil {
 					_, err = ipL2tpShowTunnel(42)
@@ -72,7 +72,7 @@ func TestRequiresRoot(t *testing.T) {
 						t.Errorf("Couldn't validate tunnel using ip l2tp: %q", err)
 					}
 				} else {
-					t.Errorf("No error reported but NewQuiescentL2tpTunnel returned a nil tunnel instance")
+					t.Errorf("No error reported but NewQuiescentTunnel returned a nil tunnel instance")
 				}
 			} else {
 				t.Errorf("Failed to bring up quiescent tunnel: %q", err)
@@ -89,7 +89,7 @@ func TestRequiresRoot(t *testing.T) {
 			{nll2tp.EncaptypeIp},
 		}
 		for _, c := range cases {
-			tunl, err := NewStaticL2tpTunnel(nlconn, local, peer, 42, 42, c.encap, 0)
+			tunl, err := NewStaticTunnel(nlconn, local, peer, 42, 42, c.encap, 0)
 			if err == nil {
 				if tunl != nil {
 					_, err = ipL2tpShowTunnel(42)
@@ -98,7 +98,7 @@ func TestRequiresRoot(t *testing.T) {
 						t.Errorf("Couldn't validate tunnel using ip l2tp: %q", err)
 					}
 				} else {
-					t.Errorf("No error reported but NewStaticL2tpTunnel returned a nil tunnel instance")
+					t.Errorf("No error reported but NewStaticTunnel returned a nil tunnel instance")
 				}
 			} else {
 				t.Errorf("Failed to bring up static tunnel: %q", err)

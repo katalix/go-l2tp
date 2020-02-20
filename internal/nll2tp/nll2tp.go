@@ -26,10 +26,12 @@ type L2tpTunnelID uint32
 type L2tpSessionID uint32
 
 const (
+	// ProtocolVersionInvalid is a sentinel value for testing
+	ProtocolVersionInvalid L2tpProtocolVersion = 0
 	// ProtocolVersion2 specifies L2TPv2 RFC2661
-	ProtocolVersion2 = 2
+	ProtocolVersion2 L2tpProtocolVersion = 2
 	// ProtocolVersion3 specifies L2TPv3 RFC3931
-	ProtocolVersion3 = 3
+	ProtocolVersion3 L2tpProtocolVersion = 3
 )
 
 // TunnelConfig encapsulates genetlink parameters for L2TP tunnel commands.
