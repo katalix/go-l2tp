@@ -1,4 +1,4 @@
-package main
+package l2tp
 
 import (
 	"fmt"
