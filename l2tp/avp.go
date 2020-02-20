@@ -596,16 +596,16 @@ func (p avpPayload) String() string {
 	return str.String()
 }
 
-func (h *avpHeader) isMandatory() bool {
-	return (0x8000 & h.FlagLen) == 0x8000
+func (hdr *avpHeader) isMandatory() bool {
+	return (0x8000 & hdr.FlagLen) == 0x8000
 }
 
-func (h *avpHeader) isHidden() bool {
-	return (0x4000 & h.FlagLen) == 0x4000
+func (hdr *avpHeader) isHidden() bool {
+	return (0x4000 & hdr.FlagLen) == 0x4000
 }
 
-func (h *avpHeader) dataLen() int {
-	return int(0x3ff&h.FlagLen) - avpHeaderLen
+func (hdr *avpHeader) dataLen() int {
+	return int(0x3ff&hdr.FlagLen) - avpHeaderLen
 }
 
 // IsMandatory returns true if a given AVP is flagged as being mandatory.

@@ -27,39 +27,39 @@ type l2tpDataPlane struct {
 	isUp          bool
 }
 
-// L2tpTunnel represents a tunnel instance, combining both the
+// Tunnel represents a tunnel instance, combining both the
 // control plane and the data plane.
-type L2tpTunnel struct {
+type Tunnel struct {
 	dp *l2tpDataPlane
 	cp *l2tpControlPlane
 }
 
-// NewClientL2tpTunnel creates a new client-mode managed L2TP tunnel.
+// NewClientTunnel creates a new client-mode managed L2TP tunnel.
 // Client-mode tunnels take the LAC role in tunnel establishment,
 // initiating the control protocol bringup using the SCCRQ message.
 // Once the tunnel control protocol has established, the data plane
 // will be instantiated in the kernel.
-func NewClientL2tpTunnel(nl *nll2tp.Conn,
+func NewClientTunnel(nl *nll2tp.Conn,
 	localAddr, remoteAddr string,
 	version nll2tp.L2tpProtocolVersion,
 	encap nll2tp.L2tpEncapType,
-	dbgFlags nll2tp.L2tpDebugFlags) (*L2tpTunnel, error) {
+	dbgFlags nll2tp.L2tpDebugFlags) (*Tunnel, error) {
 	// TODO: need protocol implementation
 	return nil, errors.New("not implemented")
 }
 
-// NewQuiescentL2tpTunnel creates a new "quiescent" L2TP tunnel.
+// NewQuiescentTunnel creates a new "quiescent" L2TP tunnel.
 // A quiescent tunnel creates a user space socket for the
 // L2TP control plane, but does not run the control protocol
 // beyond acknowledging messages and optionally sending HELLO
 // messages.
 // The data plane is established on creation of the tunnel instance.
-func NewQuiescentL2tpTunnel(nl *nll2tp.Conn,
+func NewQuiescentTunnel(nl *nll2tp.Conn,
 	localAddr, remoteAddr string,
 	tid, ptid nll2tp.L2tpTunnelID,
 	version nll2tp.L2tpProtocolVersion,
 	encap nll2tp.L2tpEncapType,
-	dbgFlags nll2tp.L2tpDebugFlags) (*L2tpTunnel, error) {
+	dbgFlags nll2tp.L2tpDebugFlags) (*Tunnel, error) {
 
 	cp, err := newL2tpControlPlane(localAddr, remoteAddr, true)
 	if err != nil {
@@ -84,25 +84,25 @@ func NewQuiescentL2tpTunnel(nl *nll2tp.Conn,
 		return nil, err
 	}
 
-	return &L2tpTunnel{
+	return &Tunnel{
 		dp: dp,
 		cp: cp,
 	}, nil
 }
 
-// NewStaticL2tpTunnel creates a new unmanaged L2TP tunnel.
+// NewStaticTunnel creates a new unmanaged L2TP tunnel.
 // An unmanaged tunnel does not run any control protocol
 // and instead merely instantiates the data plane in the
 // kernel.  This is equivalent to the Linux 'ip l2tp'
 // command(s).
 // Unmanaged L2TPv2 tunnels are not practically useful,
-// so NewStaticL2tpTunnel only supports creation of L2TPv3
+// so NewStaticTunnel only supports creation of L2TPv3
 // unmanaged tunnel instances.
-func NewStaticL2tpTunnel(nl *nll2tp.Conn,
+func NewStaticTunnel(nl *nll2tp.Conn,
 	localAddr, remoteAddr string,
 	tid, ptid nll2tp.L2tpTunnelID,
 	encap nll2tp.L2tpEncapType,
-	dbgFlags nll2tp.L2tpDebugFlags) (*L2tpTunnel, error) {
+	dbgFlags nll2tp.L2tpDebugFlags) (*Tunnel, error) {
 
 	dp, err := newL2tpDataPlane(nl, localAddr, remoteAddr, &nll2tp.TunnelConfig{
 		Tid:        tid,
@@ -120,7 +120,7 @@ func NewStaticL2tpTunnel(nl *nll2tp.Conn,
 		return nil, err
 	}
 
-	return &L2tpTunnel{dp: dp}, nil
+	return &Tunnel{dp: dp}, nil
 }
 
 // Obtain local address
@@ -227,7 +227,7 @@ func (dp *l2tpDataPlane) Close() error {
 }
 
 // Close an L2TP tunnel.
-func (t *L2tpTunnel) Close() error {
+func (t *Tunnel) Close() error {
 	if t.cp != nil {
 		if err := t.cp.Close(); err != nil {
 			return err
