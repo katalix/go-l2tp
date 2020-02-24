@@ -59,9 +59,21 @@ func newL2tpV2ControlMessage(b []byte) (msg *L2tpV2ControlMessage, err error) {
 	if err = binary.Read(r, binary.BigEndian, &hdr); err != nil {
 		return nil, err
 	}
-	if avps, err = ParseAVPBuffer(b[v2HeaderLen:hdr.Common.Len]); err != nil {
-		return nil, err
+
+	// Messages with no AVP payload are treated as ZLB (zero-length-body) ack messages,
+	// so they're valid L2TPv2 messages.  Don't try to parse the AVP payload in this case.
+	if hdr.Common.Len > v2HeaderLen {
+		if avps, err = ParseAVPBuffer(b[v2HeaderLen:hdr.Common.Len]); err != nil {
+			return nil, err
+		}
+		// RFC2661 says the first AVP in the message MUST be the Message Type AVP,
+		// so let's validate that now
+		// TODO: we need to do real actual validation
+		if avps[0].Type() != AvpTypeMessage {
+			return nil, errors.New("Invalid L2TPv2 message: first AVP is not Message Type AVP")
+		}
 	}
+
 	return &L2tpV2ControlMessage{
 		header: hdr,
 		avps:   avps,

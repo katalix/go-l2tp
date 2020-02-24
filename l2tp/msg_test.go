@@ -30,6 +30,15 @@ func TestParseMessageBuffer(t *testing.T) {
 				{version: nll2tp.ProtocolVersion2, ns: 1, nr: 1, tid: 1, sid: 0, navps: 1},
 			},
 		},
+		{
+			in: []byte{
+				0xc8, 0x02, 0x00, 0x0c, 0x00, 0x01, 0x00, 0x00,
+				0x00, 0x01, 0x00, 0x01,
+			},
+			want: []msgInfo{
+				{version: nll2tp.ProtocolVersion2, tid: 1, sid: 0, ns: 1, nr: 1, navps: 0},
+			},
+		},
 	}
 	for _, c := range cases {
 		got, err := ParseMessageBuffer(c.in)
