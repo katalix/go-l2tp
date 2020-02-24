@@ -13,6 +13,7 @@ type msgInfo struct {
 	ns, nr, tid, sid uint16
 	ccid             uint32
 	navps            int
+	msgType          AVPMsgType
 }
 
 func TestParseMessageBuffer(t *testing.T) {
@@ -27,7 +28,7 @@ func TestParseMessageBuffer(t *testing.T) {
 				0x00, 0x00, 0x00, 0x06,
 			},
 			want: []msgInfo{
-				{version: nll2tp.ProtocolVersion2, ns: 1, nr: 1, tid: 1, sid: 0, navps: 1},
+				{version: nll2tp.ProtocolVersion2, ns: 1, nr: 1, tid: 1, sid: 0, navps: 1, msgType: AvpMsgTypeHello},
 			},
 		},
 		{
@@ -36,7 +37,7 @@ func TestParseMessageBuffer(t *testing.T) {
 				0x00, 0x01, 0x00, 0x01,
 			},
 			want: []msgInfo{
-				{version: nll2tp.ProtocolVersion2, tid: 1, sid: 0, ns: 1, nr: 1, navps: 0},
+				{version: nll2tp.ProtocolVersion2, tid: 1, sid: 0, ns: 1, nr: 1, navps: 0, msgType: AvpMsgTypeAck},
 			},
 		},
 	}
@@ -59,6 +60,9 @@ func TestParseMessageBuffer(t *testing.T) {
 				}
 				if len(g.Avps()) != c.want[i].navps {
 					t.Errorf("AVP count failed: got %q, want %q", len(g.Avps()), c.want[i].navps)
+				}
+				if g.Type() != c.want[i].msgType {
+					t.Errorf("Type() == %q, want %q", g.Type(), c.want[i].msgType)
 				}
 				// version specifics
 				switch c.want[i].version {

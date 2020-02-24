@@ -93,6 +93,7 @@ type L2tpControlMessage interface {
 	Ns() uint16
 	Nr() uint16
 	Avps() []AVP
+	Type() AVPMsgType
 }
 
 // L2tpV2ControlMessage represents an RFC2661 control message
@@ -137,6 +138,29 @@ func (m *L2tpV2ControlMessage) Avps() []AVP {
 	return m.avps
 }
 
+// Type returns the value of the Message Type AVP.
+// Implements the L2tpControlMessage interface.
+func (m L2tpV2ControlMessage) Type() AVPMsgType {
+	// Messages with no AVP payload are treated as ZLB (zero-length-body)
+	// ack messages in RFC2661.  Strictly speaking ZLBs have no message type,
+	// so we (ab)use the L2TPv3 AvpMsgTypeAck for that scenario.
+	if len(m.Avps()) == 0 {
+		return AvpMsgTypeAck
+	}
+
+	avp := m.Avps()[0]
+
+	// c.f. newL2tpV2ControlMessage: we've validated this condition at message
+	// creation time, so this is just a belt/braces assertation to catch
+	// programming errors during development
+	if avp.Type() != AvpTypeMessage {
+		panic("Invalid L2TPv2 message")
+	}
+
+	mt, _ := avp.DecodeUint16Data()
+	return AVPMsgType(mt)
+}
+
 // Tid returns the L2TPv2 tunnel ID held by the control message header.
 func (m *L2tpV2ControlMessage) Tid() uint16 {
 	return m.header.Tid
@@ -175,6 +199,14 @@ func (m *L2tpV3ControlMessage) Nr() uint16 {
 // Implements the L2tpControlMessage interface.
 func (m *L2tpV3ControlMessage) Avps() []AVP {
 	return m.avps
+}
+
+// Type returns the value of the Message Type AVP.
+// Implements the L2tpControlMessage interface.
+func (m L2tpV3ControlMessage) Type() AVPMsgType {
+	avp := m.Avps()[0]
+	mt, _ := avp.DecodeUint16Data()
+	return AVPMsgType(mt)
 }
 
 // ControlConnectionID returns the control connection ID held by the control message header.
