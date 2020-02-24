@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestParseAVPBuffer(t *testing.T) {
+func TestParseAVPBufferGood(t *testing.T) {
 	cases := []struct {
 		in   []byte
 		want []AVP
@@ -67,6 +67,31 @@ func TestParseAVPBuffer(t *testing.T) {
 			}
 		} else {
 			t.Errorf("ParseAVPBuffer(%q) failed: %q", c.in, err)
+		}
+	}
+}
+
+func TestParseAVPBufferBad(t *testing.T) {
+	cases := []struct {
+		in []byte
+	}{
+		{
+			in: []byte{}, // no avp data
+		},
+		{
+			in: []byte{0x1, 0x2, 0x3, 0x4}, // short avp data
+		},
+		{
+			in: []byte{0x80, 0x08, 0x01, 0xef, 0x00, 0x00, 0x00, 0x06}, // mandatory vendor AVP
+		},
+	}
+	for _, c := range cases {
+		avps, err := ParseAVPBuffer(c.in)
+		if err == nil {
+			t.Errorf("ParseAVPBuffer(%q): expected error, but did not get one", c.in)
+		}
+		if len(avps) != 0 {
+			t.Errorf("ParseAVPBuffer(%q): expect zero-length AVP buffer output, but didn't get it", c.in)
 		}
 	}
 }

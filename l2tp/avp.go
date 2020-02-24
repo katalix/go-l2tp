@@ -685,6 +685,12 @@ func ParseAVPBuffer(b []byte) (avps []AVP, err error) {
 			return nil, errors.New("Malformed AVP buffer: invalid length for current AVP")
 		}
 	}
+
+	// We must have parsed at least one AVP
+	if len(avps) == 0 {
+		return nil, errors.New("No AVPs present in the input buffer")
+	}
+
 	return avps, nil
 }
 
