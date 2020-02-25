@@ -50,6 +50,19 @@ type AVP struct {
 	payload avpPayload
 }
 
+// AVPResultCode represents an RFC2661/RFC3931 result code
+type AVPResultCode uint16
+
+// AVPErrorCode represents an RFC2661/RFC3931 error code
+type AVPErrorCode uint16
+
+// ResultCode represents an RFC2661/RFC3931 result code AVP
+type ResultCode struct {
+	Result  AVPResultCode
+	ErrCode AVPErrorCode
+	ErrMsg  string
+}
+
 const (
 	avpHeaderLen = 6
 	// VendorIDIetf is the namespace used for standard AVPS described
@@ -59,32 +72,34 @@ const (
 
 const (
 	// AvpDataTypeEmpty represents an AVP with no value
-	AvpDataTypeEmpty AVPDataType = 0
+	AvpDataTypeEmpty AVPDataType = iota
 	// AvpDataTypeUint8 represents an AVP carrying a single uint8 value
-	AvpDataTypeUint8 AVPDataType = 1
+	AvpDataTypeUint8 AVPDataType = iota
 	// AvpDataTypeUint16 represents an AVP carrying a single uint16 value
-	AvpDataTypeUint16 AVPDataType = 2
+	AvpDataTypeUint16 AVPDataType = iota
 	// AvpDataTypeUint32 represents an AVP carrying a single uint32 value
-	AvpDataTypeUint32 AVPDataType = 3
+	AvpDataTypeUint32 AVPDataType = iota
 	// AvpDataTypeUint64 represents an AVP carrying a single uint64 value
-	AvpDataTypeUint64 AVPDataType = 4
+	AvpDataTypeUint64 AVPDataType = iota
 	// AvpDataTypeString represents an AVP carrying an ASCII string
-	AvpDataTypeString AVPDataType = 5
+	AvpDataTypeString AVPDataType = iota
 	// AvpDataTypeBytes represents an AVP carrying a raw byte array
-	AvpDataTypeBytes AVPDataType = 6
+	AvpDataTypeBytes AVPDataType = iota
+	// AvpDataTypeResultCode represents an AVP carrying an RFC2661 result code
+	AvpDataTypeResultCode AVPDataType = iota
 	// AvpDataTypeUnimplemented represents an AVP carrying a currently unimplemented data type
-	AvpDataTypeUnimplemented AVPDataType = 7
+	AvpDataTypeUnimplemented AVPDataType = iota
 	// AvpDataTypeIllegal represents an AVP carrying an illegal data type.
 	// AVPs falling into this category are typically those with currently
 	// reserved IDs as per the RFCs.
-	AvpDataTypeIllegal AVPDataType = 8
+	AvpDataTypeIllegal AVPDataType = iota
 	// AvpDataTypeMax is a sentinel value for test purposes
-	AvpDataTypeMax AVPDataType = 9
+	AvpDataTypeMax AVPDataType = iota
 )
 
 var avpInfoTable = [...]avpInfo{
 	{avpType: AvpTypeMessage, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeUint16},
-	{avpType: AvpTypeResultCode, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeUnimplemented}, // TODO
+	{avpType: AvpTypeResultCode, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeResultCode},
 	{avpType: AvpTypeProtocolVersion, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeBytes},
 	{avpType: AvpTypeFramingCap, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeUint32},
 	{avpType: AvpTypeBearerCap, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeUint32},
@@ -277,6 +292,44 @@ const (
 	AvpMsgTypeCsun       AVPMsgType = 28
 	AvpMsgTypeCsurq      AVPMsgType = 29
 	AvpMsgTypeMax        AVPMsgType = 30
+)
+
+// AVP result codes as per RFC2661 and RFC3931.
+// StopCCN messages and CDN messages have seperate result codes.
+const (
+	AvpStopCCNResultCodeReserved                          AVPResultCode = 0
+	AvpStopCCNResultCodeClearConnection                   AVPResultCode = 1
+	AvpStopCCNResultCodeGeneralError                      AVPResultCode = 2
+	AvpStopCCNResultCodeChannelExists                     AVPResultCode = 3
+	AvpStopCCNResultCodeChannelNotAuthorized              AVPResultCode = 4
+	AvpStopCCNResultCodeChannelProtocolVersionUnsupported AVPResultCode = 5
+	AvpStopCCNResultCodeChannelShuttingDown               AVPResultCode = 6
+	AvpStopCCNResultCodeChannelFSMError                   AVPResultCode = 7
+	AvpCDNResultCodeReserved                              AVPResultCode = 0
+	AvpCDNResultCodeLostCarrier                           AVPResultCode = 1
+	AvpCDNResultCodeGeneralError                          AVPResultCode = 2
+	AvpCDNResultCodeAdminDisconnect                       AVPResultCode = 3
+	AvpCDNResultCodeNoResources                           AVPResultCode = 4
+	AvpCDNResultCodeNotAvailable                          AVPResultCode = 5
+	AvpCDNResultCodeInvalidDestination                    AVPResultCode = 6
+	AvpCDNResultCodeNoAnswer                              AVPResultCode = 7
+	AvpCDNResultCodeBusy                                  AVPResultCode = 8
+	AvpCDNResultCodeNoDialTone                            AVPResultCode = 9
+	AvpCDNResultCodeTimeout                               AVPResultCode = 10
+	AvpCDNResultCodeBadTransport                          AVPResultCode = 11
+)
+
+// AVP error codes as per RFC2661 and RFC3931
+const (
+	AvpErrorCodeNoError             AVPErrorCode = 0
+	AvpErrorCodeNoControlConnection AVPErrorCode = 1
+	AvpErrorCodeBadLength           AVPErrorCode = 2
+	AvpErrorCodeBadValue            AVPErrorCode = 3
+	AvpErrorCodeNoResource          AVPErrorCode = 4
+	AvpErrorCodeInvalidSessionID    AVPErrorCode = 5
+	AvpErrorCodeVendorSpecificError AVPErrorCode = 6
+	AvpErrorCodeTryAnother          AVPErrorCode = 7
+	AvpErrorCodeMBitShutdown        AVPErrorCode = 8
 )
 
 // String converts an AVPType identifier into a human-readable string.
@@ -540,6 +593,8 @@ func (t AVPDataType) String() string {
 		return "string"
 	case AvpDataTypeBytes:
 		return "byte array"
+	case AvpDataTypeResultCode:
+		return "result code"
 	case AvpDataTypeUnimplemented:
 		return "unimplemented AVP data type"
 	case AvpDataTypeIllegal:
@@ -737,6 +792,30 @@ func (p *avpPayload) toString() (out string, err error) {
 	return string(p.data), nil
 }
 
+func (p *avpPayload) toResultCode() (out ResultCode, err error) {
+	var resCode, errCode uint16
+	var errMsg string
+
+	r := bytes.NewReader(p.data)
+
+	if err = binary.Read(r, binary.BigEndian, &resCode); err != nil {
+		return ResultCode{}, err
+	}
+	if r.Len() > 0 {
+		if err = binary.Read(r, binary.BigEndian, &errCode); err != nil {
+			return ResultCode{}, err
+		}
+		if r.Len() > 0 {
+			errMsg = string(p.data[4:])
+		}
+	}
+	return ResultCode{
+		Result:  AVPResultCode(resCode),
+		ErrCode: AVPErrorCode(errCode),
+		ErrMsg:  errMsg,
+	}, nil
+}
+
 // DecodeUint16Data decodes an AVP holding a uint16 value.
 // It is an error to call this function on an AVP which doesn't
 // contain a uint16 payload.
@@ -765,4 +844,14 @@ func (avp *AVP) DecodeStringData() (value string, err error) {
 		return "", errors.New("AVP data is not of type string, cannot decode")
 	}
 	return avp.payload.toString()
+}
+
+// DecodeResultCode decodes an AVP holding a RFC2661/RFC3931 Result Code.
+// It is an error to call this function on an AVP which doesn't contain
+// a result code payload.
+func (avp *AVP) DecodeResultCode() (value ResultCode, err error) {
+	if !avp.IsDataType(AvpDataTypeResultCode) {
+		return ResultCode{}, errors.New("AVP is not of type result code, cannot decode")
+	}
+	return avp.payload.toResultCode()
 }
