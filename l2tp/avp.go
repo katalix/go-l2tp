@@ -841,6 +841,16 @@ func (avp *AVP) DecodeUint32Data() (value uint32, err error) {
 	return avp.payload.toUint32()
 }
 
+// DecodeUint64Data decodes an AVP holding a uint64 value.
+// It is an error to call this function on an AVP which doesn't
+// contain a uint64 payload.
+func (avp *AVP) DecodeUint64Data() (value uint64, err error) {
+	if !avp.IsDataType(AvpDataTypeUint64) {
+		return 0, errors.New("AVP data is not of type uint64, cannot decode")
+	}
+	return avp.payload.toUint64()
+}
+
 // DecodeStringData decodes an AVP holding a string value.
 // It is an error to call this function on an AVP which doesn't
 // contain a string payload.
