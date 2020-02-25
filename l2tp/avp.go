@@ -723,6 +723,11 @@ func ParseAVPBuffer(b []byte) (avps []AVP, err error) {
 			continue
 		}
 
+		// Bounds check the AVP
+		if h.dataLen() > r.Len() {
+			return nil, errors.New("Malformed AVP buffer: current AVP length exceeds buffer length")
+		}
+
 		if cursor, err = r.Seek(0, io.SeekCurrent); err != nil {
 			return nil, errors.New("Malformed AVP buffer: unable to determine offset of current AVP")
 		}
