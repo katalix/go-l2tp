@@ -51,6 +51,19 @@ func (h *l2tpCommonHeader) protocolVersion() (version nll2tp.L2tpProtocolVersion
 	return nll2tp.ProtocolVersionInvalid, errors.New("illegal protocol version")
 }
 
+func newL2tpV2MessageHeader(tid, sid, ns, nr uint16, payloadBytes int) *l2tpV2Header {
+	return &l2tpV2Header{
+		Common: l2tpCommonHeader{
+			FlagsVer: 0xc802,
+			Len:      uint16(v2HeaderLen + payloadBytes),
+		},
+		Tid: tid,
+		Sid: sid,
+		Ns:  ns,
+		Nr:  nr,
+	}
+}
+
 func newL2tpV2ControlMessage(b []byte) (msg *L2tpV2ControlMessage, err error) {
 	var hdr l2tpV2Header
 	var avps []AVP
@@ -94,6 +107,7 @@ type L2tpControlMessage interface {
 	Nr() uint16
 	Avps() []AVP
 	Type() AVPMsgType
+	Append(avp *AVP)
 }
 
 // L2tpV2ControlMessage represents an RFC2661 control message
@@ -174,6 +188,11 @@ func (m *L2tpV2ControlMessage) Sid() uint16 {
 	return m.header.Sid
 }
 
+// Append appends an AVP to the message.
+func (m *L2tpV2ControlMessage) Append(avp *AVP) {
+	m.avps = append(m.avps, *avp)
+}
+
 // ProtocolVersion returns the protocol version for the control message.
 // Implements the L2tpControlMessage interface.
 func (m *L2tpV3ControlMessage) ProtocolVersion() nll2tp.L2tpProtocolVersion {
@@ -215,6 +234,11 @@ func (m L2tpV3ControlMessage) Type() AVPMsgType {
 // ControlConnectionID returns the control connection ID held by the control message header.
 func (m *L2tpV3ControlMessage) ControlConnectionID() uint32 {
 	return m.header.Ccid
+}
+
+// Append appends an AVP to the message.
+func (m *L2tpV3ControlMessage) Append(avp *AVP) {
+	m.avps = append(m.avps, *avp)
 }
 
 // ParseMessageBuffer takes a byte slice of L2TP control message data and
@@ -267,4 +291,24 @@ func ParseMessageBuffer(b []byte) (messages []L2tpControlMessage, err error) {
 		}
 	}
 	return messages, nil
+}
+
+// NewV2ControlMessage builds a new control message
+func NewV2ControlMessage(tid, sid uint16, avps []AVP) (msg *L2tpV2ControlMessage, err error) {
+	// TODO: validate AVPs
+	var payloadBytes int
+
+	for _, avp := range avps {
+		payloadBytes += avp.Len()
+	}
+
+	return &L2tpV2ControlMessage{
+		header: *newL2tpV2MessageHeader(tid, sid, 0, 0, payloadBytes),
+		avps:   avps,
+	}, nil
+}
+
+// NewV3ControlMessage builds a new control message
+func NewV3ControlMessage(ccid uint32, avps []AVP) (msg *L2tpV3ControlMessage, err error) {
+	return nil, errors.New("not implemented")
 }

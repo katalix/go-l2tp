@@ -94,3 +94,45 @@ func TestParseMessageBuffer(t *testing.T) {
 		}
 	}
 }
+
+type msgTestAvpMetadata struct {
+	isMandatory, isHidden bool
+	avpType               AVPType
+	vendorID              AVPVendorID
+	dataType              AVPDataType
+	data                  interface{}
+}
+
+func TestV2MessageBuild(t *testing.T) {
+	cases := []struct {
+		tid  uint16
+		sid  uint16
+		avps []msgTestAvpMetadata
+	}{
+		{
+			tid: 42, sid: 42, avps: []msgTestAvpMetadata{
+				{true, false, AvpTypeMessage, VendorIDIetf, AvpDataTypeMsgID, AvpMsgTypeHello},
+			},
+		},
+	}
+	for _, c := range cases {
+		avps := []AVP{}
+
+		for _, avp := range c.avps {
+			a, err := NewAvp(avp.vendorID, avp.avpType, avp.data)
+			if err != nil {
+				t.Fatalf("NewAvp(%v, %v, %v) said: %v", avp.vendorID, avp.avpType, avp.data, err)
+			}
+			avps = append(avps, *a)
+		}
+
+		msg, err := NewV2ControlMessage(c.tid, c.sid, avps)
+		if err != nil {
+			t.Fatalf("NewV2ControlMessage(%v, %v, %v) said: %v", c.tid, c.sid, avps, err)
+		}
+
+		if msg.Type() != c.avps[0].data {
+			t.Fatalf("%v != %v", msg.Type(), c.avps[0].data)
+		}
+	}
+}
