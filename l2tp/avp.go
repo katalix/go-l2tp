@@ -87,6 +87,8 @@ const (
 	AvpDataTypeBytes AVPDataType = iota
 	// AvpDataTypeResultCode represents an AVP carrying an RFC2661 result code
 	AvpDataTypeResultCode AVPDataType = iota
+	// AvpDataTypeMsgID represents an AVP carrying the message type identifier
+	AvpDataTypeMsgID AVPDataType = iota
 	// AvpDataTypeUnimplemented represents an AVP carrying a currently unimplemented data type
 	AvpDataTypeUnimplemented AVPDataType = iota
 	// AvpDataTypeIllegal represents an AVP carrying an illegal data type.
@@ -98,7 +100,7 @@ const (
 )
 
 var avpInfoTable = [...]avpInfo{
-	{avpType: AvpTypeMessage, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeUint16},
+	{avpType: AvpTypeMessage, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeMsgID},
 	{avpType: AvpTypeResultCode, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeResultCode},
 	{avpType: AvpTypeProtocolVersion, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeBytes},
 	{avpType: AvpTypeFramingCap, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeUint32},
@@ -595,6 +597,8 @@ func (t AVPDataType) String() string {
 		return "byte array"
 	case AvpDataTypeResultCode:
 		return "result code"
+	case AvpDataTypeMsgID:
+		return "message ID"
 	case AvpDataTypeUnimplemented:
 		return "unimplemented AVP data type"
 	case AvpDataTypeIllegal:
@@ -869,4 +873,15 @@ func (avp *AVP) DecodeResultCode() (value ResultCode, err error) {
 		return ResultCode{}, errors.New("AVP is not of type result code, cannot decode")
 	}
 	return avp.payload.toResultCode()
+}
+
+// DecodeMsgID decodes an AVP holding a message type ID.
+// It is an error to call this function on an AVP which doesn't contain
+// a message ID payload.
+func (avp *AVP) DecodeMsgType() (value AVPMsgType, err error) {
+	if !avp.IsDataType(AvpDataTypeMsgID) {
+		return AvpMsgTypeIllegal, errors.New("AVP is not of type message ID, cannot decode")
+	}
+	out, err := avp.payload.toUint16()
+	return AVPMsgType(out), err
 }

@@ -16,7 +16,7 @@ func TestParseAVPBufferGood(t *testing.T) {
 			want: []AVP{
 				AVP{
 					header:  avpHeader{FlagLen: 0x8008, VendorID: 0, AvpType: AvpTypeMessage},
-					payload: avpPayload{dataType: AvpDataTypeUint16, data: []byte{0x00, 0x06}},
+					payload: avpPayload{dataType: AvpDataTypeMsgID, data: []byte{0x00, 0x06}},
 				},
 			},
 		},
@@ -33,7 +33,7 @@ func TestParseAVPBufferGood(t *testing.T) {
 			want: []AVP{
 				AVP{
 					header:  avpHeader{FlagLen: 0x8008, VendorID: 0, AvpType: AvpTypeMessage},
-					payload: avpPayload{dataType: AvpDataTypeUint16, data: []byte{0x00, 0x01}},
+					payload: avpPayload{dataType: AvpDataTypeMsgID, data: []byte{0x00, 0x01}},
 				},
 				AVP{
 					header:  avpHeader{FlagLen: 0x0008, VendorID: 0, AvpType: AvpTypeProtocolVersion},
@@ -67,7 +67,7 @@ func TestParseAVPBufferGood(t *testing.T) {
 			want: []AVP{
 				AVP{
 					header:  avpHeader{FlagLen: 0x8008, VendorID: 0, AvpType: AvpTypeMessage},
-					payload: avpPayload{dataType: AvpDataTypeUint16, data: []byte{0x00, 0x04}},
+					payload: avpPayload{dataType: AvpDataTypeMsgID, data: []byte{0x00, 0x04}},
 				},
 				AVP{
 					header:  avpHeader{FlagLen: 0x8008, VendorID: 0, AvpType: AvpTypeResultCode},
@@ -180,11 +180,6 @@ func TestAVPDecodeUint16(t *testing.T) {
 			in:       []byte{0x80, 0x08, 0x00, 0x00, 0x00, 0x0E, 0x00, 0x00},
 			wantVal:  0,
 			wantType: AvpTypeSessionID,
-		},
-		{
-			in:       []byte{0x80, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03},
-			wantVal:  3,
-			wantType: AvpTypeMessage,
 		},
 		{
 			in:       []byte{0x80, 0x08, 0x00, 0x00, 0x00, 0x09, 0x5f, 0x2b},
@@ -352,6 +347,45 @@ func TestAVPDecodeResultCode(t *testing.T) {
 				t.Errorf("Wanted type %q, got %q", c.wantType, got[0].Type())
 			}
 			if val, err := got[0].DecodeResultCode(); err == nil {
+				if val != c.wantVal {
+					t.Errorf("Wanted value %q, got %q", c.wantVal, val)
+				}
+			}
+		} else {
+			t.Errorf("ParseAVPBuffer(%q) failed: %q", c.in, err)
+		}
+	}
+}
+
+func TestAVPDecodeMsgID(t *testing.T) {
+	cases := []struct {
+		in       []byte
+		wantVal  AVPMsgType
+		wantType AVPType
+	}{
+		{
+			in:       []byte{0x80, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01},
+			wantVal:  AvpMsgTypeSccrq,
+			wantType: AvpTypeMessage,
+		},
+		{
+			in:       []byte{0x80, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03},
+			wantVal:  AvpMsgTypeScccn,
+			wantType: AvpTypeMessage,
+		},
+		{
+			in:       []byte{0x80, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x14},
+			wantVal:  AvpMsgTypeAck,
+			wantType: AvpTypeMessage,
+		},
+	}
+	for _, c := range cases {
+		got, err := ParseAVPBuffer(c.in)
+		if err == nil {
+			if c.wantType != got[0].Type() {
+				t.Errorf("Wanted type %q, got %q", c.wantType, got[0].Type())
+			}
+			if val, err := got[0].DecodeMsgType(); err == nil {
 				if val != c.wantVal {
 					t.Errorf("Wanted value %q, got %q", c.wantVal, val)
 				}

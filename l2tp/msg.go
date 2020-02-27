@@ -157,8 +157,11 @@ func (m L2tpV2ControlMessage) Type() AVPMsgType {
 		panic("Invalid L2TPv2 message")
 	}
 
-	mt, _ := avp.DecodeUint16Data()
-	return AVPMsgType(mt)
+	mt, err := avp.DecodeMsgType()
+	if err != nil {
+		panic(fmt.Sprintf("Failed to decode AVP message type: %v", err))
+	}
+	return mt
 }
 
 // Tid returns the L2TPv2 tunnel ID held by the control message header.
