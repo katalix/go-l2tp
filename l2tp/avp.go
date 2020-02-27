@@ -663,8 +663,31 @@ func (hdr *avpHeader) isHidden() bool {
 	return (0x4000 & hdr.FlagLen) == 0x4000
 }
 
+func (hdr *avpHeader) totalLen() int {
+	return int(0x3ff & hdr.FlagLen)
+}
+
 func (hdr *avpHeader) dataLen() int {
-	return int(0x3ff&hdr.FlagLen) - avpHeaderLen
+	return hdr.totalLen() - avpHeaderLen
+}
+
+func newAvpHeader(isMandatory, isHidden bool,
+	payloadBytes uint,
+	vid AVPVendorID,
+	typ AVPType) *avpHeader {
+	var flagLen avpFlagLen = 0x0
+	if isMandatory {
+		flagLen = flagLen ^ 0x8000
+	}
+	if isHidden {
+		flagLen = flagLen ^ 0x4000
+	}
+	flagLen = flagLen ^ avpFlagLen(0x3ff&(payloadBytes+avpHeaderLen))
+	return &avpHeader{
+		FlagLen:  flagLen,
+		VendorID: vid,
+		AvpType:  typ,
+	}
 }
 
 // IsMandatory returns true if a given AVP is flagged as being mandatory.
@@ -691,6 +714,15 @@ func (avp *AVP) Type() AVPType {
 // Vendor-specific AVPs will use a per-vendor ID.
 func (avp *AVP) VendorID() AVPVendorID {
 	return avp.header.VendorID
+}
+
+// DataLen returns the number of bytes in the AVP's payload.
+func (avp *AVP) DataLen() int {
+	return avp.header.dataLen()
+}
+
+func (avp *AVP) Len() int {
+	return avp.header.totalLen()
 }
 
 func getAVPInfo(avpType AVPType, VendorID AVPVendorID) (*avpInfo, error) {
@@ -756,6 +788,56 @@ func ParseAVPBuffer(b []byte) (avps []AVP, err error) {
 	}
 
 	return avps, nil
+}
+
+// NewAvp builds an AVP containing the specified data
+func NewAvp(vendorID AVPVendorID, avpType AVPType, value interface{}) (avp *AVP, err error) {
+	var info *avpInfo
+	encBuf := new(bytes.Buffer)
+
+	if info, err = getAVPInfo(avpType, vendorID); err != nil {
+		return nil, err
+	}
+
+	var ok bool
+	switch info.dataType {
+	case AvpDataTypeEmpty:
+	case AvpDataTypeUint8:
+		_, ok = value.(uint8)
+	case AvpDataTypeUint16:
+		_, ok = value.(uint16)
+	case AvpDataTypeUint32:
+		_, ok = value.(uint32)
+	case AvpDataTypeUint64:
+		_, ok = value.(uint64)
+	case AvpDataTypeString:
+		_, ok = value.(string)
+	case AvpDataTypeBytes:
+		_, ok = value.([]byte)
+	case AvpDataTypeMsgID:
+		_, ok = value.(AVPMsgType)
+	case AvpDataTypeResultCode:
+		_, ok = value.(ResultCode)
+	case AvpDataTypeUnimplemented, AvpDataTypeIllegal:
+		return nil, errors.New(fmt.Sprintf("AVP %v is not currently supported", avpType))
+	}
+
+	if !ok {
+		return nil, errors.New(fmt.Sprintf("Wrong data type %T passed for %v (expect %v)",
+			value, avpType, info.dataType))
+	}
+
+	if err = binary.Write(encBuf, binary.BigEndian, value); err != nil {
+		return nil, err
+	}
+
+	return &AVP{
+		header: *newAvpHeader(info.isMandatory, false, uint(encBuf.Len()), vendorID, avpType),
+		payload: avpPayload{
+			dataType: info.dataType,
+			data:     encBuf.Bytes(),
+		},
+	}, nil
 }
 
 // RawData returns the data type for the AVP, along with the raw byte

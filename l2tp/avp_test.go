@@ -396,6 +396,34 @@ func TestAVPDecodeMsgID(t *testing.T) {
 	}
 }
 
+func TestEncodeUint16(t *testing.T) {
+	cases := []struct {
+		vendorID AVPVendorID
+		avpType  AVPType
+		value    interface{}
+	}{
+		{vendorID: VendorIDIetf, avpType: AvpTypeTunnelID, value: uint16(9010)},
+		{vendorID: VendorIDIetf, avpType: AvpTypeSessionID, value: uint16(59182)},
+		{vendorID: VendorIDIetf, avpType: AvpTypeRxWindowSize, value: uint16(5)},
+	}
+	for _, c := range cases {
+		if avp, err := NewAvp(c.vendorID, c.avpType, c.value); err == nil {
+			if !avp.IsDataType(AvpDataTypeUint16) {
+				t.Errorf("Data type check failed")
+			}
+			if val, err := avp.DecodeUint16Data(); err == nil {
+				if val != c.value {
+					t.Errorf("encode/decode failed: expected %q, got %q", c.value, val)
+				}
+			} else {
+				t.Errorf("DecodeUint16Data() failed: %q", err)
+			}
+		} else {
+			t.Errorf("NewAvp(%v, %v, %v) failed: %q", c.vendorID, c.avpType, c.value, err)
+		}
+	}
+}
+
 func TestAVPTypeStringer(t *testing.T) {
 	for i := AvpTypeMessage; i < AvpTypeMax; i++ {
 		s := i.String()
