@@ -105,7 +105,7 @@ func (c *Conn) Close() {
 // netlink commands.
 func (c *Conn) CreateManagedTunnel(fd int, config *TunnelConfig) (err error) {
 	if fd < 0 {
-		return errors.New("Managed tunnel needs a valid socket file descriptor")
+		return errors.New("managed tunnel needs a valid socket file descriptor")
 	}
 
 	attr, err := tunnelCreateAttr(config)
@@ -128,19 +128,19 @@ func (c *Conn) CreateStaticTunnel(localAddr *net.IP, localPort uint16,
 	config *TunnelConfig) (err error) {
 
 	if localAddr == nil {
-		return errors.New("Unmanaged tunnel needs a valid local address")
+		return errors.New("unmanaged tunnel needs a valid local address")
 	}
 	if localPort == 0 {
-		return errors.New("Unmanaged tunnel needs a valid local port")
+		return errors.New("unmanaged tunnel needs a valid local port")
 	}
 	if peerAddr == nil {
-		return errors.New("Unmanaged tunnel needs a valid peer address")
+		return errors.New("unmanaged tunnel needs a valid peer address")
 	}
 	if peerPort == 0 {
-		return errors.New("Unmanaged tunnel needs a valid peer port")
+		return errors.New("unmanaged tunnel needs a valid peer port")
 	}
 	if ipAddrLen(localAddr) != ipAddrLen(peerAddr) {
-		return errors.New("Local and peer IP addresses must be of the same address family")
+		return errors.New("local and peer IP addresses must be of the same address family")
 	}
 
 	attr, err := tunnelCreateAttr(config)
@@ -168,7 +168,7 @@ func (c *Conn) CreateStaticTunnel(localAddr *net.IP, localPort uint16,
 // running in that tunnel.
 func (c *Conn) DeleteTunnel(config *TunnelConfig) error {
 	if config == nil {
-		return errors.New("Invalid nil tunnel config")
+		return errors.New("invalid nil tunnel config")
 	}
 
 	b, err := netlink.MarshalAttributes([]netlink.Attribute{
@@ -198,7 +198,7 @@ func (c *Conn) DeleteTunnel(config *TunnelConfig) error {
 // the session configuration must already exist in the kernel.
 func (c *Conn) CreateSession(config *SessionConfig) error {
 	if config == nil {
-		return errors.New("Invalid nil session config")
+		return errors.New("invalid nil session config")
 	}
 	return nil
 }
@@ -206,7 +206,7 @@ func (c *Conn) CreateSession(config *SessionConfig) error {
 // DeleteSession deletes a session instance from the kernel.
 func (c *Conn) DeleteSession(config *SessionConfig) error {
 	if config == nil {
-		return errors.New("Invalid nil session config")
+		return errors.New("invalid nil session config")
 	}
 	return nil
 }
@@ -233,19 +233,19 @@ func tunnelCreateAttr(config *TunnelConfig) ([]netlink.Attribute, error) {
 
 	// Basic error checking
 	if config == nil {
-		return nil, errors.New("Invalid nil tunnel config")
+		return nil, errors.New("invalid nil tunnel config")
 	}
 	if config.Tid == 0 {
-		return nil, errors.New("Tunnel config must have a non-zero tunnel ID")
+		return nil, errors.New("tunnel config must have a non-zero tunnel ID")
 	}
 	if config.Ptid == 0 {
-		return nil, errors.New("Tunnel config must have a non-zero peer tunnel ID")
+		return nil, errors.New("tunnel config must have a non-zero peer tunnel ID")
 	}
 	if config.Version < ProtocolVersion2 || config.Version > ProtocolVersion3 {
-		return nil, fmt.Errorf("Invalid tunnel protocol version %d", config.Version)
+		return nil, fmt.Errorf("invalid tunnel protocol version %d", config.Version)
 	}
 	if config.Encap != EncaptypeUdp && config.Encap != EncaptypeIp {
-		return nil, errors.New("Invalid tunnel encap (expect IP or UDP)")
+		return nil, errors.New("invalid tunnel encap (expect IP or UDP)")
 	}
 
 	// Version-specific checks

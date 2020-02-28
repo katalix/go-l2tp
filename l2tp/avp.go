@@ -612,7 +612,7 @@ func (hdr avpHeader) String() string {
 	h := "-"
 	var t string
 	if hdr.VendorID == VendorIDIetf {
-		t = fmt.Sprintf("%s", hdr.AvpType)
+		t = hdr.AvpType.String()
 	} else {
 		t = fmt.Sprintf("Vendor %d AVP %d", hdr.VendorID, uint16(hdr.AvpType))
 	}
@@ -733,7 +733,7 @@ func getAVPInfo(avpType AVPType, VendorID AVPVendorID) (*avpInfo, error) {
 			return &info, nil
 		}
 	}
-	return nil, errors.New("Unrecognised AVP type")
+	return nil, errors.New("unrecognised AVP type")
 }
 
 // ParseAVPBuffer takes a byte slice of encoded AVP data and parses it
@@ -763,11 +763,11 @@ func ParseAVPBuffer(b []byte) (avps []AVP, err error) {
 
 		// Bounds check the AVP
 		if h.dataLen() > r.Len() {
-			return nil, errors.New("Malformed AVP buffer: current AVP length exceeds buffer length")
+			return nil, errors.New("malformed AVP buffer: current AVP length exceeds buffer length")
 		}
 
 		if cursor, err = r.Seek(0, io.SeekCurrent); err != nil {
-			return nil, errors.New("Malformed AVP buffer: unable to determine offset of current AVP")
+			return nil, errors.New("malformed AVP buffer: unable to determine offset of current AVP")
 		}
 
 		avps = append(avps, AVP{
@@ -780,13 +780,13 @@ func ParseAVPBuffer(b []byte) (avps []AVP, err error) {
 
 		// Step on to the next AVP in the buffer
 		if _, err := r.Seek(int64(h.dataLen()), io.SeekCurrent); err != nil {
-			return nil, errors.New("Malformed AVP buffer: invalid length for current AVP")
+			return nil, errors.New("malformed AVP buffer: invalid length for current AVP")
 		}
 	}
 
 	// We must have parsed at least one AVP
 	if len(avps) == 0 {
-		return nil, errors.New("No AVPs present in the input buffer")
+		return nil, errors.New("no AVPs present in the input buffer")
 	}
 
 	return avps, nil
@@ -825,7 +825,7 @@ func NewAvp(vendorID AVPVendorID, avpType AVPType, value interface{}) (avp *AVP,
 	}
 
 	if !ok {
-		return nil, fmt.Errorf("Wrong data type %T passed for %v (expect %v)",
+		return nil, fmt.Errorf("wrong data type %T passed for %v (expect %v)",
 			value, avpType, info.dataType)
 	}
 

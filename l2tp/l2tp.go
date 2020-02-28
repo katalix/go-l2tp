@@ -282,7 +282,7 @@ func unixToNetAddr(addr unix.Sockaddr) (*net.UDPAddr, error) {
 			}, nil
 		}
 	}
-	return nil, errors.New("Unhandled address family")
+	return nil, errors.New("unhandled address family")
 }
 
 func netAddrToUnix(addr *net.UDPAddr) (unix.Sockaddr, error) {
@@ -306,7 +306,7 @@ func netAddrToUnix(addr *net.UDPAddr) (unix.Sockaddr, error) {
 			}, nil
 		}
 	}
-	return nil, errors.New("Unhandled address family")
+	return nil, errors.New("unhandled address family")
 }
 
 func ipAddrLen(addr *net.IP) uint {
@@ -338,7 +338,7 @@ func initTunnelAddr(localAddr, remoteAddr string) (local, remote *net.UDPAddr, e
 	}
 
 	if ipAddrLen(&ul.IP) != ipAddrLen(&up.IP) {
-		return nil, nil, errors.New("Tunnel local and peer addresses must be of the same address family")
+		return nil, nil, errors.New("tunnel local and peer addresses must be of the same address family")
 	}
 
 	return ul, up, nil

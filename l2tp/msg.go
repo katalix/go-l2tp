@@ -83,7 +83,7 @@ func newV2ControlMessage(b []byte) (msg *V2ControlMessage, err error) {
 		// so let's validate that now
 		// TODO: we need to do real actual validation
 		if avps[0].Type() != AvpTypeMessage {
-			return nil, errors.New("Invalid L2TPv2 message: first AVP is not Message Type AVP")
+			return nil, errors.New("invalid L2TPv2 message: first AVP is not Message Type AVP")
 		}
 	}
 
