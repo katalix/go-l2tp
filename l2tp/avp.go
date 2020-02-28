@@ -721,6 +721,8 @@ func (avp *AVP) DataLen() int {
 	return avp.header.dataLen()
 }
 
+// Len returns the total number of bytes consumed by the AVP, inclusive
+// of the AVP header and data payload.
 func (avp *AVP) Len() int {
 	return avp.header.totalLen()
 }
@@ -819,12 +821,12 @@ func NewAvp(vendorID AVPVendorID, avpType AVPType, value interface{}) (avp *AVP,
 	case AvpDataTypeResultCode:
 		_, ok = value.(ResultCode)
 	case AvpDataTypeUnimplemented, AvpDataTypeIllegal:
-		return nil, errors.New(fmt.Sprintf("AVP %v is not currently supported", avpType))
+		return nil, fmt.Errorf("AVP %v is not currently supported", avpType)
 	}
 
 	if !ok {
-		return nil, errors.New(fmt.Sprintf("Wrong data type %T passed for %v (expect %v)",
-			value, avpType, info.dataType))
+		return nil, fmt.Errorf("Wrong data type %T passed for %v (expect %v)",
+			value, avpType, info.dataType)
 	}
 
 	if err = binary.Write(encBuf, binary.BigEndian, value); err != nil {
@@ -957,7 +959,7 @@ func (avp *AVP) DecodeResultCode() (value ResultCode, err error) {
 	return avp.payload.toResultCode()
 }
 
-// DecodeMsgID decodes an AVP holding a message type ID.
+// DecodeMsgType decodes an AVP holding a message type ID.
 // It is an error to call this function on an AVP which doesn't contain
 // a message ID payload.
 func (avp *AVP) DecodeMsgType() (value AVPMsgType, err error) {

@@ -67,7 +67,7 @@ func TestParseMessageBuffer(t *testing.T) {
 				// version specifics
 				switch c.want[i].version {
 				case nll2tp.ProtocolVersion2:
-					v2msg, ok := g.(*L2tpV2ControlMessage)
+					v2msg, ok := g.(*V2ControlMessage)
 					if ok {
 						if v2msg.Tid() != c.want[i].tid {
 							t.Errorf("Tid() == %q, want %q", v2msg.Tid(), c.want[i].tid)
@@ -76,16 +76,16 @@ func TestParseMessageBuffer(t *testing.T) {
 							t.Errorf("Sid() == %q, want %q", v2msg.Sid(), c.want[i].sid)
 						}
 					} else {
-						t.Errorf("Expected L2tpV2ControlMessage, but didn't receive one")
+						t.Errorf("Expected V2ControlMessage, but didn't receive one")
 					}
 				case nll2tp.ProtocolVersion3:
-					v3msg, ok := g.(*L2tpV3ControlMessage)
+					v3msg, ok := g.(*V3ControlMessage)
 					if ok {
 						if v3msg.ControlConnectionID() != c.want[i].ccid {
 							t.Errorf("ControlConnectionID() == %q, want %q", v3msg.ControlConnectionID(), c.want[i].ccid)
 						}
 					} else {
-						t.Errorf("Expected L2tpV3ControlMessage, but didn't receive one")
+						t.Errorf("Expected V3ControlMessage, but didn't receive one")
 					}
 				}
 			}
