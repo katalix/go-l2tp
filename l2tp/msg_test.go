@@ -1,8 +1,7 @@
 package l2tp
 
 import (
-	//"fmt"
-	//	"reflect"
+	"bytes"
 	"testing"
 
 	"github.com/katalix/sl2tpd/internal/nll2tp"
@@ -133,6 +132,35 @@ func TestV2MessageBuild(t *testing.T) {
 
 		if msg.Type() != c.avps[0].data {
 			t.Fatalf("%v != %v", msg.Type(), c.avps[0].data)
+		}
+	}
+}
+
+func TestParseEncode(t *testing.T) {
+	cases := []struct {
+		in []byte
+	}{
+		{in: []byte{
+			0xc8, 0x02, 0x00, 0x14, 0x00, 0x01, 0x00, 0x00,
+			0x00, 0x01, 0x00, 0x01, 0x80, 0x08, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x06,
+		},
+		},
+	}
+	for _, c := range cases {
+		got, err := ParseMessageBuffer(c.in)
+		if err != nil {
+			t.Fatalf("ParseMessageBuffer(%v) failed: %v", c.in, err)
+		}
+		if len(got) != 1 {
+			t.Fatalf("ParseMessageBuffer(%v): wanted 1 message, got %d", c.in, len(got))
+		}
+		mb, err := got[0].ToBytes()
+		if err != nil {
+			t.Fatalf("ToBytes() failed: %v", err)
+		}
+		if !bytes.Equal(mb, c.in) {
+			t.Fatalf("ToBytes(): wanted %v, got %v", c.in, mb)
 		}
 	}
 }

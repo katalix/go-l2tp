@@ -108,6 +108,7 @@ type ControlMessage interface {
 	Avps() []AVP
 	Type() AVPMsgType
 	Append(avp *AVP)
+	ToBytes() ([]byte, error)
 }
 
 // V2ControlMessage represents an RFC2661 control message
@@ -193,6 +194,26 @@ func (m *V2ControlMessage) Append(avp *AVP) {
 	m.avps = append(m.avps, *avp)
 }
 
+// ToBytes encodes the message as bytes for transmission
+func (m *V2ControlMessage) ToBytes() ([]byte, error) {
+	buf := new(bytes.Buffer)
+
+	if err := binary.Write(buf, binary.BigEndian, m.header); err != nil {
+		return nil, err
+	}
+
+	for _, avp := range m.avps {
+		if err := binary.Write(buf, binary.BigEndian, avp.header); err != nil {
+			return nil, err
+		}
+		if err := binary.Write(buf, binary.BigEndian, avp.payload.data); err != nil {
+			return nil, err
+		}
+	}
+
+	return buf.Bytes(), nil
+}
+
 // ProtocolVersion returns the protocol version for the control message.
 // Implements the ControlMessage interface.
 func (m *V3ControlMessage) ProtocolVersion() nll2tp.L2tpProtocolVersion {
@@ -239,6 +260,11 @@ func (m *V3ControlMessage) ControlConnectionID() uint32 {
 // Append appends an AVP to the message.
 func (m *V3ControlMessage) Append(avp *AVP) {
 	m.avps = append(m.avps, *avp)
+}
+
+// ToBytes encodes the message as bytes for transmission
+func (m *V3ControlMessage) ToBytes() ([]byte, error) {
+	return []byte{}, nil
 }
 
 // ParseMessageBuffer takes a byte slice of L2TP control message data and
