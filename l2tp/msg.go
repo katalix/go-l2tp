@@ -108,6 +108,7 @@ type ControlMessage interface {
 	Avps() []AVP
 	Type() AVPMsgType
 	Append(avp *AVP)
+	SetTransportSeqNum(ns, nr uint16)
 	ToBytes() ([]byte, error)
 }
 
@@ -192,6 +193,13 @@ func (m *V2ControlMessage) Sid() uint16 {
 // Append appends an AVP to the message.
 func (m *V2ControlMessage) Append(avp *AVP) {
 	m.avps = append(m.avps, *avp)
+	m.header.Common.Len += uint16(avp.Len())
+}
+
+// SetTransportSeqNum sets the header sequence numbers.
+func (m *V2ControlMessage) SetTransportSeqNum(ns, nr uint16) {
+	m.header.Ns = ns
+	m.header.Nr = nr
 }
 
 // ToBytes encodes the message as bytes for transmission
@@ -260,6 +268,13 @@ func (m *V3ControlMessage) ControlConnectionID() uint32 {
 // Append appends an AVP to the message.
 func (m *V3ControlMessage) Append(avp *AVP) {
 	m.avps = append(m.avps, *avp)
+	m.header.Common.Len += uint16(avp.Len())
+}
+
+// SetTransportSeqNum sets the header sequence numbers.
+func (m *V3ControlMessage) SetTransportSeqNum(ns, nr uint16) {
+	m.header.Ns = ns
+	m.header.Nr = nr
 }
 
 // ToBytes encodes the message as bytes for transmission
