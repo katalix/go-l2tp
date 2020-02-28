@@ -2,6 +2,7 @@ package l2tp
 
 import (
 	"errors"
+	"net"
 	"time"
 )
 
@@ -12,6 +13,11 @@ type slowStartState struct {
 type ctlMsg struct {
 	msg          ControlMessage
 	completeChan chan error
+}
+
+type rawMsg struct {
+	b    []byte
+	addr net.Addr
 }
 
 // TransportConfig represents the tunable parameters governing
@@ -42,6 +48,7 @@ type Transport struct {
 	helloTimer, ackTimer, retryTimer *time.Timer
 	sendChan                         chan ctlMsg
 	recvChan                         chan ControlMessage
+	cpChan                           chan rawMsg
 }
 
 func (s *slowStartState) reset(txWindow uint16) {
@@ -99,21 +106,47 @@ func sanitiseConfig(cfg *TransportConfig) {
 	}
 }
 
+func cpRead(xport *Transport) {
+	for {
+		b := make([]byte, 4096)
+		n, addr, err := xport.cp.ReadFrom(b)
+		if err != nil {
+			close(xport.cpChan)
+			return
+		}
+		xport.cpChan <- rawMsg{b: b[:n], addr: addr}
+	}
+}
+
 func runTransport(xport *Transport) {
 	for {
 		select {
-		case msg, ok := <-xport.sendChan:
+		case ctlMsg, ok := <-xport.sendChan:
 			if !ok {
 				return
 			}
-			// TODO
-			msg.completeChan <- errors.New("transport send not yet implemented")
+			// TODO: submit to the tx queue, and attempt to send
+			ctlMsg.completeChan <- errors.New("transport send not yet implemented")
+		case rawMsg, ok := <-xport.cpChan:
+			if !ok {
+				return
+			}
+
+			messages, err := ParseMessageBuffer(rawMsg.b)
+			if err != nil {
+				// discard buffer we can't parse as a control message
+				// TODO: log the error here
+				break
+			}
+
+			// TODO: submit to the rx queue and attempt to receive
+			_ = messages
 		case _ = <-xport.helloTimer.C:
-			// TODO
+			// TODO: send a hello message to the peer
 		case _ = <-xport.ackTimer.C:
-			// TODO
+			// TODO: send an ack message to the peer
 		case _ = <-xport.retryTimer.C:
-			// TODO
+			// TODO: resend a pending message to the peer
 		}
 	}
 }
@@ -150,14 +183,17 @@ func NewTransport(cp *l2tpControlPlane, cfg TransportConfig) (xport *Transport, 
 	xport = &Transport{
 		slowStart:  slowStart,
 		config:     cfg,
+		cp:         cp,
 		helloTimer: helloTimer,
 		ackTimer:   ackTimer,
 		retryTimer: retryTimer,
 		sendChan:   make(chan ctlMsg),
 		recvChan:   make(chan ControlMessage),
+		cpChan:     make(chan rawMsg),
 	}
 
 	go runTransport(xport)
+	go cpRead(xport)
 
 	return xport, nil
 }
