@@ -63,20 +63,25 @@ func (s *slowStartState) canSend() bool {
 }
 
 func (s *slowStartState) onSend() {
+	if !s.canSend() {
+		panic("slowStartState onSend() called when tx window is closed")
+	}
 	s.ntx++
 }
 
-func (s *slowStartState) onAck() {
+func (s *slowStartState) onAck(maxTxWindow uint16) {
 	if s.ntx > 0 {
-		if s.cwnd < s.thresh {
-			// slow start
-			s.cwnd++
-		} else {
-			// congestion avoidance
-			s.nacks++
-			if s.nacks >= s.cwnd {
-				s.nacks = 0
+		if s.cwnd < maxTxWindow {
+			if s.cwnd < s.thresh {
+				// slow start
 				s.cwnd++
+			} else {
+				// congestion avoidance
+				s.nacks++
+				if s.nacks >= s.cwnd {
+					s.nacks = 0
+					s.cwnd++
+				}
 			}
 		}
 		s.ntx--
@@ -104,6 +109,14 @@ func sanitiseConfig(cfg *TransportConfig) {
 	if cfg.RetryTimeout == 0 {
 		cfg.RetryTimeout = DefaultTransportConfig().RetryTimeout
 	}
+}
+
+// Increment transport sequence number by one avoiding overflow
+// as per RFC2661/RFC3931
+func seqIncrement(seqNum uint16) uint16 {
+	next := uint32(seqNum)
+	next = (next + 1) % 0x10000
+	return uint16(next)
 }
 
 func cpRead(xport *Transport) {
