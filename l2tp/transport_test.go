@@ -33,7 +33,7 @@ func TestOpenClose(t *testing.T) {
 	xport.Close()
 }
 
-func TestSeqNum(t *testing.T) {
+func TestSeqNumIncrement(t *testing.T) {
 	cases := []struct {
 		in, want uint16
 	}{
@@ -45,6 +45,27 @@ func TestSeqNum(t *testing.T) {
 		got := seqIncrement(c.in)
 		if got != c.want {
 			t.Errorf("seqIncrement(%d) = %d, want %d", c.in, got, c.want)
+		}
+	}
+}
+
+func TestSeqNumCompare(t *testing.T) {
+	cases := []struct {
+		seq1, seq2 uint16
+		want       int
+	}{
+		{uint16(15), uint16(15), 0},
+		{uint16(15), uint16(0), 1},
+		{uint16(15), uint16(65535), 1},
+		{uint16(15), uint16(32784), 1},
+		{uint16(15), uint16(16), -1},
+		{uint16(15), uint16(15000), -1},
+		{uint16(15), uint16(32783), -1},
+	}
+	for _, c := range cases {
+		got := seqCompare(c.seq1, c.seq2)
+		if got != c.want {
+			t.Errorf("seqCompare(%d, %d) = %d, want %d", c.seq1, c.seq2, got, c.want)
 		}
 	}
 }
