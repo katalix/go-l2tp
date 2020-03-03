@@ -2,7 +2,7 @@ package l2tp
 
 import (
 	"errors"
-	//"fmt"
+	"fmt"
 	"net"
 	"os"
 	"syscall"
@@ -329,12 +329,12 @@ func initTunnelAddr(localAddr, remoteAddr string) (local, remote *net.UDPAddr, e
 	// we want: better to avoid the bind call if we want to autobind.
 	ul, err := net.ResolveUDPAddr("udp", localAddr)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("resolve %v: %v", localAddr, err)
 	}
 
 	up, err := net.ResolveUDPAddr("udp", remoteAddr)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("resolve %v: %v", remoteAddr, err)
 	}
 
 	if ipAddrLen(&ul.IP) != ipAddrLen(&up.IP) {
@@ -364,18 +364,18 @@ func tunnelSocket(local, remote *net.UDPAddr, connect bool) (fd int, err error) 
 	// TODO: L2TPIP
 	fd, err = unix.Socket(family, unix.SOCK_DGRAM, unix.IPPROTO_UDP)
 	if err != nil {
-		return -1, err
+		return -1, fmt.Errorf("socket: %v", err)
 	}
 
 	if err = unix.SetNonblock(fd, true); err != nil {
 		unix.Close(fd)
-		return -1, err
+		return -1, fmt.Errorf("failed to set socket nonblocking: %v", err)
 	}
 
 	err = unix.Bind(fd, addr)
 	if err != nil {
 		unix.Close(fd)
-		return -1, err
+		return -1, fmt.Errorf("bind: %v", err)
 	}
 
 	if connect {
