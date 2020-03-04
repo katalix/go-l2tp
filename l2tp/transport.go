@@ -29,6 +29,8 @@ type ctlMsg struct {
 	completeChan chan error
 	// Completion state flag used internally by the transport.
 	isComplete bool
+	// Timer for retransmission if the peer doesn't ack the message.
+	retryTimer *time.Timer
 }
 
 // rawMsg represents a raw frame read from the transport socket.
@@ -58,6 +60,10 @@ type TransportConfig struct {
 	// Most control messages will be implicitly acked by control protocol
 	// responses.
 	AckTimeout time.Duration
+	// Version of the L2TP protocol to use for transport-generated messages.
+	Version ProtocolVersion
+	// Peer tunnel ID to use for transport-generated messages.
+	PeerTunnelID uint32
 }
 
 // Transport represents the RFC2661/RFC3931
@@ -67,11 +73,12 @@ type Transport struct {
 	config               TransportConfig
 	cp                   *l2tpControlPlane
 	helloTimer, ackTimer *time.Timer
-	sendChan, retryChan  chan ctlMsg
+	sendChan             chan *ctlMsg
+	retryChan            chan *ctlMsg
 	recvChan             chan ControlMessage
-	cpChan               chan rawMsg
+	cpChan               chan *rawMsg
 	rxQueue              []ControlMessage
-	txQueue, ackQueue    []ctlMsg
+	txQueue, ackQueue    []*ctlMsg
 }
 
 // Increment transport sequence number by one avoiding overflow
@@ -133,6 +140,7 @@ func (s *slowStartState) onAck(maxTxWindow uint16) {
 		}
 		s.ntx--
 	}
+	fmt.Printf("onAck(): window %d, ntx %d, thresh %d\n", s.cwnd, s.ntx, s.thresh)
 }
 
 func (s *slowStartState) onRetransmit() {
@@ -160,8 +168,12 @@ func (s *slowStartState) msgIsStale(msg ControlMessage) bool {
 
 func (m *ctlMsg) completeMessageSend(err error) {
 	if !m.isComplete {
-		m.completeChan <- err
 		m.isComplete = true
+		if m.retryTimer != nil {
+			m.retryTimer.Stop()
+		}
+		fmt.Printf("completeMessageSend(): %v complete\n", *m)
+		m.completeChan <- err
 	}
 }
 
@@ -192,20 +204,26 @@ func cpRead(xport *Transport) {
 		n, addr, err := xport.cp.ReadFrom(b)
 		if err != nil {
 			close(xport.cpChan)
+			fmt.Printf("cpRead(%p): err reading from socket: %v\n", xport, err)
 			return
 		}
-		xport.cpChan <- rawMsg{b: b[:n], addr: addr}
+		fmt.Printf("cpRead(%p): read %d bytes\n", xport, n)
+		xport.cpChan <- &rawMsg{b: b[:n], addr: addr}
 	}
 }
 
 func runTransport(xport *Transport) {
 	for {
+		fmt.Printf("runTransport(%p): enter select\n", xport)
 		select {
 		// Transmission request from user code
 		case ctlMsg, ok := <-xport.sendChan:
 			if !ok {
+				xport.down(errors.New("transport shut down by user"))
 				return
 			}
+
+			fmt.Printf("runTransport(%p) send msg %v\n", xport, ctlMsg)
 
 			xport.txQueue = append(xport.txQueue, ctlMsg)
 			err := xport.processTxQueue()
@@ -218,9 +236,11 @@ func runTransport(xport *Transport) {
 		case rawMsg, ok := <-xport.cpChan:
 
 			if !ok {
+				xport.down(errors.New("control plane socket read error"))
 				return
 			}
 
+			fmt.Printf("runTransport(%p) socket recv\n", xport)
 			messages, err := xport.recvFrame(rawMsg)
 			if err != nil {
 				// Early packet handling can fail if we fail to parse a message or
@@ -257,10 +277,10 @@ func runTransport(xport *Transport) {
 				return
 			}
 
-			// The retry timer is always enabled and we don't track it to cancel
-			// it when a message is acked.  Rather, we track message send completion
-			// in the message struct itself and check the state before processing
-			// a retransmission.
+			fmt.Printf("runTransport(%p) retry timeout %v\n", xport, *ctlMsg)
+			// It's possible that a message ack could race with the retry timer.
+			// Hence we track completion state in the message struct to avoid
+			// a bogus retransmit.
 			if !ctlMsg.isComplete {
 				err := xport.retransmitMessage(ctlMsg)
 				if err != nil {
@@ -272,6 +292,7 @@ func runTransport(xport *Transport) {
 
 		// Timer fired for sending a hello message
 		case <-xport.helloTimer.C:
+			fmt.Printf("runTransport(%p) HELLO timeout\n", xport)
 			err := xport.sendHelloMessage()
 			if err != nil {
 				xport.down(err)
@@ -280,6 +301,7 @@ func runTransport(xport *Transport) {
 
 		// Timer fired for sending an explicit ack
 		case <-xport.ackTimer.C:
+			fmt.Printf("runTransport(%p) ACK timeout\n", xport)
 			err := xport.sendExplicitAck()
 			if err != nil {
 				xport.down(err)
@@ -289,7 +311,7 @@ func runTransport(xport *Transport) {
 	}
 }
 
-func (xport *Transport) recvFrame(rawMsg rawMsg) (messages []ControlMessage, err error) {
+func (xport *Transport) recvFrame(rawMsg *rawMsg) (messages []ControlMessage, err error) {
 	messages, err = ParseMessageBuffer(rawMsg.b)
 	if err != nil {
 		return nil, err
@@ -308,7 +330,7 @@ func (xport *Transport) recvFrame(rawMsg rawMsg) (messages []ControlMessage, err
 
 func (xport *Transport) recvMessage(msg ControlMessage) {
 	if xport.slowStart.msgIsInSequence(msg) {
-		xport.resetAckTimer()
+		xport.toggleAckTimer(true)
 		xport.resetHelloTimer()
 		xport.slowStart.incrementNr()
 		xport.recvChan <- msg
@@ -363,27 +385,27 @@ func (xport *Transport) sendMessage1(msg ControlMessage, isRetransmit bool) erro
 }
 
 // Exponential retry timeout scaling as per RFC2661/RFC3931
-func (xport *Transport) scaleRetryTimeout(msg ctlMsg) time.Duration {
+func (xport *Transport) scaleRetryTimeout(msg *ctlMsg) time.Duration {
 	return xport.config.RetryTimeout * (1 << msg.nretries)
 }
 
-func (xport *Transport) sendMessage(msg ctlMsg) error {
+func (xport *Transport) sendMessage(msg *ctlMsg) error {
 
 	err := xport.sendMessage1(msg.msg, msg.nretries > 0)
 	if err == nil {
-		xport.resetAckTimer()
+		xport.toggleAckTimer(false) // we have just sent an implicit ack
 		xport.resetHelloTimer()
 		if msg.msg.Type() != AvpMsgTypeAck && msg.nretries == 0 {
 			xport.slowStart.incrementNs()
 		}
-		time.AfterFunc(xport.scaleRetryTimeout(msg), func() {
+		msg.retryTimer = time.AfterFunc(xport.scaleRetryTimeout(msg), func() {
 			xport.retryChan <- msg
 		})
 	}
 	return err
 }
 
-func (xport *Transport) retransmitMessage(msg ctlMsg) error {
+func (xport *Transport) retransmitMessage(msg *ctlMsg) error {
 	msg.nretries++
 	if msg.nretries >= xport.config.MaxRetries {
 		return fmt.Errorf("transmit of %s failed after %d retry attempts",
@@ -435,6 +457,8 @@ func (xport *Transport) processAckQueue(recvd ControlMessage) bool {
 
 func (xport *Transport) down(err error) {
 
+	fmt.Printf("xport(%p) is down: %v\n", xport, err)
+
 	// Flush rx queue
 	for i := range xport.rxQueue {
 		xport.rxQueue = append(xport.rxQueue[:i], xport.rxQueue[i+1:]...)
@@ -455,18 +479,26 @@ func (xport *Transport) down(err error) {
 	// Stop timers: we don't care about the return value since
 	// the transport goroutine will return after calling this function
 	// and hence won't be able to process racing timer messages
+	xport.toggleAckTimer(false)
 	_ = xport.helloTimer.Stop()
-	_ = xport.ackTimer.Stop()
 
 	// TODO: log error (probably)
 	_ = err
 
 	// Unblock recv path
 	close(xport.recvChan)
+
+	// Unblock control plane read goroutine
+	xport.cp.Close()
 }
 
-func (xport *Transport) resetAckTimer() {
-	xport.ackTimer.Reset(xport.config.AckTimeout)
+func (xport *Transport) toggleAckTimer(enable bool) {
+	if enable {
+		xport.ackTimer.Reset(xport.config.AckTimeout)
+	} else {
+		// TODO: is this bad?
+		_ = xport.ackTimer.Stop()
+	}
 }
 
 func (xport *Transport) resetHelloTimer() {
@@ -479,8 +511,25 @@ func (xport *Transport) sendHelloMessage() error {
 	return errors.New("Transport.sendHelloMessage not implemented")
 }
 
-func (xport *Transport) sendExplicitAck() error {
-	return errors.New("Transport.sendExplicitAck not implemented")
+func (xport *Transport) sendExplicitAck() (err error) {
+	var msg ControlMessage
+
+	if xport.config.Version == ProtocolVersion3Fallback || xport.config.Version == ProtocolVersion3 {
+		avp, err := NewAvp(VendorIDIetf, AvpTypeMessage, AvpMsgTypeAck)
+		if err != nil {
+			return fmt.Errorf("failed to build v3 explicit ack message type AVP: %v", err)
+		}
+		msg, err = NewV3ControlMessage(xport.config.PeerTunnelID, []AVP{*avp})
+		if err != nil {
+			return fmt.Errorf("failed to build v3 explicit ack message: %v", err)
+		}
+	} else {
+		msg, err = NewV2ControlMessage(uint16(xport.config.PeerTunnelID), 0, []AVP{})
+		if err != nil {
+			return fmt.Errorf("failed to build v2 ZLB message: %v", err)
+		}
+	}
+	return xport.sendMessage1(msg, false)
 }
 
 // DefaultTransportConfig returns a default configuration for the transport.
@@ -491,6 +540,7 @@ func DefaultTransportConfig() TransportConfig {
 		MaxRetries:   3,
 		RetryTimeout: 1 * time.Second,
 		AckTimeout:   100 * time.Millisecond,
+		Version:      ProtocolVersion3,
 	}
 }
 
@@ -518,13 +568,13 @@ func NewTransport(cp *l2tpControlPlane, cfg TransportConfig) (xport *Transport, 
 		cp:         cp,
 		helloTimer: helloTimer,
 		ackTimer:   ackTimer,
-		sendChan:   make(chan ctlMsg),
-		retryChan:  make(chan ctlMsg),
+		sendChan:   make(chan *ctlMsg),
+		retryChan:  make(chan *ctlMsg),
 		recvChan:   make(chan ControlMessage),
-		cpChan:     make(chan rawMsg),
-		rxQueue:    make([]ControlMessage, 1),
-		txQueue:    make([]ctlMsg, 1),
-		ackQueue:   make([]ctlMsg, 1),
+		cpChan:     make(chan *rawMsg),
+		rxQueue:    []ControlMessage{},
+		txQueue:    []*ctlMsg{},
+		ackQueue:   []*ctlMsg{},
 	}
 
 	go runTransport(xport)
@@ -545,9 +595,15 @@ func (xport *Transport) Reconfigure(cfg TransportConfig) {
 // Failure indicates that the transport has failed and the parent tunnel
 // should be torn down.
 func (xport *Transport) Send(msg ControlMessage) error {
-	onComplete := make(chan error)
-	xport.sendChan <- ctlMsg{msg: msg, nretries: 0, completeChan: onComplete, isComplete: false}
-	err := <-onComplete
+	cm := ctlMsg{
+		msg:          msg,
+		nretries:     0,
+		completeChan: make(chan error),
+		isComplete:   false,
+		retryTimer:   nil,
+	}
+	xport.sendChan <- &cm
+	err := <-cm.completeChan
 	return err
 }
 
