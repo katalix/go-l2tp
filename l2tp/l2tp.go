@@ -27,6 +27,18 @@ type l2tpDataPlane struct {
 	isUp          bool
 }
 
+// ProtocolVersion is the version of the L2TP protocol to use
+type ProtocolVersion int
+
+const (
+	// ProtocolVersion3Fallback is used for RFC3931 fallback mode
+	ProtocolVersion3Fallback ProtocolVersion = 1
+	// ProtocolVersion2 is used for RFC2661
+	ProtocolVersion2 ProtocolVersion = 2
+	// ProtocolVersion3 is used for RFC3931
+	ProtocolVersion3 ProtocolVersion = 3
+)
+
 // Tunnel represents a tunnel instance, combining both the
 // control plane and the data plane.
 type Tunnel struct {
