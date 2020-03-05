@@ -94,7 +94,28 @@ func newV2ControlMessage(b []byte) (msg *V2ControlMessage, err error) {
 }
 
 func newV3ControlMessage(b []byte) (msg *V3ControlMessage, err error) {
-	return nil, errors.New("newV3ControlMessage not implemented")
+	var hdr l2tpV3Header
+	var avps []AVP
+
+	r := bytes.NewReader(b)
+	if err = binary.Read(r, binary.BigEndian, &hdr); err != nil {
+		return nil, err
+	}
+
+	if avps, err = ParseAVPBuffer(b[v3HeaderLen:hdr.Common.Len]); err != nil {
+		return nil, err
+	}
+
+	// RFC3931 says the first AVP in the message MUST be the Message Type AVP,
+	// so let's validate that now
+	if avps[0].Type() != AvpTypeMessage {
+		return nil, errors.New("invalid L2TPv3 message: first AVP is not Message Type AVP")
+	}
+
+	return &V3ControlMessage{
+		header: hdr,
+		avps:   avps,
+	}, nil
 }
 
 // ControlMessage is an interface representing a generic L2TP
@@ -256,8 +277,19 @@ func (m *V3ControlMessage) Avps() []AVP {
 // Implements the ControlMessage interface.
 func (m V3ControlMessage) Type() AVPMsgType {
 	avp := m.Avps()[0]
-	mt, _ := avp.DecodeUint16Data()
-	return AVPMsgType(mt)
+
+	// c.f. newV2ControlMessage: we've validated this condition at message
+	// creation time, so this is just a belt/braces assertation to catch
+	// programming errors during development
+	if avp.Type() != AvpTypeMessage {
+		panic("Invalid L2TPv3 message")
+	}
+
+	mt, err := avp.DecodeMsgType()
+	if err != nil {
+		panic(fmt.Sprintf("Failed to decode AVP message type: %v", err))
+	}
+	return mt
 }
 
 // ControlConnectionID returns the control connection ID held by the control message header.
