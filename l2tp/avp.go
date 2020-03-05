@@ -969,3 +969,12 @@ func (avp *AVP) DecodeMsgType() (value AVPMsgType, err error) {
 	out, err := avp.payload.toUint16()
 	return AVPMsgType(out), err
 }
+
+// AvpsLengthBytes returns the length of a slice of AVPs in bytes
+func AvpsLengthBytes(avps []AVP) int {
+	var nb int
+	for _, avp := range avps {
+		nb += avp.Len()
+	}
+	return nb
+}

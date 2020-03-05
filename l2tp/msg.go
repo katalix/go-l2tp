@@ -64,6 +64,18 @@ func newL2tpV2MessageHeader(tid, sid, ns, nr uint16, payloadBytes int) *l2tpV2He
 	}
 }
 
+func newL2tpV3MessageHeader(ccid uint32, ns, nr uint16, payloadBytes int) *l2tpV3Header {
+	return &l2tpV3Header{
+		Common: l2tpCommonHeader{
+			FlagsVer: 0xc803,
+			Len:      uint16(v3HeaderLen + payloadBytes),
+		},
+		Ccid: ccid,
+		Ns:   ns,
+		Nr:   nr,
+	}
+}
+
 func newV2ControlMessage(b []byte) (msg *V2ControlMessage, err error) {
 	var hdr l2tpV2Header
 	var avps []AVP
@@ -311,7 +323,22 @@ func (m *V3ControlMessage) SetTransportSeqNum(ns, nr uint16) {
 
 // ToBytes encodes the message as bytes for transmission
 func (m *V3ControlMessage) ToBytes() ([]byte, error) {
-	return []byte{}, nil
+	buf := new(bytes.Buffer)
+
+	if err := binary.Write(buf, binary.BigEndian, m.header); err != nil {
+		return nil, err
+	}
+
+	for _, avp := range m.avps {
+		if err := binary.Write(buf, binary.BigEndian, avp.header); err != nil {
+			return nil, err
+		}
+		if err := binary.Write(buf, binary.BigEndian, avp.payload.data); err != nil {
+			return nil, err
+		}
+	}
+
+	return buf.Bytes(), nil
 }
 
 // ParseMessageBuffer takes a byte slice of L2TP control message data and
@@ -370,19 +397,17 @@ func ParseMessageBuffer(b []byte) (messages []ControlMessage, err error) {
 // NewV2ControlMessage builds a new control message
 func NewV2ControlMessage(tid, sid uint16, avps []AVP) (msg *V2ControlMessage, err error) {
 	// TODO: validate AVPs
-	var payloadBytes int
-
-	for _, avp := range avps {
-		payloadBytes += avp.Len()
-	}
-
 	return &V2ControlMessage{
-		header: *newL2tpV2MessageHeader(tid, sid, 0, 0, payloadBytes),
+		header: *newL2tpV2MessageHeader(tid, sid, 0, 0, AvpsLengthBytes(avps)),
 		avps:   avps,
 	}, nil
 }
 
 // NewV3ControlMessage builds a new control message
 func NewV3ControlMessage(ccid uint32, avps []AVP) (msg *V3ControlMessage, err error) {
-	return nil, errors.New("not implemented")
+	// TODO: validate AVPs
+	return &V3ControlMessage{
+		header: *newL2tpV3MessageHeader(ccid, 0, 0, AvpsLengthBytes(avps)),
+		avps:   avps,
+	}, nil
 }

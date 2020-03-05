@@ -138,19 +138,50 @@ func TestV2MessageBuild(t *testing.T) {
 		},
 	}
 	for _, c := range cases {
-		avps := []AVP{}
 
-		for _, avp := range c.avps {
-			a, err := NewAvp(avp.vendorID, avp.avpType, avp.data)
-			if err != nil {
-				t.Fatalf("NewAvp(%v, %v, %v) said: %v", avp.vendorID, avp.avpType, avp.data, err)
-			}
-			avps = append(avps, *a)
+		msg, err := NewV2ControlMessage(c.tid, c.sid, []AVP{})
+		if err != nil {
+			t.Fatalf("NewV2ControlMessage(%v, %v, []) said: %v", c.tid, c.sid, err)
 		}
 
-		msg, err := NewV2ControlMessage(c.tid, c.sid, avps)
+		for _, in := range c.avps {
+			avp, err := NewAvp(in.vendorID, in.avpType, in.data)
+			if err != nil {
+				t.Fatalf("NewAvp(%v, %v, %v) said: %v", in.vendorID, in.avpType, in.data, err)
+			}
+			msg.Append(avp)
+		}
+
+		if msg.Type() != c.avps[0].data {
+			t.Fatalf("%v != %v", msg.Type(), c.avps[0].data)
+		}
+	}
+}
+
+func TestV3MessageBuild(t *testing.T) {
+	cases := []struct {
+		ccid uint32
+		avps []msgTestAvpMetadata
+	}{
+		{
+			ccid: 90210, avps: []msgTestAvpMetadata{
+				{true, false, AvpTypeMessage, VendorIDIetf, AvpDataTypeMsgID, AvpMsgTypeHello},
+			},
+		},
+	}
+	for _, c := range cases {
+
+		msg, err := NewV3ControlMessage(c.ccid, []AVP{})
 		if err != nil {
-			t.Fatalf("NewV2ControlMessage(%v, %v, %v) said: %v", c.tid, c.sid, avps, err)
+			t.Fatalf("NewV3ControlMessage(%v, []) said: %v", c.ccid, err)
+		}
+
+		for _, in := range c.avps {
+			avp, err := NewAvp(in.vendorID, in.avpType, in.data)
+			if err != nil {
+				t.Fatalf("NewAvp(%v, %v, %v) said: %v", in.vendorID, in.avpType, in.data, err)
+			}
+			msg.Append(avp)
 		}
 
 		if msg.Type() != c.avps[0].data {

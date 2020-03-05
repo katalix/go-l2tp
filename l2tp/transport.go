@@ -590,6 +590,11 @@ func (xport *Transport) Reconfigure(cfg TransportConfig) {
 	xport.config = cfg
 }
 
+// GetConfig allows transport parameters to be queried.
+func (xport *Transport) GetConfig() TransportConfig {
+	return xport.config
+}
+
 // Send sends a control message using the reliable transport.
 // The caller will block until the message has been acked by the peer.
 // Failure indicates that the transport has failed and the parent tunnel
@@ -622,4 +627,5 @@ func (xport *Transport) Recv() (msg ControlMessage, err error) {
 // Close closes the transport.
 func (xport *Transport) Close() {
 	close(xport.sendChan)
+	xport.cp.Close()
 }
