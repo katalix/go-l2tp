@@ -545,6 +545,8 @@ func DefaultTransportConfig() TransportConfig {
 }
 
 // NewTransport creates a new RFC2661/RFC3931 reliable transport.
+// The control plane passed in is owned by the transport and will
+// be closed by the transport when the transport is closed.
 func NewTransport(cp *l2tpControlPlane, cfg TransportConfig) (xport *Transport, err error) {
 
 	if cp == nil {
