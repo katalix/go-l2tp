@@ -6,6 +6,8 @@ import (
 	"github.com/pelletier/go-toml"
 )
 
+// Config represents L2TP configuration described by a TOML file.
+// Ref: https://github.com/toml-lang/toml
 type Config struct {
 	// entire tree as a map
 	cm map[string]interface{}
@@ -13,6 +15,9 @@ type Config struct {
 	tunnels map[string]*TunnelConfig
 }
 
+// TunnelConfig encapsulates tunnel configuration for a single
+// connection between two L2TP hosts.  Each tunnel may contain
+// multiple sessions.
 type TunnelConfig struct {
 	Local   string
 	Peer    string
@@ -22,6 +27,8 @@ type TunnelConfig struct {
 	Sessions map[string]*SessionConfig
 }
 
+// SessionConfig encapsulates session configuration for a pseudowire
+// connection within a tunnel between two L2TP hosts.
 type SessionConfig struct {
 	Pseudowire string
 	Cookie     []byte
@@ -188,6 +195,7 @@ func newConfig(tree *toml.Tree) (*Config, error) {
 	return cfg, nil
 }
 
+// LoadFile loads configuration from the specified file.
 func LoadFile(path string) (*Config, error) {
 	tree, err := toml.LoadFile(path)
 	if err != nil {
@@ -196,6 +204,7 @@ func LoadFile(path string) (*Config, error) {
 	return newConfig(tree)
 }
 
+// LoadString loads configuration from the specified string.
 func LoadString(content string) (*Config, error) {
 	tree, err := toml.Load(content)
 	if err != nil {
@@ -204,10 +213,14 @@ func LoadString(content string) (*Config, error) {
 	return newConfig(tree)
 }
 
+// GetTunnels returns a map of tunnel name to tunnel config for
+// all the tunnels described by the configuration.
 func (cfg *Config) GetTunnels() map[string]*TunnelConfig {
 	return cfg.tunnels
 }
 
+// ToMap provides access to the configuration for application-specific
+// information to be handled.
 func (cfg *Config) ToMap() map[string]interface{} {
 	return cfg.cm
 }
