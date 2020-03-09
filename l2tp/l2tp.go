@@ -12,6 +12,14 @@ import (
 // ProtocolVersion is the version of the L2TP protocol to use
 type ProtocolVersion int
 
+// TunnelID is the local tunnel identifier which must be unique
+// to the system.
+type TunnelID uint32
+
+// SessionID is the local session identifier which must be unique
+// to the parent tunnel for RFC2661, or the system for RFC3931.
+type SessionID uint32
+
 const (
 	// ProtocolVersion3Fallback is used for RFC3931 fallback mode
 	ProtocolVersion3Fallback = 1
@@ -36,8 +44,25 @@ const (
 type PseudowireType int
 
 const (
+	// PseudowireTypePPP specifies a PPP pseudowire
 	PseudowireTypePPP = nll2tp.PwtypePpp
+	// PseudowireTypeEth specifies an Ethernet pseudowire
 	PseudowireTypeEth = nll2tp.PwtypeEth
+)
+
+// DebugFlags is used for kernel-space tunnel and session logging control.
+// Logging is emitted using the kernel's printk facility, and may be viewed
+// using dmesg, syslog, or the systemd journal depending on distro configuration.
+// Multiple flags may be combined to enable different log messages.
+type DebugFlags uint32
+
+const (
+	// DebugFlagsControl enables logging of userspace/kernelspace API interactions
+	DebugFlagsControl = nll2tp.MsgControl
+	// DebugFlagsSeq enables logging of data sequence numbers if enabled for a given session
+	DebugFlagsSeq = nll2tp.MsgSeq
+	// DebugFlagsData enables logging of session data messages
+	DebugFlagsData = nll2tp.MsgData
 )
 
 // Tunnel represents a tunnel instance, combining both the
@@ -55,8 +80,8 @@ type Tunnel struct {
 func NewClientTunnel(nl *nll2tp.Conn,
 	localAddr, remoteAddr string,
 	version ProtocolVersion,
-	encap nll2tp.L2tpEncapType,
-	dbgFlags nll2tp.L2tpDebugFlags) (*Tunnel, error) {
+	encap EncapType,
+	dbgFlags DebugFlags) (*Tunnel, error) {
 	// TODO: need protocol implementation
 	return nil, errors.New("not implemented")
 }
@@ -69,10 +94,10 @@ func NewClientTunnel(nl *nll2tp.Conn,
 // The data plane is established on creation of the tunnel instance.
 func NewQuiescentTunnel(nl *nll2tp.Conn,
 	localAddr, remoteAddr string,
-	tid, ptid nll2tp.L2tpTunnelID,
+	tid, ptid TunnelID,
 	version ProtocolVersion,
-	encap nll2tp.L2tpEncapType,
-	dbgFlags nll2tp.L2tpDebugFlags) (*Tunnel, error) {
+	encap EncapType,
+	dbgFlags DebugFlags) (*Tunnel, error) {
 
 	cp, err := newL2tpControlPlane(localAddr, remoteAddr, true)
 	if err != nil {
@@ -80,11 +105,11 @@ func NewQuiescentTunnel(nl *nll2tp.Conn,
 	}
 
 	dp, err := newL2tpDataPlane(nl, localAddr, remoteAddr, &nll2tp.TunnelConfig{
-		Tid:        tid,
-		Ptid:       ptid,
+		Tid:        nll2tp.L2tpTunnelID(tid),
+		Ptid:       nll2tp.L2tpTunnelID(ptid),
 		Version:    nll2tp.L2tpProtocolVersion(version),
-		Encap:      encap,
-		DebugFlags: dbgFlags})
+		Encap:      nll2tp.L2tpEncapType(encap),
+		DebugFlags: nll2tp.L2tpDebugFlags(dbgFlags)})
 	if err != nil {
 		cp.Close()
 		return nil, err
@@ -113,16 +138,16 @@ func NewQuiescentTunnel(nl *nll2tp.Conn,
 // unmanaged tunnel instances.
 func NewStaticTunnel(nl *nll2tp.Conn,
 	localAddr, remoteAddr string,
-	tid, ptid nll2tp.L2tpTunnelID,
-	encap nll2tp.L2tpEncapType,
-	dbgFlags nll2tp.L2tpDebugFlags) (*Tunnel, error) {
+	tid, ptid TunnelID,
+	encap EncapType,
+	dbgFlags DebugFlags) (*Tunnel, error) {
 
 	dp, err := newL2tpDataPlane(nl, localAddr, remoteAddr, &nll2tp.TunnelConfig{
-		Tid:        tid,
-		Ptid:       ptid,
+		Tid:        nll2tp.L2tpTunnelID(tid),
+		Ptid:       nll2tp.L2tpTunnelID(ptid),
 		Version:    nll2tp.ProtocolVersion3,
-		Encap:      encap,
-		DebugFlags: dbgFlags})
+		Encap:      nll2tp.L2tpEncapType(encap),
+		DebugFlags: nll2tp.L2tpDebugFlags(dbgFlags)})
 	if err != nil {
 		return nil, err
 	}

@@ -181,7 +181,7 @@ const (
 )
 
 // L2tpDebugFlags as declared in nll2tp/l2tp.h:188
-type L2tpDebugFlags int32
+type L2tpDebugFlags uint32
 
 // L2tpDebugFlags enumeration from nll2tp/l2tp.h:188
 const (

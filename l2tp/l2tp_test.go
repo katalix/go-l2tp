@@ -55,10 +55,10 @@ func TestRequiresRoot(t *testing.T) {
 	t.Run("QuiescentInst", func(t *testing.T) {
 		cases := []struct {
 			version ProtocolVersion
-			encap   nll2tp.L2tpEncapType
+			encap   EncapType
 		}{
-			{ProtocolVersion2, nll2tp.EncaptypeUdp},
-			{ProtocolVersion3, nll2tp.EncaptypeUdp},
+			{ProtocolVersion2, EncapTypeUDP},
+			{ProtocolVersion3, EncapTypeUDP},
 			// TODO: we need to support L2TPIP sockaddr before this will work
 			//{nll2tp.ProtocolVersion3, nll2tp.EncaptypeIp},
 		}
@@ -82,11 +82,11 @@ func TestRequiresRoot(t *testing.T) {
 
 	t.Run("StaticInst", func(t *testing.T) {
 		cases := []struct {
-			encap nll2tp.L2tpEncapType
+			encap EncapType
 		}{
-			{nll2tp.EncaptypeUdp},
+			{EncapTypeUDP},
 			// TODO: we need to support L2TPIP sockaddr before this will work
-			{nll2tp.EncaptypeIp},
+			{EncapTypeIP},
 		}
 		for _, c := range cases {
 			tunl, err := NewStaticTunnel(nlconn, local, peer, 42, 42, c.encap, 0)
