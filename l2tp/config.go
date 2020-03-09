@@ -10,7 +10,7 @@ type Config struct {
 	// entire tree as a map
 	cm map[string]interface{}
 	// map of tunnels mapping tunnel name to config
-	tunnels map[string]TunnelConfig
+	tunnels map[string]*TunnelConfig
 }
 
 type TunnelConfig struct {
@@ -19,10 +19,12 @@ type TunnelConfig struct {
 	Encap   string
 	Version ProtocolVersion
 	// map of sessions within the tunnel
-	Sessions map[string]SessionConfig
+	Sessions map[string]*SessionConfig
 }
 
 type SessionConfig struct {
+	Pseudowire string
+	Cookie     []byte
 }
 
 func toString(v interface{}) (string, error) {
@@ -46,9 +48,80 @@ func toVersion(v interface{}) (ProtocolVersion, error) {
 	return 0, err
 }
 
+func toBytes(v interface{}) ([]byte, error) {
+	out := []byte{}
+
+	// First ensure that the supplied value is actually an array
+	numbers, ok := v.([]interface{})
+	if !ok {
+		return nil, fmt.Errorf("expected array value")
+	}
+
+	// TOML arrays can be mixed type, so we have to check on a value-by-value
+	// basis that the value in the array can be represented as a byte.
+	for _, number := range numbers {
+		// go-toml's ToMap function represents numbers as either uint64 or int64.
+		// Figure out which one it has picked and range check to ensure that each
+		// array member fits in the bounds of a byte.
+		if b, ok := number.(int64); ok {
+			if b < 0x0 || b > 0xff {
+				return nil, fmt.Errorf("value %x out of range in byte array", b)
+			}
+			out = append(out, byte(b))
+		} else if b, ok := number.(uint64); ok {
+			if b < 0x0 || b > 0xff {
+				return nil, fmt.Errorf("value %x out of range in byte array", b)
+			}
+			out = append(out, byte(b))
+		} else {
+			return nil, fmt.Errorf("unexpected %T value %v in byte array", number, number)
+		}
+	}
+	return out, nil
+}
+
+func newSessionConfig(scfg map[string]interface{}) (*SessionConfig, error) {
+	sc := SessionConfig{}
+	for k, v := range scfg {
+		var err error
+		switch k {
+		case "pseudowire":
+			sc.Pseudowire, err = toString(v)
+		case "cookie":
+			sc.Cookie, err = toBytes(v)
+		default:
+			return nil, fmt.Errorf("unrecognised parameter '%v'", k)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to process %v: %v", k, err)
+		}
+	}
+	return &sc, nil
+}
+
+func (t *TunnelConfig) loadSessions(v interface{}) error {
+	sessions, ok := v.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("session instances must be named, e.g. '[tunnel.mytunnel.session.mysession]'")
+	}
+	for name, got := range sessions {
+		smap, ok := got.(map[string]interface{})
+		if !ok {
+			// Unlikely, so the slightly opaque error is probably OK
+			return fmt.Errorf("config for session %v isn't a map", name)
+		}
+		scfg, err := newSessionConfig(smap)
+		if err != nil {
+			return fmt.Errorf("session %v: %v", name, err)
+		}
+		t.Sessions[name] = scfg
+	}
+	return nil
+}
+
 func newTunnelConfig(tcfg map[string]interface{}) (*TunnelConfig, error) {
 	tc := TunnelConfig{
-		Sessions: make(map[string]SessionConfig),
+		Sessions: make(map[string]*SessionConfig),
 	}
 	for k, v := range tcfg {
 		var err error
@@ -62,11 +135,13 @@ func newTunnelConfig(tcfg map[string]interface{}) (*TunnelConfig, error) {
 			tc.Encap, err = toString(v)
 		case "version":
 			tc.Version, err = toVersion(v)
+		case "session":
+			err = tc.loadSessions(v)
 		default:
-			err = fmt.Errorf("unrecognised tunnel config key '%v'", k)
+			return nil, fmt.Errorf("unrecognised parameter '%v'", k)
 		}
 		if err != nil {
-			return nil, fmt.Errorf("failed to load key %v: %v", k, err)
+			return nil, fmt.Errorf("failed to process %v: %v", k, err)
 		}
 	}
 	return &tc, nil
@@ -94,9 +169,9 @@ func (cfg *Config) loadTunnels() error {
 		}
 		tcfg, err := newTunnelConfig(tmap)
 		if err != nil {
-			return fmt.Errorf("failed to load config for tunnel %v: %v", name, err)
+			return fmt.Errorf("tunnel %v: %v", name, err)
 		}
-		cfg.tunnels[name] = *tcfg
+		cfg.tunnels[name] = tcfg
 	}
 	return nil
 }
@@ -104,7 +179,7 @@ func (cfg *Config) loadTunnels() error {
 func newConfig(tree *toml.Tree) (*Config, error) {
 	cfg := &Config{
 		cm:      tree.ToMap(),
-		tunnels: make(map[string]TunnelConfig),
+		tunnels: make(map[string]*TunnelConfig),
 	}
 	err := cfg.loadTunnels()
 	if err != nil {
@@ -129,7 +204,7 @@ func LoadString(content string) (*Config, error) {
 	return newConfig(tree)
 }
 
-func (cfg *Config) GetTunnels() map[string]TunnelConfig {
+func (cfg *Config) GetTunnels() map[string]*TunnelConfig {
 	return cfg.tunnels
 }
 
