@@ -48,7 +48,7 @@ func (h *l2tpCommonHeader) protocolVersion() (version nll2tp.L2tpProtocolVersion
 	case 3:
 		return nll2tp.ProtocolVersion3, nil
 	}
-	return nll2tp.ProtocolVersionInvalid, errors.New("illegal protocol version")
+	return 0, errors.New("illegal protocol version")
 }
 
 func newL2tpV2MessageHeader(tid, sid, ns, nr uint16, payloadBytes int) *l2tpV2Header {

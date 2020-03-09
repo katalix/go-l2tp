@@ -54,11 +54,11 @@ func TestRequiresRoot(t *testing.T) {
 	// subtests!
 	t.Run("QuiescentInst", func(t *testing.T) {
 		cases := []struct {
-			version nll2tp.L2tpProtocolVersion
+			version ProtocolVersion
 			encap   nll2tp.L2tpEncapType
 		}{
-			{nll2tp.ProtocolVersion2, nll2tp.EncaptypeUdp},
-			{nll2tp.ProtocolVersion3, nll2tp.EncaptypeUdp},
+			{ProtocolVersion2, nll2tp.EncaptypeUdp},
+			{ProtocolVersion3, nll2tp.EncaptypeUdp},
 			// TODO: we need to support L2TPIP sockaddr before this will work
 			//{nll2tp.ProtocolVersion3, nll2tp.EncaptypeIp},
 		}

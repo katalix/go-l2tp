@@ -14,11 +14,11 @@ type ProtocolVersion int
 
 const (
 	// ProtocolVersion3Fallback is used for RFC3931 fallback mode
-	ProtocolVersion3Fallback ProtocolVersion = 1
+	ProtocolVersion3Fallback = 1
 	// ProtocolVersion2 is used for RFC2661
-	ProtocolVersion2 ProtocolVersion = 2
+	ProtocolVersion2 = nll2tp.ProtocolVersion2
 	// ProtocolVersion3 is used for RFC3931
-	ProtocolVersion3 ProtocolVersion = 3
+	ProtocolVersion3 = nll2tp.ProtocolVersion3
 )
 
 // Tunnel represents a tunnel instance, combining both the
@@ -35,7 +35,7 @@ type Tunnel struct {
 // will be instantiated in the kernel.
 func NewClientTunnel(nl *nll2tp.Conn,
 	localAddr, remoteAddr string,
-	version nll2tp.L2tpProtocolVersion,
+	version ProtocolVersion,
 	encap nll2tp.L2tpEncapType,
 	dbgFlags nll2tp.L2tpDebugFlags) (*Tunnel, error) {
 	// TODO: need protocol implementation
@@ -51,7 +51,7 @@ func NewClientTunnel(nl *nll2tp.Conn,
 func NewQuiescentTunnel(nl *nll2tp.Conn,
 	localAddr, remoteAddr string,
 	tid, ptid nll2tp.L2tpTunnelID,
-	version nll2tp.L2tpProtocolVersion,
+	version ProtocolVersion,
 	encap nll2tp.L2tpEncapType,
 	dbgFlags nll2tp.L2tpDebugFlags) (*Tunnel, error) {
 
@@ -63,7 +63,7 @@ func NewQuiescentTunnel(nl *nll2tp.Conn,
 	dp, err := newL2tpDataPlane(nl, localAddr, remoteAddr, &nll2tp.TunnelConfig{
 		Tid:        tid,
 		Ptid:       ptid,
-		Version:    version,
+		Version:    nll2tp.L2tpProtocolVersion(version),
 		Encap:      encap,
 		DebugFlags: dbgFlags})
 	if err != nil {
