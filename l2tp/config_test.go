@@ -56,11 +56,11 @@ func TestGetTunnels(t *testing.T) {
 					Peer:    "127.0.0.1:5001",
 					Sessions: map[string]*SessionConfig{
 						"s1": &SessionConfig{
-							Pseudowire: "eth",
+							Pseudowire: PseudowireTypeEth,
 							Cookie:     []byte{0x34, 0x04, 0xa9, 0xbe},
 						},
 						"s2": &SessionConfig{
-							Pseudowire: "ppp",
+							Pseudowire: PseudowireTypePPP,
 						},
 					},
 				},

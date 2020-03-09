@@ -31,6 +31,15 @@ const (
 	EncapTypeIP = nll2tp.EncaptypeIp
 )
 
+// PseudowireType is the session type for a given session.
+// RFC2661 is PPP-only; whereas RFC3931 supports multiple types.
+type PseudowireType int
+
+const (
+	PseudowireTypePPP = nll2tp.PwtypePpp
+	PseudowireTypeEth = nll2tp.PwtypeEth
+)
+
 // Tunnel represents a tunnel instance, combining both the
 // control plane and the data plane.
 type Tunnel struct {

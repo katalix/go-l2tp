@@ -30,7 +30,7 @@ type TunnelConfig struct {
 // SessionConfig encapsulates session configuration for a pseudowire
 // connection within a tunnel between two L2TP hosts.
 type SessionConfig struct {
-	Pseudowire string
+	Pseudowire PseudowireType
 	Cookie     []byte
 }
 
@@ -65,6 +65,20 @@ func toEncapType(v interface{}) (EncapType, error) {
 			return EncapTypeIP, nil
 		}
 		return 0, fmt.Errorf("expect 'udp' or 'ip'")
+	}
+	return 0, err
+}
+
+func toPseudowireType(v interface{}) (PseudowireType, error) {
+	s, err := toString(v)
+	if err == nil {
+		switch s {
+		case "ppp":
+			return PseudowireTypePPP, nil
+		case "eth":
+			return PseudowireTypeEth, nil
+		}
+		return 0, fmt.Errorf("expect 'ppp' or 'eth'")
 	}
 	return 0, err
 }
@@ -107,7 +121,7 @@ func newSessionConfig(scfg map[string]interface{}) (*SessionConfig, error) {
 		var err error
 		switch k {
 		case "pseudowire":
-			sc.Pseudowire, err = toString(v)
+			sc.Pseudowire, err = toPseudowireType(v)
 		case "cookie":
 			sc.Cookie, err = toBytes(v)
 		default:
