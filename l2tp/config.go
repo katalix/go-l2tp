@@ -21,7 +21,7 @@ type Config struct {
 type TunnelConfig struct {
 	Local   string
 	Peer    string
-	Encap   string
+	Encap   EncapType
 	Version ProtocolVersion
 	// map of sessions within the tunnel
 	Sessions map[string]*SessionConfig
@@ -51,6 +51,20 @@ func toVersion(v interface{}) (ProtocolVersion, error) {
 			return ProtocolVersion3, nil
 		}
 		return 0, fmt.Errorf("expect 'l2tpv2' or 'l2tpv3'")
+	}
+	return 0, err
+}
+
+func toEncapType(v interface{}) (EncapType, error) {
+	s, err := toString(v)
+	if err == nil {
+		switch s {
+		case "udp":
+			return EncapTypeUDP, nil
+		case "ip":
+			return EncapTypeIP, nil
+		}
+		return 0, fmt.Errorf("expect 'udp' or 'ip'")
 	}
 	return 0, err
 }
@@ -138,8 +152,7 @@ func newTunnelConfig(tcfg map[string]interface{}) (*TunnelConfig, error) {
 		case "peer":
 			tc.Peer, err = toString(v)
 		case "encap":
-			// for the time being just handle as string
-			tc.Encap, err = toString(v)
+			tc.Encap, err = toEncapType(v)
 		case "version":
 			tc.Version, err = toVersion(v)
 		case "session":

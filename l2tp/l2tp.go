@@ -21,6 +21,16 @@ const (
 	ProtocolVersion3 = nll2tp.ProtocolVersion3
 )
 
+// EncapType is the lower-level encapsulation to use for a tunnel
+type EncapType int
+
+const (
+	// EncapTypeUDP is used for RFC2661 and RFC3931 tunnels using UDP encapsulation
+	EncapTypeUDP = nll2tp.EncaptypeUdp
+	// EncapTypeIP is used for RFC3931 tunnels using IP encapsulation
+	EncapTypeIP = nll2tp.EncaptypeIp
+)
+
 // Tunnel represents a tunnel instance, combining both the
 // control plane and the data plane.
 type Tunnel struct {

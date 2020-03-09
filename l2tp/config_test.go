@@ -23,13 +23,13 @@ func TestGetTunnels(t *testing.T) {
 				 `,
 			want: map[string]*TunnelConfig{
 				"t1": &TunnelConfig{
-					Encap:    "ip",
+					Encap:    EncapTypeIP,
 					Version:  ProtocolVersion3,
 					Peer:     "82.9.90.101:1701",
 					Sessions: make(map[string]*SessionConfig),
 				},
 				"t2": &TunnelConfig{
-					Encap:    "udp",
+					Encap:    EncapTypeUDP,
 					Version:  ProtocolVersion2,
 					Peer:     "[2001:0000:1234:0000:0000:C1C0:ABCD:0876]:6543",
 					Sessions: make(map[string]*SessionConfig),
@@ -51,7 +51,7 @@ func TestGetTunnels(t *testing.T) {
 				`,
 			want: map[string]*TunnelConfig{
 				"t1": &TunnelConfig{
-					Encap:   "ip",
+					Encap:   EncapTypeIP,
 					Version: ProtocolVersion3,
 					Peer:    "127.0.0.1:5001",
 					Sessions: map[string]*SessionConfig{
