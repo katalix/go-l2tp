@@ -2,6 +2,7 @@ package l2tp
 
 import (
 	"errors"
+	"fmt"
 	"net"
 
 	"golang.org/x/sys/unix"
@@ -65,4 +66,23 @@ func ipAddrLen(addr *net.IP) uint {
 	default:
 		panic("Unexpected IP address length")
 	}
+}
+
+func initTunnelAddr(localAddr, remoteAddr string) (local, remote *net.UDPAddr, err error) {
+
+	ul, err := net.ResolveUDPAddr("udp", localAddr)
+	if err != nil {
+		return nil, nil, fmt.Errorf("resolve %v: %v", localAddr, err)
+	}
+
+	up, err := net.ResolveUDPAddr("udp", remoteAddr)
+	if err != nil {
+		return nil, nil, fmt.Errorf("resolve %v: %v", remoteAddr, err)
+	}
+
+	if ipAddrLen(&ul.IP) != ipAddrLen(&up.IP) {
+		return nil, nil, errors.New("tunnel local and peer addresses must be of the same address family")
+	}
+
+	return ul, up, nil
 }

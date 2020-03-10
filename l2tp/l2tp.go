@@ -2,8 +2,6 @@ package l2tp
 
 import (
 	"errors"
-	"fmt"
-	"net"
 
 	"github.com/katalix/sl2tpd/internal/nll2tp"
 )
@@ -173,26 +171,4 @@ func (t *Tunnel) Close() error {
 		}
 	}
 	return nil
-}
-
-func initTunnelAddr(localAddr, remoteAddr string) (local, remote *net.UDPAddr, err error) {
-	// TODO: we need to handle the possibility of the local address being
-	// unset (i.e. autobind).  This code will "work" for localAddr having a
-	// len() of 0, yielding INADDR_ANY semantics.  Which is probably not what
-	// we want: better to avoid the bind call if we want to autobind.
-	ul, err := net.ResolveUDPAddr("udp", localAddr)
-	if err != nil {
-		return nil, nil, fmt.Errorf("resolve %v: %v", localAddr, err)
-	}
-
-	up, err := net.ResolveUDPAddr("udp", remoteAddr)
-	if err != nil {
-		return nil, nil, fmt.Errorf("resolve %v: %v", remoteAddr, err)
-	}
-
-	if ipAddrLen(&ul.IP) != ipAddrLen(&up.IP) {
-		return nil, nil, errors.New("tunnel local and peer addresses must be of the same address family")
-	}
-
-	return ul, up, nil
 }

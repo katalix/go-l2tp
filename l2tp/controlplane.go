@@ -167,6 +167,11 @@ func tunnelSocketConnect(fd int, remote *net.UDPAddr) error {
 
 func newL2tpControlPlane(localAddr, remoteAddr string, connect bool) (*l2tpControlPlane, error) {
 
+	// TODO: we need to handle the possibility of the local address being
+	// unset (i.e. autobind).  This code will "work" for localAddr having a
+	// len() of 0, yielding INADDR_ANY semantics.  Which is probably not what
+	// we want: better to avoid the bind call if we want to autobind.
+
 	local, remote, err := initTunnelAddr(localAddr, remoteAddr)
 	if err != nil {
 		return nil, err
