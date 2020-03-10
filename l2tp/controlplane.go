@@ -1,6 +1,7 @@
 package l2tp
 
 import (
+	"fmt"
 	"net"
 	"os"
 	"syscall"
@@ -110,6 +111,58 @@ func (cp *l2tpControlPlane) SetWriteDeadline(t time.Time) error {
 func (cp *l2tpControlPlane) Close() error {
 	// TODO: kick the protocol to shut down
 	return cp.file.Close() // TODO: verify this closes the underlying fd
+}
+
+func tunnelSocket(local, remote *net.UDPAddr, connect bool) (fd int, err error) {
+	var family int
+
+	switch ipAddrLen(&local.IP) {
+	case 4:
+		family = unix.AF_INET
+	case 16:
+		family = unix.AF_INET6
+	default:
+		panic("Unexpected IP address length")
+	}
+
+	addr, err := netAddrToUnix(local)
+	if err != nil {
+		return -1, err
+	}
+
+	// TODO: L2TPIP
+	fd, err = unix.Socket(family, unix.SOCK_DGRAM, unix.IPPROTO_UDP)
+	if err != nil {
+		return -1, fmt.Errorf("socket: %v", err)
+	}
+
+	if err = unix.SetNonblock(fd, true); err != nil {
+		unix.Close(fd)
+		return -1, fmt.Errorf("failed to set socket nonblocking: %v", err)
+	}
+
+	err = unix.Bind(fd, addr)
+	if err != nil {
+		unix.Close(fd)
+		return -1, fmt.Errorf("bind: %v", err)
+	}
+
+	if connect {
+		err = tunnelSocketConnect(fd, remote)
+		if err != nil {
+			unix.Close(fd)
+			return -1, err
+		}
+	}
+	return fd, nil
+}
+
+func tunnelSocketConnect(fd int, remote *net.UDPAddr) error {
+	addr, err := netAddrToUnix(remote)
+	if err != nil {
+		return err
+	}
+	return unix.Connect(fd, addr)
 }
 
 func newL2tpControlPlane(localAddr, remoteAddr string, connect bool) (*l2tpControlPlane, error) {

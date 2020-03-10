@@ -6,7 +6,6 @@ import (
 	"net"
 
 	"github.com/katalix/sl2tpd/internal/nll2tp"
-	"golang.org/x/sys/unix"
 )
 
 // ProtocolVersion is the version of the L2TP protocol to use
@@ -196,56 +195,4 @@ func initTunnelAddr(localAddr, remoteAddr string) (local, remote *net.UDPAddr, e
 	}
 
 	return ul, up, nil
-}
-
-func tunnelSocket(local, remote *net.UDPAddr, connect bool) (fd int, err error) {
-	var family int
-
-	switch ipAddrLen(&local.IP) {
-	case 4:
-		family = unix.AF_INET
-	case 16:
-		family = unix.AF_INET6
-	default:
-		panic("Unexpected IP address length")
-	}
-
-	addr, err := netAddrToUnix(local)
-	if err != nil {
-		return -1, err
-	}
-
-	// TODO: L2TPIP
-	fd, err = unix.Socket(family, unix.SOCK_DGRAM, unix.IPPROTO_UDP)
-	if err != nil {
-		return -1, fmt.Errorf("socket: %v", err)
-	}
-
-	if err = unix.SetNonblock(fd, true); err != nil {
-		unix.Close(fd)
-		return -1, fmt.Errorf("failed to set socket nonblocking: %v", err)
-	}
-
-	err = unix.Bind(fd, addr)
-	if err != nil {
-		unix.Close(fd)
-		return -1, fmt.Errorf("bind: %v", err)
-	}
-
-	if connect {
-		err = tunnelSocketConnect(fd, remote)
-		if err != nil {
-			unix.Close(fd)
-			return -1, err
-		}
-	}
-	return fd, nil
-}
-
-func tunnelSocketConnect(fd int, remote *net.UDPAddr) error {
-	addr, err := netAddrToUnix(remote)
-	if err != nil {
-		return err
-	}
-	return unix.Connect(fd, addr)
 }
