@@ -113,25 +113,23 @@ func (cp *l2tpControlPlane) Close() error {
 	return cp.file.Close() // TODO: verify this closes the underlying fd
 }
 
-func tunnelSocket(local, remote *net.UDPAddr, connect bool) (fd int, err error) {
-	var family int
-
-	switch ipAddrLen(&local.IP) {
-	case 4:
-		family = unix.AF_INET
-	case 16:
-		family = unix.AF_INET6
-	default:
-		panic("Unexpected IP address length")
+// Connect the control plane socket to the peer
+func (cp *l2tpControlPlane) Connect() error {
+	err := tunnelSocketConnect(cp.fd, cp.remote)
+	if err == nil {
+		cp.connected = true
 	}
+	return err
+}
 
-	addr, err := netAddrToUnix(local)
-	if err != nil {
-		return -1, err
-	}
+// Bind the control plane socket to local address
+func (cp *l2tpControlPlane) Bind() error {
+	return tunnelSocketBind(cp.fd, cp.local)
+}
 
-	// TODO: L2TPIP
-	fd, err = unix.Socket(family, unix.SOCK_DGRAM, unix.IPPROTO_UDP)
+func tunnelSocket2(family, protocol int) (fd int, err error) {
+
+	fd, err = unix.Socket(family, unix.SOCK_DGRAM, protocol)
 	if err != nil {
 		return -1, fmt.Errorf("socket: %v", err)
 	}
@@ -141,20 +139,27 @@ func tunnelSocket(local, remote *net.UDPAddr, connect bool) (fd int, err error) 
 		return -1, fmt.Errorf("failed to set socket nonblocking: %v", err)
 	}
 
-	err = unix.Bind(fd, addr)
+	flags, err := unix.FcntlInt(uintptr(fd), unix.F_GETFD, 0)
 	if err != nil {
 		unix.Close(fd)
-		return -1, fmt.Errorf("bind: %v", err)
+		return -1, fmt.Errorf("fcntl(F_GETFD): %v", err)
 	}
 
-	if connect {
-		err = tunnelSocketConnect(fd, remote)
-		if err != nil {
-			unix.Close(fd)
-			return -1, err
-		}
+	_, err = unix.FcntlInt(uintptr(fd), unix.F_SETFD, flags|unix.FD_CLOEXEC)
+	if err != nil {
+		unix.Close(fd)
+		return -1, fmt.Errorf("fcntl(F_SETFD, FD_CLOEXEC): %v", err)
 	}
+
 	return fd, nil
+}
+
+func tunnelSocketBind(fd int, local *net.UDPAddr) error {
+	addr, err := netAddrToUnix(local)
+	if err != nil {
+		return err
+	}
+	return unix.Bind(fd, addr)
 }
 
 func tunnelSocketConnect(fd int, remote *net.UDPAddr) error {
@@ -165,19 +170,29 @@ func tunnelSocketConnect(fd int, remote *net.UDPAddr) error {
 	return unix.Connect(fd, addr)
 }
 
-func newL2tpControlPlane(localAddr, remoteAddr string, connect bool) (*l2tpControlPlane, error) {
+func newL2tpControlPlane(localAddr, remoteAddr string) (*l2tpControlPlane, error) {
+
+	var family int
 
 	// TODO: we need to handle the possibility of the local address being
 	// unset (i.e. autobind).  This code will "work" for localAddr having a
 	// len() of 0, yielding INADDR_ANY semantics.  Which is probably not what
 	// we want: better to avoid the bind call if we want to autobind.
-
 	local, remote, err := initTunnelAddr(localAddr, remoteAddr)
 	if err != nil {
 		return nil, err
 	}
 
-	fd, err := tunnelSocket(local, remote, connect)
+	switch ipAddrLen(&remote.IP) {
+	case 4:
+		family = unix.AF_INET
+	case 16:
+		family = unix.AF_INET6
+	default:
+		panic("Unexpected IP address length")
+	}
+
+	fd, err := tunnelSocket2(family, unix.IPPROTO_UDP)
 	if err != nil {
 		return nil, err
 	}
@@ -195,6 +210,6 @@ func newL2tpControlPlane(localAddr, remoteAddr string, connect bool) (*l2tpContr
 		fd:        fd,
 		file:      file,
 		rc:        sc,
-		connected: connect,
+		connected: false,
 	}, nil
 }
