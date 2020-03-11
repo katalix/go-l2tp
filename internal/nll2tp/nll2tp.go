@@ -146,15 +146,30 @@ func (c *Conn) CreateStaticTunnel(localAddr *net.IP, localPort uint16,
 		return err
 	}
 
+	switch ipAddrLen(localAddr) {
+	case 4:
+		attr = append(attr, netlink.Attribute{
+			Type: AttrIpSaddr,
+			Data: ipAddrBytes(localAddr),
+		}, netlink.Attribute{
+			Type: AttrIpDaddr,
+			Data: ipAddrBytes(peerAddr),
+		})
+	case 16:
+		attr = append(attr, netlink.Attribute{
+			Type: AttrIp6Saddr,
+			Data: ipAddrBytes(localAddr),
+		}, netlink.Attribute{
+			Type: AttrIp6Daddr,
+			Data: ipAddrBytes(peerAddr),
+		})
+	default:
+		panic("unexpected address length")
+	}
+
 	return c.createTunnel(append(attr, netlink.Attribute{
-		Type: AttrIpSaddr,
-		Data: ipAddrBytes(localAddr),
-	}, netlink.Attribute{
 		Type: AttrUdpSport,
 		Data: nlenc.Uint16Bytes(localPort),
-	}, netlink.Attribute{
-		Type: AttrIpDaddr,
-		Data: ipAddrBytes(peerAddr),
 	}, netlink.Attribute{
 		Type: AttrUdpDport,
 		Data: nlenc.Uint16Bytes(peerPort),
