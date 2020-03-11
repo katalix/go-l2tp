@@ -170,7 +170,7 @@ func tunnelSocketConnect(fd int, remote *net.UDPAddr) error {
 	return unix.Connect(fd, addr)
 }
 
-func newL2tpControlPlane(localAddr, remoteAddr string) (*l2tpControlPlane, error) {
+func newL2tpControlPlane(localAddr, remoteAddr string, encap EncapType) (*l2tpControlPlane, error) {
 
 	var family int
 
