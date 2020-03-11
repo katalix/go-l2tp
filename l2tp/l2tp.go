@@ -2,8 +2,11 @@ package l2tp
 
 import (
 	"errors"
+	"fmt"
+	"net"
 
 	"github.com/katalix/sl2tpd/internal/nll2tp"
+	"golang.org/x/sys/unix"
 )
 
 // ProtocolVersion is the version of the L2TP protocol to use
@@ -69,6 +72,16 @@ type Tunnel struct {
 	cp *l2tpControlPlane
 }
 
+func (e EncapType) String() string {
+	switch e {
+	case EncapTypeIP:
+		return "IP"
+	case EncapTypeUDP:
+		return "UDP"
+	}
+	panic("unhandled encap type")
+}
+
 // NewClientTunnel creates a new client-mode managed L2TP tunnel.
 // Client-mode tunnels take the LAC role in tunnel establishment,
 // initiating the control protocol bringup using the SCCRQ message.
@@ -96,7 +109,17 @@ func NewQuiescentTunnel(nl *nll2tp.Conn,
 	encap EncapType,
 	dbgFlags DebugFlags) (*Tunnel, error) {
 
-	cp, err := newL2tpControlPlane(localAddr, remoteAddr, encap, tid)
+	local, err := newTunnelAddress(localAddr, encap, tid)
+	if err != nil {
+		return nil, err
+	}
+
+	remote, err := newTunnelAddress(remoteAddr, encap, ptid)
+	if err != nil {
+		return nil, err
+	}
+
+	cp, err := newL2tpControlPlane(local, remote)
 	if err != nil {
 		return nil, err
 	}
@@ -181,4 +204,56 @@ func (t *Tunnel) Close() error {
 		}
 	}
 	return nil
+}
+
+func newTunnelAddress(address string, encap EncapType, tid TunnelID) (unix.Sockaddr, error) {
+
+	u, err := net.ResolveUDPAddr("udp", address)
+	if err != nil {
+		return nil, fmt.Errorf("resolve %v: %v", address, err)
+	}
+
+	if b := u.IP.To4(); b != nil {
+		switch encap {
+		case EncapTypeUDP:
+			return &unix.SockaddrInet4{
+				Port: u.Port,
+				Addr: [4]byte{b[0], b[1], b[2], b[3]},
+			}, nil
+		case EncapTypeIP:
+			return &unix.SockaddrL2TPIP{
+				Addr:   [4]byte{b[0], b[1], b[2], b[3]},
+				ConnId: uint32(tid),
+			}, nil
+		}
+	} else if b := u.IP.To16(); b != nil {
+		// TODO: SockaddrInet6 has a uint32 ZoneId, while UDPAddr
+		// has a Zone string.  How to convert between the two?
+		switch encap {
+		case EncapTypeUDP:
+			return &unix.SockaddrInet6{
+				Port: u.Port,
+				Addr: [16]byte{
+					b[0], b[1], b[2], b[3],
+					b[4], b[5], b[6], b[7],
+					b[8], b[9], b[10], b[11],
+					b[12], b[13], b[14], b[15],
+				},
+				// ZoneId
+			}, nil
+		case EncapTypeIP:
+			return &unix.SockaddrL2TPIP6{
+				Addr: [16]byte{
+					b[0], b[1], b[2], b[3],
+					b[4], b[5], b[6], b[7],
+					b[8], b[9], b[10], b[11],
+					b[12], b[13], b[14], b[15],
+				},
+				// ZoneId
+				ConnId: uint32(tid),
+			}, nil
+		}
+	}
+
+	return nil, fmt.Errorf("unhandled address family / encapsulation type")
 }

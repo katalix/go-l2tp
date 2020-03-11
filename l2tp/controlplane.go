@@ -11,21 +11,11 @@ import (
 )
 
 type l2tpControlPlane struct {
-	local, remote *net.UDPAddr
+	local, remote unix.Sockaddr
 	fd            int
 	file          *os.File
 	rc            syscall.RawConn
 	connected     bool
-}
-
-// Obtain local address
-func (cp *l2tpControlPlane) LocalAddr() net.Addr {
-	return cp.local
-}
-
-// Obtain remote address
-func (cp *l2tpControlPlane) RemoteAddr() net.Addr {
-	return cp.remote
 }
 
 // Read data from the connection.
@@ -69,16 +59,8 @@ func (cp *l2tpControlPlane) Write(b []byte) (n int, err error) {
 }
 
 // WriteTo writes a packet with payload p to addr.
-func (cp *l2tpControlPlane) WriteTo(p []byte, addr net.Addr) (n int, err error) {
-	uaddr, ok := addr.(*net.UDPAddr)
-	if !ok {
-		return 0, unix.EINVAL
-	}
-	sa, err := netAddrToUnix(uaddr)
-	if err != nil {
-		return 0, err
-	}
-	return len(p), cp.sendto(p, sa)
+func (cp *l2tpControlPlane) WriteTo(p []byte, addr unix.Sockaddr) (n int, err error) {
+	return len(p), cp.sendto(p, addr)
 }
 
 func (cp *l2tpControlPlane) sendto(p []byte, to unix.Sockaddr) (err error) {
@@ -154,45 +136,36 @@ func tunnelSocket2(family, protocol int) (fd int, err error) {
 	return fd, nil
 }
 
-func tunnelSocketBind(fd int, local *net.UDPAddr) error {
-	addr, err := netAddrToUnix(local)
-	if err != nil {
-		return err
-	}
-	return unix.Bind(fd, addr)
+func tunnelSocketBind(fd int, local unix.Sockaddr) error {
+	return unix.Bind(fd, local)
 }
 
-func tunnelSocketConnect(fd int, remote *net.UDPAddr) error {
-	addr, err := netAddrToUnix(remote)
-	if err != nil {
-		return err
-	}
-	return unix.Connect(fd, addr)
+func tunnelSocketConnect(fd int, remote unix.Sockaddr) error {
+	return unix.Connect(fd, remote)
 }
 
-func newL2tpControlPlane(localAddr, remoteAddr string, encap EncapType, tid TunnelID) (*l2tpControlPlane, error) {
+func newL2tpControlPlane(localAddr, remoteAddr unix.Sockaddr) (*l2tpControlPlane, error) {
 
-	var family int
+	var family, protocol int
 
-	// TODO: we need to handle the possibility of the local address being
-	// unset (i.e. autobind).  This code will "work" for localAddr having a
-	// len() of 0, yielding INADDR_ANY semantics.  Which is probably not what
-	// we want: better to avoid the bind call if we want to autobind.
-	local, remote, err := initTunnelAddr(localAddr, remoteAddr)
-	if err != nil {
-		return nil, err
-	}
-
-	switch ipAddrLen(&remote.IP) {
-	case 4:
+	switch localAddr.(type) {
+	case *unix.SockaddrInet4:
 		family = unix.AF_INET
-	case 16:
+		protocol = unix.IPPROTO_UDP
+	case *unix.SockaddrInet6:
 		family = unix.AF_INET6
+		protocol = unix.IPPROTO_UDP
+	case *unix.SockaddrL2TPIP:
+		family = unix.AF_INET
+		protocol = unix.IPPROTO_L2TP
+	case *unix.SockaddrL2TPIP6:
+		family = unix.AF_INET6
+		protocol = unix.IPPROTO_L2TP
 	default:
-		panic("Unexpected IP address length")
+		return nil, fmt.Errorf("unexpected address type %T", localAddr)
 	}
 
-	fd, err := tunnelSocket2(family, unix.IPPROTO_UDP)
+	fd, err := tunnelSocket2(family, protocol)
 	if err != nil {
 		return nil, err
 	}
@@ -205,8 +178,8 @@ func newL2tpControlPlane(localAddr, remoteAddr string, encap EncapType, tid Tunn
 	}
 
 	return &l2tpControlPlane{
-		local:     local,
-		remote:    remote,
+		local:     localAddr,
+		remote:    remoteAddr,
 		fd:        fd,
 		file:      file,
 		rc:        sc,

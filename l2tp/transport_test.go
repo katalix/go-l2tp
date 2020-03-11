@@ -6,32 +6,13 @@ import (
 	"time"
 )
 
-func TestOpenClose(t *testing.T) {
+func TestNilControlPlane(t *testing.T) {
 	xport, err := NewTransport(nil, DefaultTransportConfig())
 	if xport != nil {
 		t.Fatalf("NewTransport() with nil controlplane succeeded")
 	} else if err == nil {
 		t.Fatalf("NewTransport() with nil controlplane didn't report error")
 	}
-
-	cp, err := newL2tpControlPlane("127.0.0.1:5000", "127.0.0.1:6000", EncapTypeUDP, 42)
-	if err != nil {
-		t.Fatalf("newL2tpControlPlane() failed: %v", err)
-	}
-
-	xport, err = NewTransport(cp, DefaultTransportConfig())
-	if xport == nil {
-		t.Fatalf("NewTransport() returned nil controlplane")
-	} else if err != nil {
-		t.Fatalf("NewTransport() error")
-	}
-
-	// Sleep briefly to allow the go routines to get scheduled:
-	// we want to at least run the code there to give us a chance
-	// to trip over e.g. uninitialised fields
-	time.Sleep(1 * time.Millisecond)
-
-	xport.Close()
 }
 
 func TestSeqNumIncrement(t *testing.T) {
@@ -170,23 +151,42 @@ func TestSlowStart(t *testing.T) {
 
 type transportSendRecvTestInfo struct {
 	local, peer      string
+	tid, ptid        TunnelID
+	encap            EncapType
 	config           TransportConfig
 	sender, receiver func(xport *Transport) error
 }
 
-func transportTestNewTransport(local, peer string, cfg TransportConfig) (*Transport, error) {
-	cp, err := newL2tpControlPlane(local, peer, EncapTypeUDP, 42)
+func transportTestNewTransport(local string, tid TunnelID,
+	peer string, ptid TunnelID,
+	encap EncapType,
+	cfg TransportConfig) (*Transport, error) {
+
+	sal, err := newTunnelAddress(local, encap, 42)
+	if err != nil {
+		return nil, fmt.Errorf("failed to init local tunnel address %v: %v", local, err)
+	}
+
+	sap, err := newTunnelAddress(peer, encap, 90)
+	if err != nil {
+		return nil, fmt.Errorf("failed to init remote tunnel address %v: %v", local, err)
+	}
+
+	cp, err := newL2tpControlPlane(sal, sap)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create control plane: %v", err)
 	}
+
 	err = cp.Bind()
 	if err != nil {
 		return nil, fmt.Errorf("failed to bind control plane socket: %v", err)
 	}
+
 	err = cp.Connect()
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect control plane socket: %v", err)
 	}
+
 	return NewTransport(cp, cfg)
 }
 
@@ -246,7 +246,10 @@ func TestBasicSendReceive(t *testing.T) {
 	cases := []transportSendRecvTestInfo{
 		{
 			local: "127.0.0.1:9000",
+			tid:   42,
 			peer:  "127.0.0.1:9001",
+			ptid:  90,
+			encap: EncapTypeUDP,
 			config: TransportConfig{
 				Version:    ProtocolVersion2,
 				AckTimeout: 5 * time.Millisecond,
@@ -256,7 +259,10 @@ func TestBasicSendReceive(t *testing.T) {
 		},
 		{
 			local: "[::1]:9000",
+			tid:   42,
 			peer:  "[::1]:9001",
+			ptid:  90,
+			encap: EncapTypeUDP,
 			config: TransportConfig{
 				Version:    ProtocolVersion2,
 				AckTimeout: 5 * time.Millisecond,
@@ -266,7 +272,10 @@ func TestBasicSendReceive(t *testing.T) {
 		},
 		{
 			local: "127.0.0.1:9000",
+			tid:   42,
 			peer:  "127.0.0.1:9001",
+			ptid:  90,
+			encap: EncapTypeUDP,
 			config: TransportConfig{
 				Version:    ProtocolVersion3,
 				AckTimeout: 5 * time.Millisecond,
@@ -276,7 +285,10 @@ func TestBasicSendReceive(t *testing.T) {
 		},
 		{
 			local: "[::1]:9000",
+			tid:   42,
 			peer:  "[::1]:9001",
+			ptid:  90,
+			encap: EncapTypeUDP,
 			config: TransportConfig{
 				Version:    ProtocolVersion3,
 				AckTimeout: 5 * time.Millisecond,
@@ -289,21 +301,27 @@ func TestBasicSendReceive(t *testing.T) {
 		t.Run(
 			fmt.Sprintf("%d: send/recv %s %s L2TPv%v", i, c.local, c.peer, c.config.Version),
 			func(t *testing.T) {
-				tx, err := transportTestNewTransport(c.local, c.peer, c.config)
+				tx, err := transportTestNewTransport(c.local, c.tid, c.peer, c.ptid, c.encap, c.config)
 				if err != nil {
-					t.Fatalf("transportTestNewTransport(%v, %v, %v) said: %v",
+					t.Fatalf("transportTestNewTransport(%v, %v, %v, %v, %v, %v) said: %v",
 						c.local,
+						c.tid,
 						c.peer,
+						c.ptid,
+						c.encap,
 						c.config,
 						err)
 				}
 				defer tx.Close()
 
-				rx, err := transportTestNewTransport(c.peer, c.local, c.config)
+				rx, err := transportTestNewTransport(c.peer, c.ptid, c.local, c.tid, c.encap, c.config)
 				if err != nil {
-					t.Fatalf("transportTestNewTransport(%v, %v, %v) said: %v",
+					t.Fatalf("transportTestNewTransport(%v, %v, %v, %v, %v, %v) said: %v",
 						c.peer,
+						c.ptid,
 						c.local,
+						c.tid,
+						c.encap,
 						c.config,
 						err)
 				}

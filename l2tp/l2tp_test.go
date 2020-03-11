@@ -5,12 +5,13 @@ import (
 	"fmt"
 	"os/exec"
 	"os/user"
+	"strings"
 	"testing"
 
 	"github.com/katalix/sl2tpd/internal/nll2tp"
 )
 
-func ipL2tpShowTunnel(tid nll2tp.L2tpTunnelID) (out string, err error) {
+func ipL2tpShowTunnel(tid TunnelID) (out string, err error) {
 	var tidStr string
 	var tidArgStr string
 	var sout bytes.Buffer
@@ -28,13 +29,26 @@ func ipL2tpShowTunnel(tid nll2tp.L2tpTunnelID) (out string, err error) {
 		return "", err
 	}
 
+	fmt.Println(sout.String())
+
 	return sout.String(), nil
 }
 
-func TestRequiresRoot(t *testing.T) {
+func validateIpL2tpOut(out string, tid, ptid TunnelID, encap EncapType) error {
+	expect := []string{
+		fmt.Sprintf("Tunnel %v,", tid),
+		fmt.Sprintf("encap %v", encap),
+		fmt.Sprintf("Peer tunnel %v", ptid),
+	}
+	for _, e := range expect {
+		if !strings.Contains(out, e) {
+			return fmt.Errorf("failed to locate expected substring %q in output %q", e, out)
+		}
+	}
+	return nil
+}
 
-	local := "127.0.0.1:6000"
-	peer := "localhost:5000"
+func TestRequiresRoot(t *testing.T) {
 
 	// Test tests need root permissions, so verify we have those first of all
 	user, err := user.Current()
@@ -54,55 +68,75 @@ func TestRequiresRoot(t *testing.T) {
 	// subtests!
 	t.Run("QuiescentInst", func(t *testing.T) {
 		cases := []struct {
-			version ProtocolVersion
-			encap   EncapType
+			local, peer string
+			version     ProtocolVersion
+			encap       EncapType
+			tid, ptid   TunnelID
 		}{
-			{ProtocolVersion2, EncapTypeUDP},
-			{ProtocolVersion3, EncapTypeUDP},
-			// TODO: we need to support L2TPIP sockaddr before this will work
-			//{nll2tp.ProtocolVersion3, nll2tp.EncaptypeIp},
+			{"127.0.0.1:6000", "localhost:5000", ProtocolVersion2, EncapTypeUDP, 10, 20},
+			{"[::1]:6000", "[::1]:5000", ProtocolVersion2, EncapTypeUDP, 10, 20},
+			{"127.0.0.1:6000", "localhost:5000", ProtocolVersion3, EncapTypeUDP, 30, 40},
+			{"[::1]:6000", "[::1]:5000", ProtocolVersion3, EncapTypeUDP, 30, 40},
+			{"127.0.0.1:6000", "localhost:5000", ProtocolVersion3, EncapTypeIP, 50, 60},
+			{"[::1]:6000", "[::1]:5000", ProtocolVersion3, EncapTypeUDP, 30, 40},
 		}
 		for _, c := range cases {
-			tunl, err := NewQuiescentTunnel(nlconn, local, peer, 42, 42, c.version, c.encap, 0)
-			if err == nil {
-				if tunl != nil {
-					_, err = ipL2tpShowTunnel(42)
-					tunl.Close()
-					if err != nil {
-						t.Errorf("Couldn't validate tunnel using ip l2tp: %q", err)
-					}
-				} else {
-					t.Errorf("No error reported but NewQuiescentTunnel returned a nil tunnel instance")
-				}
-			} else {
-				t.Errorf("Failed to bring up quiescent tunnel: %q", err)
+			tunl, err := NewQuiescentTunnel(nlconn, c.local, c.peer, c.tid, c.ptid, c.version, c.encap, 0)
+			if err != nil {
+				t.Fatalf("Failed to bring up quiescent tunnel: %q", err)
 			}
+
+			if tunl == nil {
+				t.Fatalf("No error reported but NewQuiescentTunnel returned a nil tunnel instance")
+			}
+
+			// ip l2tp will report an error if the tunnel ID doesn't exist
+			out, err := ipL2tpShowTunnel(c.tid)
+			if err != nil {
+				t.Errorf("Couldn't validate tunnel using ip l2tp: %q", err)
+			}
+
+			err = validateIpL2tpOut(out, c.tid, c.ptid, c.encap)
+			if err != nil {
+				t.Errorf("Failed to validate ip l2tp output: %v", err)
+			}
+
+			tunl.Close()
 		}
 	})
 
 	t.Run("StaticInst", func(t *testing.T) {
 		cases := []struct {
-			encap EncapType
+			local, peer string
+			encap       EncapType
+			tid, ptid   TunnelID
 		}{
-			{EncapTypeUDP},
-			// TODO: we need to support L2TPIP sockaddr before this will work
-			{EncapTypeIP},
+			{"127.0.0.1:6000", "localhost:5000", EncapTypeUDP, 11, 12},
+			{"[::1]:6000", "[::1]:5000", EncapTypeUDP, 11, 12},
+			{"127.0.0.1:6000", "localhost:5000", EncapTypeIP, 13, 14},
+			{"[::1]:6000", "[::1]:5000", EncapTypeIP, 13, 14},
 		}
 		for _, c := range cases {
-			tunl, err := NewStaticTunnel(nlconn, local, peer, 42, 42, c.encap, 0)
-			if err == nil {
-				if tunl != nil {
-					_, err = ipL2tpShowTunnel(42)
-					tunl.Close()
-					if err != nil {
-						t.Errorf("Couldn't validate tunnel using ip l2tp: %q", err)
-					}
-				} else {
-					t.Errorf("No error reported but NewStaticTunnel returned a nil tunnel instance")
-				}
-			} else {
-				t.Errorf("Failed to bring up static tunnel: %q", err)
+			tunl, err := NewStaticTunnel(nlconn, c.local, c.peer, c.tid, c.ptid, c.encap, 0)
+			if err != nil {
+				t.Fatalf("Failed to bring up static tunnel: %q", err)
 			}
+
+			if tunl == nil {
+				t.Fatalf("No error reported but NewStaticTunnel returned a nil tunnel instance")
+			}
+
+			// ip l2tp will report an error if the tunnel ID doesn't exist
+			out, err := ipL2tpShowTunnel(c.tid)
+			if err != nil {
+				t.Errorf("Couldn't validate tunnel using ip l2tp: %q", err)
+			}
+
+			err = validateIpL2tpOut(out, c.tid, c.ptid, c.encap)
+			if err != nil {
+				t.Errorf("Failed to validate ip l2tp output: %v", err)
+			}
+			tunl.Close()
 		}
 	})
 }
