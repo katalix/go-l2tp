@@ -14,7 +14,7 @@ func TestOpenClose(t *testing.T) {
 		t.Fatalf("NewTransport() with nil controlplane didn't report error")
 	}
 
-	cp, err := newL2tpControlPlane("127.0.0.1:5000", "127.0.0.1:6000", EncapTypeUDP)
+	cp, err := newL2tpControlPlane("127.0.0.1:5000", "127.0.0.1:6000", EncapTypeUDP, 42)
 	if err != nil {
 		t.Fatalf("newL2tpControlPlane() failed: %v", err)
 	}
@@ -175,7 +175,7 @@ type transportSendRecvTestInfo struct {
 }
 
 func transportTestNewTransport(local, peer string, cfg TransportConfig) (*Transport, error) {
-	cp, err := newL2tpControlPlane(local, peer, EncapTypeUDP)
+	cp, err := newL2tpControlPlane(local, peer, EncapTypeUDP, 42)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create control plane: %v", err)
 	}

@@ -96,7 +96,7 @@ func NewQuiescentTunnel(nl *nll2tp.Conn,
 	encap EncapType,
 	dbgFlags DebugFlags) (*Tunnel, error) {
 
-	cp, err := newL2tpControlPlane(localAddr, remoteAddr, encap)
+	cp, err := newL2tpControlPlane(localAddr, remoteAddr, encap, tid)
 	if err != nil {
 		return nil, err
 	}
