@@ -3,6 +3,7 @@ package l2tp
 import (
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"golang.org/x/sys/unix"
@@ -82,6 +83,7 @@ type Transport struct {
 	cpChan               chan *rawMsg
 	rxQueue              []ControlMessage
 	txQueue, ackQueue    []*ctlMsg
+	wg                   sync.WaitGroup
 }
 
 // Increment transport sequence number by one avoiding overflow
@@ -201,7 +203,8 @@ func sanitiseConfig(cfg *TransportConfig) {
 	}
 }
 
-func cpRead(xport *Transport) {
+func cpRead(xport *Transport, wg *sync.WaitGroup) {
+	defer wg.Done()
 	for {
 		b := make([]byte, 4096)
 		n, sa, err := xport.cp.ReadFrom(b)
@@ -215,7 +218,8 @@ func cpRead(xport *Transport) {
 	}
 }
 
-func runTransport(xport *Transport) {
+func runTransport(xport *Transport, wg *sync.WaitGroup) {
+	defer wg.Done()
 	for {
 		fmt.Printf("runTransport(%p): enter select\n", xport)
 		select {
@@ -582,8 +586,9 @@ func NewTransport(cp *l2tpControlPlane, cfg TransportConfig) (xport *Transport, 
 		ackQueue:   []*ctlMsg{},
 	}
 
-	go runTransport(xport)
-	go cpRead(xport)
+	xport.wg.Add(2)
+	go runTransport(xport, &xport.wg)
+	go cpRead(xport, &xport.wg)
 
 	return xport, nil
 }
@@ -633,4 +638,5 @@ func (xport *Transport) Recv() (msg ControlMessage, err error) {
 func (xport *Transport) Close() {
 	close(xport.sendChan)
 	xport.cp.Close()
+	xport.wg.Wait()
 }
