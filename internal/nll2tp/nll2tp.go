@@ -3,6 +3,7 @@ package nll2tp
 import (
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/mdlayher/genetlink"
 	"github.com/mdlayher/netlink"
@@ -65,10 +66,24 @@ type SessionConfig struct {
 	DebugFlags L2tpDebugFlags
 }
 
+type msgRequest struct {
+	msg    genetlink.Message
+	family uint16
+	flags  netlink.HeaderFlags
+}
+
+type msgResponse struct {
+	msg []genetlink.Message
+	err error
+}
+
 // Conn represents the genetlink L2TP connection to the kernel.
 type Conn struct {
 	genlFamily genetlink.Family
 	c          *genetlink.Conn
+	reqChan    chan *msgRequest
+	rspChan    chan *msgResponse
+	wg         sync.WaitGroup
 }
 
 // Dial creates a new genetlink L2TP connection to the kernel.
@@ -84,14 +99,23 @@ func Dial() (*Conn, error) {
 		return nil, err
 	}
 
-	return &Conn{
+	conn := &Conn{
 		genlFamily: id,
 		c:          c,
-	}, nil
+		reqChan:    make(chan *msgRequest),
+		rspChan:    make(chan *msgResponse),
+	}
+
+	conn.wg.Add(1)
+	go runConn(conn, &conn.wg)
+
+	return conn, nil
 }
 
 // Close connection, releasing associated resources
 func (c *Conn) Close() {
+	close(c.reqChan)
+	c.wg.Wait()
 	c.c.Close()
 }
 
@@ -199,7 +223,7 @@ func (c *Conn) DeleteTunnel(config *TunnelConfig) error {
 		return err
 	}
 
-	_, err = c.c.Execute(genetlink.Message{
+	_, err = c.execute(genetlink.Message{
 		Header: genetlink.Header{
 			Command: CmdTunnelDelete,
 			Version: c.genlFamily.Version,
@@ -243,8 +267,23 @@ func (c *Conn) createTunnel(attr []netlink.Attribute) error {
 		Data: b,
 	}
 
-	_, err = c.c.Execute(req, c.genlFamily.ID, netlink.Request|netlink.Acknowledge)
+	_, err = c.execute(req, c.genlFamily.ID, netlink.Request|netlink.Acknowledge)
 	return err
+}
+
+func (c *Conn) execute(msg genetlink.Message, family uint16, flags netlink.HeaderFlags) ([]genetlink.Message, error) {
+	c.reqChan <- &msgRequest{
+		msg:    msg,
+		family: family,
+		flags:  flags,
+	}
+
+	rsp, ok := <-c.rspChan
+	if !ok {
+		return nil, errors.New("netlink connection closed")
+	}
+
+	return rsp.msg, rsp.err
 }
 
 func tunnelCreateAttr(config *TunnelConfig) ([]netlink.Attribute, error) {
@@ -301,4 +340,21 @@ func tunnelCreateAttr(config *TunnelConfig) ([]netlink.Attribute, error) {
 			Data: nlenc.Uint32Bytes(uint32(config.DebugFlags)),
 		},
 	}, nil
+}
+
+func runConn(c *Conn, wg *sync.WaitGroup) {
+	defer wg.Done()
+	for {
+		select {
+		case req, ok := <-c.reqChan:
+			if !ok {
+				return
+			}
+			m, err := c.c.Execute(req.msg, req.family, req.flags)
+			c.rspChan <- &msgResponse{
+				msg: m,
+				err: err,
+			}
+		}
+	}
 }
