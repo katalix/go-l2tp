@@ -3,7 +3,6 @@ package nll2tp
 import (
 	"errors"
 	"fmt"
-	"net"
 
 	"github.com/mdlayher/genetlink"
 	"github.com/mdlayher/netlink"
@@ -121,24 +120,30 @@ func (c *Conn) CreateManagedTunnel(fd int, config *TunnelConfig) (err error) {
 // A "static" tunnel is one whose tunnel socket fd is implicitly created
 // by the kernel.  A static tunnel must be explicitly deleted using netlink
 // commands.
-func (c *Conn) CreateStaticTunnel(localAddr *net.IP, localPort uint16,
-	peerAddr *net.IP, peerPort uint16,
+func (c *Conn) CreateStaticTunnel(
+	localAddr []byte, localPort uint16,
+	peerAddr []byte, peerPort uint16,
 	config *TunnelConfig) (err error) {
 
-	if localAddr == nil {
+	if config == nil {
+		return errors.New("invalid nil tunnel config pointer")
+	}
+	if len(localAddr) == 0 {
 		return errors.New("unmanaged tunnel needs a valid local address")
 	}
-	if localPort == 0 {
-		return errors.New("unmanaged tunnel needs a valid local port")
-	}
-	if peerAddr == nil {
+	if len(peerAddr) == 0 {
 		return errors.New("unmanaged tunnel needs a valid peer address")
 	}
-	if peerPort == 0 {
-		return errors.New("unmanaged tunnel needs a valid peer port")
-	}
-	if ipAddrLen(localAddr) != ipAddrLen(peerAddr) {
+	if len(localAddr) != len(peerAddr) {
 		return errors.New("local and peer IP addresses must be of the same address family")
+	}
+	if config.Encap == EncaptypeUdp {
+		if localPort == 0 {
+			return errors.New("unmanaged tunnel needs a valid local port")
+		}
+		if peerPort == 0 {
+			return errors.New("unmanaged tunnel needs a valid peer port")
+		}
 	}
 
 	attr, err := tunnelCreateAttr(config)
@@ -146,22 +151,22 @@ func (c *Conn) CreateStaticTunnel(localAddr *net.IP, localPort uint16,
 		return err
 	}
 
-	switch ipAddrLen(localAddr) {
+	switch len(localAddr) {
 	case 4:
 		attr = append(attr, netlink.Attribute{
 			Type: AttrIpSaddr,
-			Data: ipAddrBytes(localAddr),
+			Data: localAddr,
 		}, netlink.Attribute{
 			Type: AttrIpDaddr,
-			Data: ipAddrBytes(peerAddr),
+			Data: peerAddr,
 		})
 	case 16:
 		attr = append(attr, netlink.Attribute{
 			Type: AttrIp6Saddr,
-			Data: ipAddrBytes(localAddr),
+			Data: localAddr,
 		}, netlink.Attribute{
 			Type: AttrIp6Daddr,
-			Data: ipAddrBytes(peerAddr),
+			Data: peerAddr,
 		})
 	default:
 		panic("unexpected address length")
@@ -296,31 +301,4 @@ func tunnelCreateAttr(config *TunnelConfig) ([]netlink.Attribute, error) {
 			Data: nlenc.Uint32Bytes(uint32(config.DebugFlags)),
 		},
 	}, nil
-}
-
-func ipAddrLen(addr *net.IP) uint {
-	switch {
-	case addr == nil:
-		return 0
-	case addr.To4() != nil:
-		return 4
-	case addr.To16() != nil:
-		return 16
-	default:
-		panic("Unexpected IP address length")
-	}
-}
-
-func ipAddrBytes(addr *net.IP) []byte {
-	if addr != nil {
-		b := addr.To4()
-		if b != nil {
-			return b
-		}
-		b = addr.To16()
-		if b != nil {
-			return b
-		}
-	}
-	return nil
 }

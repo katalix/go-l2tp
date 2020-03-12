@@ -168,7 +168,7 @@ func NewQuiescentTunnel(nl *nll2tp.Conn, cfg *QuiescentTunnelConfig) (tunl *Tunn
 		ptid = nll2tp.L2tpTunnelID(cfg.PeerControlConnID)
 	}
 
-	dp, err := newL2tpDataPlane(nl, cfg.LocalAddress, cfg.RemoteAddress, &nll2tp.TunnelConfig{
+	dp, err := newL2tpDataPlane(nl, sal, sap, &nll2tp.TunnelConfig{
 		Tid:     tid,
 		Ptid:    ptid,
 		Version: nll2tp.L2tpProtocolVersion(cfg.Version),
@@ -213,7 +213,30 @@ type StaticTunnelConfig struct {
 // unmanaged tunnel instances.
 func NewStaticTunnel(nl *nll2tp.Conn, cfg *StaticTunnelConfig) (tunl *Tunnel, err error) {
 
-	dp, err := newL2tpDataPlane(nl, cfg.LocalAddress, cfg.RemoteAddress, &nll2tp.TunnelConfig{
+	var sal, sap unix.Sockaddr
+
+	// Sanity check  the configuration
+	if cfg.ControlConnID == 0 || cfg.PeerControlConnID == 0 {
+		return nil, fmt.Errorf("L2TPv3 tunnel IDs %v and %v must both be > 0",
+			cfg.ControlConnID, cfg.PeerControlConnID)
+	}
+
+	// Initialise tunnel address structures
+	switch cfg.Encap {
+	case EncapTypeUDP:
+		sal, sap, err = newUDPAddressPair(cfg.LocalAddress, cfg.RemoteAddress)
+	case EncapTypeIP:
+		sal, sap, err = newIPAddressPair(cfg.LocalAddress, cfg.ControlConnID,
+			cfg.RemoteAddress, cfg.PeerControlConnID)
+	default:
+		err = fmt.Errorf("unrecognised encapsulation type %v", cfg.Encap)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialise tunnel addresses: %v", err)
+	}
+
+	// Initialise the data plane.
+	dp, err := newL2tpDataPlane(nl, sal, sap, &nll2tp.TunnelConfig{
 		Tid:     nll2tp.L2tpTunnelID(cfg.ControlConnID),
 		Ptid:    nll2tp.L2tpTunnelID(cfg.PeerControlConnID),
 		Version: nll2tp.ProtocolVersion3,
