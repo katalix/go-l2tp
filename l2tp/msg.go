@@ -395,19 +395,19 @@ func ParseMessageBuffer(b []byte) (messages []ControlMessage, err error) {
 }
 
 // NewV2ControlMessage builds a new control message
-func NewV2ControlMessage(tid, sid uint16, avps []AVP) (msg *V2ControlMessage, err error) {
+func NewV2ControlMessage(tid TunnelID, sid SessionID, avps []AVP) (msg *V2ControlMessage, err error) {
 	// TODO: validate AVPs
 	return &V2ControlMessage{
-		header: *newL2tpV2MessageHeader(tid, sid, 0, 0, AvpsLengthBytes(avps)),
+		header: *newL2tpV2MessageHeader(uint16(tid), uint16(sid), 0, 0, AvpsLengthBytes(avps)),
 		avps:   avps,
 	}, nil
 }
 
 // NewV3ControlMessage builds a new control message
-func NewV3ControlMessage(ccid uint32, avps []AVP) (msg *V3ControlMessage, err error) {
+func NewV3ControlMessage(ccid ControlConnID, avps []AVP) (msg *V3ControlMessage, err error) {
 	// TODO: validate AVPs
 	return &V3ControlMessage{
-		header: *newL2tpV3MessageHeader(ccid, 0, 0, AvpsLengthBytes(avps)),
+		header: *newL2tpV3MessageHeader(uint32(ccid), 0, 0, AvpsLengthBytes(avps)),
 		avps:   avps,
 	}, nil
 }

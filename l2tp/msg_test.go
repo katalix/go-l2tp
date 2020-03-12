@@ -127,8 +127,8 @@ type msgTestAvpMetadata struct {
 
 func TestV2MessageBuild(t *testing.T) {
 	cases := []struct {
-		tid  uint16
-		sid  uint16
+		tid  TunnelID
+		sid  SessionID
 		avps []msgTestAvpMetadata
 	}{
 		{
@@ -160,7 +160,7 @@ func TestV2MessageBuild(t *testing.T) {
 
 func TestV3MessageBuild(t *testing.T) {
 	cases := []struct {
-		ccid uint32
+		ccid ControlConnID
 		avps []msgTestAvpMetadata
 	}{
 		{

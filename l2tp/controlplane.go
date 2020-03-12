@@ -2,7 +2,6 @@ package l2tp
 
 import (
 	"fmt"
-	"net"
 	"os"
 	"syscall"
 	"time"
@@ -25,18 +24,8 @@ func (cp *l2tpControlPlane) Read(b []byte) (n int, err error) {
 }
 
 // Read data and sender address from the connection
-func (cp *l2tpControlPlane) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
-	n, sa, err := cp.recvfrom(p)
-	if err != nil {
-		return n, nil, err
-	}
-
-	addr, err = unixToNetAddr(sa)
-	if err != nil {
-		return n, nil, err
-	}
-
-	return n, addr, nil
+func (cp *l2tpControlPlane) ReadFrom(p []byte) (n int, sa unix.Sockaddr, err error) {
+	return cp.recvfrom(p)
 }
 
 func (cp *l2tpControlPlane) recvfrom(p []byte) (n int, addr unix.Sockaddr, err error) {

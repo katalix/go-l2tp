@@ -3,8 +3,9 @@ package l2tp
 import (
 	"errors"
 	"fmt"
-	"net"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 // slowStartState represents state for the transport sequence numbers
@@ -35,8 +36,8 @@ type ctlMsg struct {
 
 // rawMsg represents a raw frame read from the transport socket.
 type rawMsg struct {
-	b    []byte
-	addr net.Addr
+	b  []byte
+	sa unix.Sockaddr
 }
 
 // TransportConfig represents the tunable parameters governing
@@ -62,8 +63,10 @@ type TransportConfig struct {
 	AckTimeout time.Duration
 	// Version of the L2TP protocol to use for transport-generated messages.
 	Version ProtocolVersion
-	// Peer tunnel ID to use for transport-generated messages.
-	PeerTunnelID uint32
+	// Peer tunnel ID to use for transport-generated messages (RFC2661)
+	PeerTunnelID TunnelID
+	// Peer control connection ID to use for transport-generated messages (RFC3931)
+	PeerControlConnID ControlConnID
 }
 
 // Transport represents the RFC2661/RFC3931
@@ -201,14 +204,14 @@ func sanitiseConfig(cfg *TransportConfig) {
 func cpRead(xport *Transport) {
 	for {
 		b := make([]byte, 4096)
-		n, addr, err := xport.cp.ReadFrom(b)
+		n, sa, err := xport.cp.ReadFrom(b)
 		if err != nil {
 			close(xport.cpChan)
-			fmt.Printf("cpRead(%p): err reading from socket: %v\n", xport, err)
+			fmt.Printf("cpRead(%p): error reading from socket: %v\n", xport, err)
 			return
 		}
 		fmt.Printf("cpRead(%p): read %d bytes\n", xport, n)
-		xport.cpChan <- &rawMsg{b: b[:n], addr: addr}
+		xport.cpChan <- &rawMsg{b: b[:n], sa: sa}
 	}
 }
 
@@ -519,12 +522,12 @@ func (xport *Transport) sendExplicitAck() (err error) {
 		if err != nil {
 			return fmt.Errorf("failed to build v3 explicit ack message type AVP: %v", err)
 		}
-		msg, err = NewV3ControlMessage(xport.config.PeerTunnelID, []AVP{*avp})
+		msg, err = NewV3ControlMessage(xport.config.PeerControlConnID, []AVP{*avp})
 		if err != nil {
 			return fmt.Errorf("failed to build v3 explicit ack message: %v", err)
 		}
 	} else {
-		msg, err = NewV2ControlMessage(uint16(xport.config.PeerTunnelID), 0, []AVP{})
+		msg, err = NewV2ControlMessage(xport.config.PeerTunnelID, 0, []AVP{})
 		if err != nil {
 			return fmt.Errorf("failed to build v2 ZLB message: %v", err)
 		}
