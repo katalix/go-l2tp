@@ -344,17 +344,11 @@ func tunnelCreateAttr(config *TunnelConfig) ([]netlink.Attribute, error) {
 
 func runConn(c *Conn, wg *sync.WaitGroup) {
 	defer wg.Done()
-	for {
-		select {
-		case req, ok := <-c.reqChan:
-			if !ok {
-				return
-			}
-			m, err := c.c.Execute(req.msg, req.family, req.flags)
-			c.rspChan <- &msgResponse{
-				msg: m,
-				err: err,
-			}
+	for req := range c.reqChan {
+		m, err := c.c.Execute(req.msg, req.family, req.flags)
+		c.rspChan <- &msgResponse{
+			msg: m,
+			err: err,
 		}
 	}
 }
