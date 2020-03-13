@@ -250,7 +250,7 @@ func ipL2tpShowTunnel(tid uint32) (out string, err error) {
 	return sout.String(), nil
 }
 
-func validateIpL2tpOut(out string, tid, ptid uint32, encap EncapType) error {
+func validateIPL2tpOut(out string, tid, ptid uint32, encap EncapType) error {
 	expect := []string{
 		fmt.Sprintf("Tunnel %v,", tid),
 		fmt.Sprintf("encap %v", encap),
@@ -277,7 +277,7 @@ func checkQuiescentTunnel(cfg *QuiescentTunnelConfig) error {
 	if err != nil {
 		return fmt.Errorf("ip l2tp couldn't show tunnel %v: %v", tid, err)
 	}
-	return validateIpL2tpOut(out, tid, ptid, cfg.Encap)
+	return validateIPL2tpOut(out, tid, ptid, cfg.Encap)
 }
 
 func checkStaticTunnel(cfg *StaticTunnelConfig) error {
@@ -287,5 +287,5 @@ func checkStaticTunnel(cfg *StaticTunnelConfig) error {
 	if err != nil {
 		return fmt.Errorf("ip l2tp couldn't show tunnel %v: %v", tid, err)
 	}
-	return validateIpL2tpOut(out, tid, ptid, cfg.Encap)
+	return validateIPL2tpOut(out, tid, ptid, cfg.Encap)
 }
