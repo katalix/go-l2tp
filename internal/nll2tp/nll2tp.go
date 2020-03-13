@@ -73,15 +73,20 @@ type SessionConfig struct {
 	// running kernel (ref: man 7 time: sysconf(_SC_CLK_TCK))
 	// TODO: make this use something a bit more sane...
 	ReorderTimeout uint64
-	// PeerCookie sets the RFC3931 cookie for the session as negotiated by the control protocol.
+	// LocalCookie sets the RFC3931 cookie for the session.
+	// Transmitted data packets will include the cookie.
+	// The LocalCookie may be either 4 or 8 bytes in length if set.
+	LocalCookie []byte
+	// PeerCookie sets the RFC3931 peer cookie for the session as negotiated by the control protocol.
 	// Received data packets with a cookie mismatch are discarded.
+	// The PeerCookie may be either 4 or 8 bytes in length if set.
 	PeerCookie []byte
 	// IfName specifies the interface name to use for an RFC3931 Ethernet pseudowire.
 	// By default the kernel generates a name "l2tpethX".
 	IfName string
-	// L2SpecLen specifies the length of the Layer 2 specific sublayer field to be
-	// used in data packets.
-	L2SpecLen int
+	// L2SpecType specifies the Layer 2 specific sublayer field to be used in data packets
+	// as per RFC3931 section 3.2.2
+	L2SpecType L2tpL2specType
 	// DebugFlags specifies the kernel debugging flags to use for the session instance.
 	DebugFlags L2tpDebugFlags
 }
@@ -243,15 +248,15 @@ func (c *Conn) DeleteTunnel(config *TunnelConfig) error {
 		return err
 	}
 
-	_, err = c.execute(genetlink.Message{
+	req := genetlink.Message{
 		Header: genetlink.Header{
 			Command: CmdTunnelDelete,
 			Version: c.genlFamily.Version,
 		},
 		Data: b,
-	},
-		c.genlFamily.ID,
-		netlink.Request|netlink.Acknowledge)
+	}
+
+	_, err = c.execute(req, c.genlFamily.ID, netlink.Request|netlink.Acknowledge)
 	return err
 }
 
@@ -259,10 +264,26 @@ func (c *Conn) DeleteTunnel(config *TunnelConfig) error {
 // The parent tunnel instance referenced by the tunnel IDs in
 // the session configuration must already exist in the kernel.
 func (c *Conn) CreateSession(config *SessionConfig) error {
-	if config == nil {
-		return errors.New("invalid nil session config")
+	attr, err := sessionCreateAttr(config)
+	if err != nil {
+		return err
 	}
-	return nil
+
+	b, err := netlink.MarshalAttributes(attr)
+	if err != nil {
+		return err
+	}
+
+	req := genetlink.Message{
+		Header: genetlink.Header{
+			Command: CmdSessionCreate,
+			Version: c.genlFamily.Version,
+		},
+		Data: b,
+	}
+
+	_, err = c.execute(req, c.genlFamily.ID, netlink.Request|netlink.Acknowledge)
+	return err
 }
 
 // DeleteSession deletes a session instance from the kernel.
@@ -360,6 +381,144 @@ func tunnelCreateAttr(config *TunnelConfig) ([]netlink.Attribute, error) {
 			Data: nlenc.Uint32Bytes(uint32(config.DebugFlags)),
 		},
 	}, nil
+}
+
+func sessionCreateAttr(config *SessionConfig) ([]netlink.Attribute, error) {
+
+	// Sanity checks
+	if config == nil {
+		return nil, errors.New("invalid nil session config")
+	}
+	if config.Tid == 0 {
+		return nil, errors.New("session config must have a non-zero parent tunnel ID")
+	}
+	if config.Ptid == 0 {
+		return nil, errors.New("session config must have a non-zero parent peer tunnel ID")
+	}
+	if config.Sid == 0 {
+		return nil, errors.New("session config must have a non-zero session ID")
+	}
+	if config.Psid == 0 {
+		return nil, errors.New("session config must have a non-zero peer session ID")
+	}
+	if config.PseudowireType == PwtypeNone {
+		return nil, errors.New("session config must have a valid pseudowire type")
+	}
+	if len(config.LocalCookie) > 0 {
+		if len(config.LocalCookie) != 4 && len(config.LocalCookie) != 8 {
+			return nil, fmt.Errorf("session config has peer cookie of %d bytes: valid lengths are 4 or 8 bytes",
+				len(config.LocalCookie))
+		}
+	}
+	if len(config.PeerCookie) > 0 {
+		if len(config.PeerCookie) != 4 && len(config.PeerCookie) != 8 {
+			return nil, fmt.Errorf("session config has peer cookie of %d bytes: valid lengths are 4 or 8 bytes",
+				len(config.PeerCookie))
+		}
+	}
+
+	attr := []netlink.Attribute{
+		{
+			Type: AttrConnId,
+			Data: nlenc.Uint32Bytes(uint32(config.Tid)),
+		},
+		{
+			Type: AttrPeerConnId,
+			Data: nlenc.Uint32Bytes(uint32(config.Ptid)),
+		},
+		{
+			Type: AttrSessionId,
+			Data: nlenc.Uint32Bytes(uint32(config.Tid)),
+		},
+		{
+			Type: AttrPeerSessionId,
+			Data: nlenc.Uint32Bytes(uint32(config.Ptid)),
+		},
+	}
+
+	// VLAN pseudowires use the kernel l2tp_eth driver
+	if config.PseudowireType == PwtypeEthVlan {
+		attr = append(attr, netlink.Attribute{
+			Type: AttrPwType,
+			Data: nlenc.Uint16Bytes(uint16(PwtypeEth)),
+		})
+	} else {
+		attr = append(attr, netlink.Attribute{
+			Type: AttrPwType,
+			Data: nlenc.Uint16Bytes(uint16(config.PseudowireType)),
+		})
+	}
+
+	if config.SendSeq {
+		attr = append(attr, netlink.Attribute{
+			Type: AttrSendSeq,
+			Data: nlenc.Uint8Bytes(1),
+		})
+	}
+
+	if config.RecvSeq {
+		attr = append(attr, netlink.Attribute{
+			Type: AttrRecvSeq,
+			Data: nlenc.Uint8Bytes(1),
+		})
+	}
+
+	if (config.SendSeq || config.RecvSeq) && config.IsLNS {
+		attr = append(attr, netlink.Attribute{
+			Type: AttrLnsMode,
+			Data: nlenc.Uint8Bytes(1),
+		})
+	}
+
+	if config.ReorderTimeout > 0 {
+		attr = append(attr, netlink.Attribute{
+			Type: AttrRecvTimeout,
+			Data: nlenc.Uint64Bytes(config.ReorderTimeout),
+		})
+	}
+
+	if len(config.LocalCookie) > 0 {
+		attr = append(attr, netlink.Attribute{
+			Type: AttrCookie,
+			Data: config.LocalCookie,
+		})
+	}
+
+	if len(config.PeerCookie) > 0 {
+		attr = append(attr, netlink.Attribute{
+			Type: AttrCookie,
+			Data: config.PeerCookie,
+		})
+	}
+
+	if config.IfName != "" {
+		attr = append(attr, netlink.Attribute{
+			Type: AttrIfname,
+			Data: []byte(config.IfName),
+		})
+	}
+
+	attr = append(attr, netlink.Attribute{
+		Type: AttrL2specType,
+		Data: nlenc.Uint8Bytes(uint8(config.L2SpecType)),
+	})
+
+	switch config.L2SpecType {
+	case L2spectypeNone:
+		attr = append(attr, netlink.Attribute{
+			Type: AttrL2specLen,
+			Data: nlenc.Uint8Bytes(0),
+		})
+	case L2spectypeDefault:
+		attr = append(attr, netlink.Attribute{
+			Type: AttrL2specLen,
+			Data: nlenc.Uint8Bytes(4),
+		})
+	default:
+		return nil, fmt.Errorf("unhandled L2 Spec Type %v", config.L2SpecType)
+	}
+
+	return attr, nil
 }
 
 func runConn(c *Conn, wg *sync.WaitGroup) {
