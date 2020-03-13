@@ -15,19 +15,15 @@ type l2tpDataPlane struct {
 }
 
 func sockaddrAddrPort(sa unix.Sockaddr) (addr []byte, port uint16, err error) {
-	switch sa.(type) {
+	switch sa := sa.(type) {
 	case *unix.SockaddrInet4:
-		sa4, _ := sa.(*unix.SockaddrInet4)
-		return sa4.Addr[:], uint16(sa4.Port), nil
+		return sa.Addr[:], uint16(sa.Port), nil
 	case *unix.SockaddrInet6:
-		sa6, _ := sa.(*unix.SockaddrInet6)
-		return sa6.Addr[:], uint16(sa6.Port), nil
+		return sa.Addr[:], uint16(sa.Port), nil
 	case *unix.SockaddrL2TPIP:
-		l2tpip4, _ := sa.(*unix.SockaddrL2TPIP)
-		return l2tpip4.Addr[:], 0, nil
+		return sa.Addr[:], 0, nil
 	case *unix.SockaddrL2TPIP6:
-		l2tpip6, _ := sa.(*unix.SockaddrL2TPIP6)
-		return l2tpip6.Addr[:], 0, nil
+		return sa.Addr[:], 0, nil
 	}
 	return []byte{}, 0, fmt.Errorf("unexpected address type %T", addr)
 }
