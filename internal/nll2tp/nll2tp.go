@@ -62,6 +62,26 @@ type SessionConfig struct {
 	// For L2TPv3 this may be PPP or Ethernet.
 	// For L2TPv2 this may be PPP only.
 	PseudowireType L2tpPwtype
+	// SendSeq controls whether to send data packet sequence numbers per RFC2661 section 5.4.
+	SendSeq bool
+	// RecvSeq if set will cause data packets without sequence numbers to be dropped.
+	RecvSeq bool
+	// IsLNS if unset allows the LNS to enable data packet sequence numbers per RFC2661 section 5.4
+	IsLNS bool
+	// ReorderTimeout sets the maximum amount of time to hold a data packet in the reorder
+	// queue when sequence numbers are enabled.  This number is defined in jiffies for the
+	// running kernel (ref: man 7 time: sysconf(_SC_CLK_TCK))
+	// TODO: make this use something a bit more sane...
+	ReorderTimeout uint64
+	// PeerCookie sets the RFC3931 cookie for the session as negotiated by the control protocol.
+	// Received data packets with a cookie mismatch are discarded.
+	PeerCookie []byte
+	// IfName specifies the interface name to use for an RFC3931 Ethernet pseudowire.
+	// By default the kernel generates a name "l2tpethX".
+	IfName string
+	// L2SpecLen specifies the length of the Layer 2 specific sublayer field to be
+	// used in data packets.
+	L2SpecLen int
 	// DebugFlags specifies the kernel debugging flags to use for the session instance.
 	DebugFlags L2tpDebugFlags
 }
