@@ -192,7 +192,7 @@ func transportTestNewTransport(testCfg *transportSendRecvTestInfo) (xport *Trans
 		err = fmt.Errorf("unhandled encap type %v", testCfg.encap)
 	}
 	if err != nil {
-		fmt.Errorf("failed to init tunnel address structures: %v", err)
+		return nil, fmt.Errorf("failed to init tunnel address structures: %v", err)
 	}
 
 	cp, err = newL2tpControlPlane(sal, sap)
