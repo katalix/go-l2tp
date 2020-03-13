@@ -291,7 +291,31 @@ func (c *Conn) DeleteSession(config *SessionConfig) error {
 	if config == nil {
 		return errors.New("invalid nil session config")
 	}
-	return nil
+
+	b, err := netlink.MarshalAttributes([]netlink.Attribute{
+		{
+			Type: AttrConnId,
+			Data: nlenc.Uint32Bytes(uint32(config.Tid)),
+		},
+		{
+			Type: AttrSessionId,
+			Data: nlenc.Uint32Bytes(uint32(config.Sid)),
+		},
+	})
+	if err != nil {
+		return err
+	}
+
+	req := genetlink.Message{
+		Header: genetlink.Header{
+			Command: CmdSessionDelete,
+			Version: c.genlFamily.Version,
+		},
+		Data: b,
+	}
+
+	_, err = c.execute(req, c.genlFamily.ID, netlink.Request|netlink.Acknowledge)
+	return err
 }
 
 func (c *Conn) createTunnel(attr []netlink.Attribute) error {
