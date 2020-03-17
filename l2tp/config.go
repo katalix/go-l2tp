@@ -2,6 +2,7 @@ package l2tp
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/pelletier/go-toml"
 )
@@ -19,10 +20,12 @@ type Config struct {
 // connection between two L2TP hosts.  Each tunnel may contain
 // multiple sessions.
 type TunnelConfig struct {
-	Local   string
-	Peer    string
-	Encap   EncapType
-	Version ProtocolVersion
+	Local        string
+	Peer         string
+	Encap        EncapType
+	Version      ProtocolVersion
+	TunnelID     ControlConnID
+	PeerTunnelID ControlConnID
 	// map of sessions within the tunnel
 	Sessions map[string]*SessionConfig
 }
@@ -30,8 +33,40 @@ type TunnelConfig struct {
 // SessionConfig encapsulates session configuration for a pseudowire
 // connection within a tunnel between two L2TP hosts.
 type SessionConfig struct {
-	Pseudowire PseudowireType
-	Cookie     []byte
+	SessionID      ControlConnID
+	PeerSessionID  ControlConnID
+	Pseudowire     PseudowireType
+	SeqNum         bool
+	ReorderTimeout time.Duration
+	Cookie         []byte
+	PeerCookie     []byte
+	InterfaceName  string
+	L2SpecType     L2SpecType
+}
+
+func toBool(v interface{}) (bool, error) {
+	if b, ok := v.(bool); ok {
+		return b, nil
+	}
+	return false, fmt.Errorf("supplied value could not be parsed as a bool")
+}
+
+func toUint32(v interface{}) (uint32, error) {
+	// go-toml's ToMap function represents numbers as either uint64 or int64.
+	// Figure out which one it has picked and range check to ensure that each
+	// array member fits in the bounds of a byte.
+	if b, ok := v.(int64); ok {
+		if b < 0x0 || b > 0xffffffff {
+			return 0, fmt.Errorf("value %x out of range", b)
+		}
+		return uint32(b), nil
+	} else if b, ok := v.(uint64); ok {
+		if b < 0x0 || b > 0xffffffff {
+			return 0, fmt.Errorf("value %x out of range", b)
+		}
+		return uint32(b), nil
+	}
+	return 0, fmt.Errorf("unexpected %T value %v", v, v)
 }
 
 func toString(v interface{}) (string, error) {
@@ -39,6 +74,11 @@ func toString(v interface{}) (string, error) {
 		return s, nil
 	}
 	return "", fmt.Errorf("supplied value could not be parsed as a string")
+}
+
+func toDurationMs(v interface{}) (time.Duration, error) {
+	u, err := toUint32(v)
+	return time.Duration(u) * time.Millisecond, err
 }
 
 func toVersion(v interface{}) (ProtocolVersion, error) {
@@ -83,6 +123,25 @@ func toPseudowireType(v interface{}) (PseudowireType, error) {
 	return 0, err
 }
 
+func toL2SpecType(v interface{}) (L2SpecType, error) {
+	s, err := toString(v)
+	if err == nil {
+		switch s {
+		case "none":
+			return L2SpecTypeNone, nil
+		case "default":
+			return L2SpecTypeDefault, nil
+		}
+		return 0, fmt.Errorf("expect 'none' or 'default'")
+	}
+	return L2SpecTypeNone, err
+}
+
+func toCCID(v interface{}) (ControlConnID, error) {
+	u, err := toUint32(v)
+	return ControlConnID(u), err
+}
+
 func toBytes(v interface{}) ([]byte, error) {
 	out := []byte{}
 
@@ -120,10 +179,24 @@ func newSessionConfig(scfg map[string]interface{}) (*SessionConfig, error) {
 	for k, v := range scfg {
 		var err error
 		switch k {
+		case "sid":
+			sc.SessionID, err = toCCID(v)
+		case "psid":
+			sc.PeerSessionID, err = toCCID(v)
 		case "pseudowire":
 			sc.Pseudowire, err = toPseudowireType(v)
+		case "seqnum":
+			sc.SeqNum, err = toBool(v)
+		case "reorder_timeout":
+			sc.ReorderTimeout, err = toDurationMs(v)
 		case "cookie":
 			sc.Cookie, err = toBytes(v)
+		case "peer_cookie":
+			sc.PeerCookie, err = toBytes(v)
+		case "interface_name":
+			sc.InterfaceName, err = toString(v)
+		case "l2spec_type":
+			sc.L2SpecType, err = toL2SpecType(v)
 		default:
 			return nil, fmt.Errorf("unrecognised parameter '%v'", k)
 		}
@@ -169,6 +242,10 @@ func newTunnelConfig(tcfg map[string]interface{}) (*TunnelConfig, error) {
 			tc.Encap, err = toEncapType(v)
 		case "version":
 			tc.Version, err = toVersion(v)
+		case "tid":
+			tc.TunnelID, err = toCCID(v)
+		case "ptid":
+			tc.PeerTunnelID, err = toCCID(v)
 		case "session":
 			err = tc.loadSessions(v)
 		default:

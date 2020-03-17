@@ -64,6 +64,16 @@ const (
 	DebugFlagsData = nll2tp.MsgData
 )
 
+// L2SpecType defines the Layer 2 specific sublayer for data packets as per RFC3931 sectino 3.2.2.
+type L2SpecType int32
+
+const (
+	// L2SpecTypeNone defines no sublayer is to be used
+	L2SpecTypeNone = nll2tp.L2spectypeNone
+	// L2SpecTypeDefault defines use of the default sublayer
+	L2SpecTypeDefault = nll2tp.L2spectypeDefault
+)
+
 // QuiescentTunnel creates a user space socket for the
 // L2TP control plane, but does not run the control protocol
 // beyond acknowledging messages and optionally sending HELLO
@@ -114,7 +124,7 @@ type Session interface {
 
 // Tunnel is an interface representing an L2TP tunnel.
 type Tunnel interface {
-	//NewSession(name string, cfg *SessionConfig) (Session, error)
+	NewSession(name string, cfg *SessionConfig) (Session, error)
 	//FindSessionByName(name string) (Session, error)
 	Close()
 }
