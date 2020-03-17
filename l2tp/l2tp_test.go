@@ -250,7 +250,36 @@ func ipL2tpShowTunnel(tid uint32) (out string, err error) {
 	return sout.String(), nil
 }
 
-func validateIPL2tpOut(out string, tid, ptid uint32, encap EncapType) error {
+func ipL2tpShowSession(tid, sid uint32) (out string, err error) {
+	var tidStr string
+	var tidArgStr string
+	var sidStr string
+	var sidArgStr string
+	var sout bytes.Buffer
+
+	if tid > 0 {
+		tidArgStr = "tunnel_id"
+		tidStr = fmt.Sprintf("%d", tid)
+	}
+	if sid > 0 {
+		sidArgStr = "session_id"
+		sidStr = fmt.Sprintf("%d", sid)
+	}
+
+	cmd := exec.Command("sudo", "ip", "l2tp", "show", "session", tidArgStr, tidStr, sidArgStr, sidStr)
+	cmd.Stdout = &sout
+
+	err = cmd.Run()
+	if err != nil {
+		return "", err
+	}
+
+	fmt.Println(sout.String())
+
+	return sout.String(), nil
+}
+
+func validateIPL2tpTunnelOut(out string, tid, ptid uint32, encap EncapType) error {
 	expect := []string{
 		fmt.Sprintf("Tunnel %v,", tid),
 		fmt.Sprintf("encap %v", encap),
@@ -262,6 +291,10 @@ func validateIPL2tpOut(out string, tid, ptid uint32, encap EncapType) error {
 		}
 	}
 	return nil
+}
+
+func validateIPL2tpSessionOut(out string, tid, sid, psid uint32) error {
+	return nil // TODO
 }
 
 func checkQuiescentTunnel(cfg *QuiescentTunnelConfig) error {
@@ -277,7 +310,7 @@ func checkQuiescentTunnel(cfg *QuiescentTunnelConfig) error {
 	if err != nil {
 		return fmt.Errorf("ip l2tp couldn't show tunnel %v: %v", tid, err)
 	}
-	return validateIPL2tpOut(out, tid, ptid, cfg.Encap)
+	return validateIPL2tpTunnelOut(out, tid, ptid, cfg.Encap)
 }
 
 func checkStaticTunnel(cfg *StaticTunnelConfig) error {
@@ -287,5 +320,5 @@ func checkStaticTunnel(cfg *StaticTunnelConfig) error {
 	if err != nil {
 		return fmt.Errorf("ip l2tp couldn't show tunnel %v: %v", tid, err)
 	}
-	return validateIPL2tpOut(out, tid, ptid, cfg.Encap)
+	return validateIPL2tpTunnelOut(out, tid, ptid, cfg.Encap)
 }
