@@ -395,7 +395,13 @@ func ParseMessageBuffer(b []byte) (messages []ControlMessage, err error) {
 }
 
 // NewV2ControlMessage builds a new control message
-func NewV2ControlMessage(tid TunnelID, sid SessionID, avps []AVP) (msg *V2ControlMessage, err error) {
+func NewV2ControlMessage(tid ControlConnID, sid ControlConnID, avps []AVP) (msg *V2ControlMessage, err error) {
+	if tid > v2TidSidMax {
+		return nil, fmt.Errorf("v2 tunnel ID %v out of range", tid)
+	}
+	if sid > v2TidSidMax {
+		return nil, fmt.Errorf("v2 session ID %v out of range", sid)
+	}
 	// TODO: validate AVPs
 	return &V2ControlMessage{
 		header: *newL2tpV2MessageHeader(uint16(tid), uint16(sid), 0, 0, AvpsLengthBytes(avps)),

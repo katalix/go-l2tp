@@ -11,19 +11,6 @@ import (
 // ProtocolVersion is the version of the L2TP protocol to use
 type ProtocolVersion int
 
-// TunnelID is the local L2TPv2 tunnel identifier which must be unique
-// to the system.
-type TunnelID uint16
-
-// SessionID is the local L2TPv2 session identifier which must be unique
-// to the parent tunnel.
-type SessionID uint16
-
-// ControlConnID is the local L2TPv3 contol connection identifier which
-// must be unique to the system, and may represent either a tunnel or a
-// session instance.
-type ControlConnID uint32
-
 const (
 	// ProtocolVersion3Fallback is used for RFC3931 fallback mode
 	ProtocolVersion3Fallback = 1
@@ -31,6 +18,14 @@ const (
 	ProtocolVersion2 = nll2tp.ProtocolVersion2
 	// ProtocolVersion3 is used for RFC3931
 	ProtocolVersion3 = nll2tp.ProtocolVersion3
+)
+
+// ControlConnID is a generic identifier used for RFC2661 tunnel
+// and session IDs as well as RFC3931 control connection IDs.
+type ControlConnID uint32
+
+const (
+	v2TidSidMax = ControlConnID(^uint16(0))
 )
 
 // EncapType is the lower-level encapsulation to use for a tunnel
@@ -86,8 +81,6 @@ type QuiescentTunnelConfig struct {
 	LocalAddress      string
 	RemoteAddress     string
 	Version           ProtocolVersion
-	TunnelID          TunnelID
-	PeerTunnelID      TunnelID
 	ControlConnID     ControlConnID
 	PeerControlConnID ControlConnID
 	Encap             EncapType
@@ -150,9 +143,10 @@ func NewQuiescentTunnel(nl *nll2tp.Conn, cfg *QuiescentTunnelConfig) (tunl Tunne
 		return nil, fmt.Errorf("IP encapsulation only supported for L2TPv3 tunnels")
 	}
 	if cfg.Version == ProtocolVersion2 {
-		if cfg.TunnelID == 0 || cfg.PeerTunnelID == 0 {
-			return nil, fmt.Errorf("L2TPv2 tunnel IDs %v and %v must both be > 0",
-				cfg.TunnelID, cfg.PeerTunnelID)
+		if cfg.ControlConnID == 0 || cfg.ControlConnID > 65535 {
+			return nil, fmt.Errorf("L2TPv2 connection ID %v out of range", cfg.ControlConnID)
+		} else if cfg.PeerControlConnID == 0 || cfg.PeerControlConnID > 65535 {
+			return nil, fmt.Errorf("L2TPv2 peer connection ID %v out of range", cfg.PeerControlConnID)
 		}
 	} else {
 		if cfg.ControlConnID == 0 || cfg.PeerControlConnID == 0 {
@@ -196,7 +190,6 @@ func (qt *QuiescentTunnel) Close() {
 }
 
 func newQuiescentTunnel(nl *nll2tp.Conn, sal, sap unix.Sockaddr, cfg *QuiescentTunnelConfig) (qt *QuiescentTunnel, err error) {
-	var tid, ptid nll2tp.L2tpTunnelID
 	qt = &QuiescentTunnel{}
 
 	// Initialise the control plane.
@@ -219,18 +212,9 @@ func newQuiescentTunnel(nl *nll2tp.Conn, sal, sap unix.Sockaddr, cfg *QuiescentT
 		return nil, err
 	}
 
-	// Initialise the data plane.
-	if cfg.Version == ProtocolVersion2 {
-		tid = nll2tp.L2tpTunnelID(cfg.TunnelID)
-		ptid = nll2tp.L2tpTunnelID(cfg.PeerTunnelID)
-	} else {
-		tid = nll2tp.L2tpTunnelID(cfg.ControlConnID)
-		ptid = nll2tp.L2tpTunnelID(cfg.PeerControlConnID)
-	}
-
 	qt.dp, err = newL2tpDataPlane(nl, sal, sap, &nll2tp.TunnelConfig{
-		Tid:     tid,
-		Ptid:    ptid,
+		Tid:     nll2tp.L2tpTunnelID(cfg.ControlConnID),
+		Ptid:    nll2tp.L2tpTunnelID(cfg.PeerControlConnID),
 		Version: nll2tp.L2tpProtocolVersion(cfg.Version),
 		Encap:   nll2tp.L2tpEncapType(cfg.Encap),
 		// TODO: do we want/need to enable kernel debug?

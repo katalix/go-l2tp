@@ -36,12 +36,12 @@ func TestRequiresRoot(t *testing.T) {
 		}{
 			{
 				cfg: QuiescentTunnelConfig{
-					LocalAddress:  "127.0.0.1:6000",
-					RemoteAddress: "localhost:5000",
-					Version:       ProtocolVersion2,
-					TunnelID:      1,
-					PeerTunnelID:  1001,
-					Encap:         EncapTypeIP,
+					LocalAddress:      "127.0.0.1:6000",
+					RemoteAddress:     "localhost:5000",
+					Version:           ProtocolVersion2,
+					ControlConnID:     1,
+					PeerControlConnID: 1001,
+					Encap:             EncapTypeIP,
 				},
 				// L2TPv2 doesn't support IP encap
 				expectFail: true,
@@ -68,22 +68,22 @@ func TestRequiresRoot(t *testing.T) {
 			},
 			{
 				cfg: QuiescentTunnelConfig{
-					LocalAddress:  "127.0.0.1:6000",
-					RemoteAddress: "localhost:5000",
-					Version:       ProtocolVersion2,
-					TunnelID:      1,
-					PeerTunnelID:  1001,
-					Encap:         EncapTypeUDP,
+					LocalAddress:      "127.0.0.1:6000",
+					RemoteAddress:     "localhost:5000",
+					Version:           ProtocolVersion2,
+					ControlConnID:     1,
+					PeerControlConnID: 1001,
+					Encap:             EncapTypeUDP,
 				},
 			},
 			{
 				cfg: QuiescentTunnelConfig{
-					LocalAddress:  "[::1]:6000",
-					RemoteAddress: "[::1]:5000",
-					Version:       ProtocolVersion2,
-					TunnelID:      2,
-					PeerTunnelID:  1002,
-					Encap:         EncapTypeUDP,
+					LocalAddress:      "[::1]:6000",
+					RemoteAddress:     "[::1]:5000",
+					Version:           ProtocolVersion2,
+					ControlConnID:     2,
+					PeerControlConnID: 1002,
+					Encap:             EncapTypeUDP,
 				},
 			},
 			{
@@ -300,8 +300,8 @@ func validateIPL2tpSessionOut(out string, tid, sid, psid uint32) error {
 func checkQuiescentTunnel(cfg *QuiescentTunnelConfig) error {
 	var tid, ptid uint32
 	if cfg.Version == ProtocolVersion2 {
-		tid = uint32(cfg.TunnelID)
-		ptid = uint32(cfg.PeerTunnelID)
+		tid = uint32(cfg.ControlConnID)
+		ptid = uint32(cfg.PeerControlConnID)
 	} else {
 		tid = uint32(cfg.ControlConnID)
 		ptid = uint32(cfg.PeerControlConnID)

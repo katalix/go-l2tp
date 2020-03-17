@@ -153,8 +153,7 @@ func TestSlowStart(t *testing.T) {
 
 type transportSendRecvTestInfo struct {
 	local, peer      string
-	tid              TunnelID
-	ccid             ControlConnID
+	tid              ControlConnID
 	encap            EncapType
 	xcfg             TransportConfig
 	sender, receiver func(xport *Transport) error
@@ -168,12 +167,8 @@ func flipTestInfo(info *transportSendRecvTestInfo) *transportSendRecvTestInfo {
 	flipped.peer = tmp1
 
 	tmp2 := flipped.tid
-	flipped.tid = flipped.xcfg.PeerTunnelID
-	flipped.xcfg.PeerTunnelID = tmp2
-
-	tmp3 := flipped.ccid
-	flipped.ccid = flipped.xcfg.PeerControlConnID
-	flipped.xcfg.PeerControlConnID = tmp3
+	flipped.tid = flipped.xcfg.PeerControlConnID
+	flipped.xcfg.PeerControlConnID = tmp2
 
 	return &flipped
 }
@@ -187,7 +182,7 @@ func transportTestNewTransport(testCfg *transportSendRecvTestInfo) (xport *Trans
 	case EncapTypeUDP:
 		sal, sap, err = newUDPAddressPair(testCfg.local, testCfg.peer)
 	case EncapTypeIP:
-		sal, sap, err = newIPAddressPair(testCfg.local, testCfg.ccid, testCfg.peer, testCfg.xcfg.PeerControlConnID)
+		sal, sap, err = newIPAddressPair(testCfg.local, testCfg.tid, testCfg.peer, testCfg.xcfg.PeerControlConnID)
 	default:
 		err = fmt.Errorf("unhandled encap type %v", testCfg.encap)
 	}
@@ -215,7 +210,7 @@ func transportTestNewTransport(testCfg *transportSendRecvTestInfo) (xport *Trans
 
 func testBasicSendRecvSenderNewHelloMsg(cfg *TransportConfig) (msg ControlMessage, err error) {
 	if cfg.Version == ProtocolVersion2 {
-		msg, err = NewV2ControlMessage(cfg.PeerTunnelID, 0, []AVP{})
+		msg, err = NewV2ControlMessage(cfg.PeerControlConnID, 0, []AVP{})
 		if err != nil {
 			return nil, err
 		}
@@ -274,9 +269,9 @@ func TestBasicSendReceive(t *testing.T) {
 			peer:  "127.0.0.1:9001",
 			encap: EncapTypeUDP,
 			xcfg: TransportConfig{
-				Version:      ProtocolVersion2,
-				AckTimeout:   5 * time.Millisecond,
-				PeerTunnelID: 90,
+				Version:           ProtocolVersion2,
+				AckTimeout:        5 * time.Millisecond,
+				PeerControlConnID: 90,
 			},
 			sender:   testBasicSendRecvHelloSender,
 			receiver: testBasicSendRecvHelloReceiver,
@@ -287,16 +282,16 @@ func TestBasicSendReceive(t *testing.T) {
 			peer:  "[::1]:9001",
 			encap: EncapTypeUDP,
 			xcfg: TransportConfig{
-				Version:      ProtocolVersion2,
-				AckTimeout:   5 * time.Millisecond,
-				PeerTunnelID: 90,
+				Version:           ProtocolVersion2,
+				AckTimeout:        5 * time.Millisecond,
+				PeerControlConnID: 90,
 			},
 			sender:   testBasicSendRecvHelloSender,
 			receiver: testBasicSendRecvHelloReceiver,
 		},
 		{
 			local: "127.0.0.1:9000",
-			ccid:  42,
+			tid:   42,
 			peer:  "127.0.0.1:9001",
 			encap: EncapTypeUDP,
 			xcfg: TransportConfig{
@@ -309,7 +304,7 @@ func TestBasicSendReceive(t *testing.T) {
 		},
 		{
 			local: "[::1]:9000",
-			ccid:  42,
+			tid:   42,
 			peer:  "[::1]:9001",
 			encap: EncapTypeUDP,
 			xcfg: TransportConfig{
@@ -322,7 +317,7 @@ func TestBasicSendReceive(t *testing.T) {
 		},
 		{
 			local: "127.0.0.1:9000",
-			ccid:  42,
+			tid:   42,
 			peer:  "127.0.0.1:9001",
 			encap: EncapTypeIP,
 			xcfg: TransportConfig{
@@ -335,7 +330,7 @@ func TestBasicSendReceive(t *testing.T) {
 		},
 		{
 			local: "[::1]:9000",
-			ccid:  42,
+			tid:   42,
 			peer:  "[::1]:9001",
 			encap: EncapTypeIP,
 			xcfg: TransportConfig{

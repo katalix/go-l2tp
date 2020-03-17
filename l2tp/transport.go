@@ -64,9 +64,7 @@ type TransportConfig struct {
 	AckTimeout time.Duration
 	// Version of the L2TP protocol to use for transport-generated messages.
 	Version ProtocolVersion
-	// Peer tunnel ID to use for transport-generated messages (RFC2661)
-	PeerTunnelID TunnelID
-	// Peer control connection ID to use for transport-generated messages (RFC3931)
+	// Peer control connection ID to use for transport-generated messages
 	PeerControlConnID ControlConnID
 }
 
@@ -531,7 +529,7 @@ func (xport *Transport) sendExplicitAck() (err error) {
 			return fmt.Errorf("failed to build v3 explicit ack message: %v", err)
 		}
 	} else {
-		msg, err = NewV2ControlMessage(xport.config.PeerTunnelID, 0, []AVP{})
+		msg, err = NewV2ControlMessage(xport.config.PeerControlConnID, 0, []AVP{})
 		if err != nil {
 			return fmt.Errorf("failed to build v2 ZLB message: %v", err)
 		}

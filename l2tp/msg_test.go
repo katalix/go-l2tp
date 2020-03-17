@@ -127,8 +127,8 @@ type msgTestAvpMetadata struct {
 
 func TestV2MessageBuild(t *testing.T) {
 	cases := []struct {
-		tid  TunnelID
-		sid  SessionID
+		tid  ControlConnID
+		sid  ControlConnID
 		avps []msgTestAvpMetadata
 	}{
 		{
