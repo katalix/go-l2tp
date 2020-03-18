@@ -76,7 +76,7 @@ func newL2tpV3MessageHeader(ccid uint32, ns, nr uint16, payloadBytes int) *l2tpV
 	}
 }
 
-func newV2ControlMessage(b []byte) (msg *V2ControlMessage, err error) {
+func bytesToV2CtlMsg(b []byte) (msg *v2ControlMessage, err error) {
 	var hdr l2tpV2Header
 	var avps []avp
 
@@ -99,13 +99,13 @@ func newV2ControlMessage(b []byte) (msg *V2ControlMessage, err error) {
 		}
 	}
 
-	return &V2ControlMessage{
+	return &v2ControlMessage{
 		header: hdr,
 		avps:   avps,
 	}, nil
 }
 
-func newV3ControlMessage(b []byte) (msg *V3ControlMessage, err error) {
+func bytesToV3CtlMsg(b []byte) (msg *v3ControlMessage, err error) {
 	var hdr l2tpV3Header
 	var avps []avp
 
@@ -124,82 +124,82 @@ func newV3ControlMessage(b []byte) (msg *V3ControlMessage, err error) {
 		return nil, errors.New("invalid L2TPv3 message: first AVP is not Message Type AVP")
 	}
 
-	return &V3ControlMessage{
+	return &v3ControlMessage{
 		header: hdr,
 		avps:   avps,
 	}, nil
 }
 
-// ControlMessage is an interface representing a generic L2TP
+// controlMessage is an interface representing a generic L2TP
 // control message, providing access to the fields that are common
 // to both v2 and v3 versions of the protocol.
-type ControlMessage interface {
-	ProtocolVersion() nll2tp.L2tpProtocolVersion
-	Len() int
-	Ns() uint16
-	Nr() uint16
-	Avps() []avp
-	Type() avpMsgType
-	Append(avp *avp)
-	SetTransportSeqNum(ns, nr uint16)
-	ToBytes() ([]byte, error)
+type controlMessage interface {
+	protocolVersion() nll2tp.L2tpProtocolVersion
+	getLen() int
+	ns() uint16
+	nr() uint16
+	getAvps() []avp
+	getType() avpMsgType
+	appendAvp(avp *avp)
+	setTransportSeqNum(ns, nr uint16)
+	toBytes() ([]byte, error)
 }
 
-// V2ControlMessage represents an RFC2661 control message
-type V2ControlMessage struct {
+// v2ControlMessage represents an RFC2661 control message
+type v2ControlMessage struct {
 	header l2tpV2Header
 	avps   []avp
 }
 
-// V3ControlMessage represents an RFC3931 control message
-type V3ControlMessage struct {
+// v3ControlMessage represents an RFC3931 control message
+type v3ControlMessage struct {
 	header l2tpV3Header
 	avps   []avp
 }
 
-// ProtocolVersion returns the protocol version for the control message.
+// protocolVersion returns the protocol version for the control message.
 // Implements the ControlMessage interface.
-func (m *V2ControlMessage) ProtocolVersion() nll2tp.L2tpProtocolVersion {
+func (m *v2ControlMessage) protocolVersion() nll2tp.L2tpProtocolVersion {
 	return nll2tp.ProtocolVersion2
 }
 
-// Len returns the total control message length, including the header, in octets.
+// getLen returns the total control message length, including the header, in octets.
 // Implements the ControlMessage interface.
-func (m *V2ControlMessage) Len() int {
+func (m *v2ControlMessage) getLen() int {
 	return int(m.header.Common.Len)
 }
 
-// Ns returns the L2TP transport Ns value for the message.
+// ns returns the L2TP transport Ns value for the message.
 // Implements the ControlMessage interface.
-func (m *V2ControlMessage) Ns() uint16 {
+func (m *v2ControlMessage) ns() uint16 {
 	return m.header.Ns
 }
 
-// Nr returns the L2TP transport Ns value for the message.
+// nr returns the L2TP transport NR value for the message.
 // Implements the ControlMessage interface.
-func (m *V2ControlMessage) Nr() uint16 {
+func (m *v2ControlMessage) nr() uint16 {
 	return m.header.Nr
 }
 
-// Avps returns the slice of Attribute Value Pair (AVP) values held by the control message.
+// getAvps returns the slice of Attribute Value Pair (AVP) values held by the control message.
 // Implements the ControlMessage interface.
-func (m *V2ControlMessage) Avps() []avp {
+func (m *v2ControlMessage) getAvps() []avp {
 	return m.avps
 }
 
-// Type returns the value of the Message Type AVP.
+// getType returns the value of the Message Type AVP.
 // Implements the ControlMessage interface.
-func (m V2ControlMessage) Type() avpMsgType {
+func (m v2ControlMessage) getType() avpMsgType {
 	// Messages with no AVP payload are treated as ZLB (zero-length-body)
 	// ack messages in RFC2661.  Strictly speaking ZLBs have no message type,
 	// so we (ab)use the L2TPv3 AvpMsgTypeAck for that scenario.
-	if len(m.Avps()) == 0 {
+	if len(m.getAvps()) == 0 {
 		return avpMsgTypeAck
 	}
 
-	avp := m.Avps()[0]
+	avp := m.getAvps()[0]
 
-	// c.f. newV2ControlMessage: we've validated this condition at message
+	// c.f. newv2ControlMessage: we've validated this condition at message
 	// creation time, so this is just a belt/braces assertation to catch
 	// programming errors during development
 	if avp.getType() != avpTypeMessage {
@@ -214,29 +214,29 @@ func (m V2ControlMessage) Type() avpMsgType {
 }
 
 // Tid returns the L2TPv2 tunnel ID held by the control message header.
-func (m *V2ControlMessage) Tid() uint16 {
+func (m *v2ControlMessage) Tid() uint16 {
 	return m.header.Tid
 }
 
 // Sid returns the L2TPv2 session ID held by the control message header.
-func (m *V2ControlMessage) Sid() uint16 {
+func (m *v2ControlMessage) Sid() uint16 {
 	return m.header.Sid
 }
 
-// Append appends an AVP to the message.
-func (m *V2ControlMessage) Append(avp *avp) {
+// appendAvp appends an AVP to the message.
+func (m *v2ControlMessage) appendAvp(avp *avp) {
 	m.avps = append(m.avps, *avp)
 	m.header.Common.Len += uint16(avp.totalLen())
 }
 
-// SetTransportSeqNum sets the header sequence numbers.
-func (m *V2ControlMessage) SetTransportSeqNum(ns, nr uint16) {
+// setTransportSeqNum sets the header sequence numbers.
+func (m *v2ControlMessage) setTransportSeqNum(ns, nr uint16) {
 	m.header.Ns = ns
 	m.header.Nr = nr
 }
 
-// ToBytes encodes the message as bytes for transmission
-func (m *V2ControlMessage) ToBytes() ([]byte, error) {
+// toBytes encodes the message as bytes for transmission
+func (m *v2ControlMessage) toBytes() ([]byte, error) {
 	buf := new(bytes.Buffer)
 
 	if err := binary.Write(buf, binary.BigEndian, m.header); err != nil {
@@ -255,42 +255,42 @@ func (m *V2ControlMessage) ToBytes() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// ProtocolVersion returns the protocol version for the control message.
+// protocolVersion returns the protocol version for the control message.
 // Implements the ControlMessage interface.
-func (m *V3ControlMessage) ProtocolVersion() nll2tp.L2tpProtocolVersion {
+func (m *v3ControlMessage) protocolVersion() nll2tp.L2tpProtocolVersion {
 	return nll2tp.ProtocolVersion3
 }
 
-// Len returns the total control message length, including the header, in octets.
+// getLen returns the total control message length, including the header, in octets.
 // Implements the ControlMessage interface.
-func (m *V3ControlMessage) Len() int {
+func (m *v3ControlMessage) getLen() int {
 	return int(m.header.Common.Len)
 }
 
-// Ns returns the L2TP transport Ns value for the message.
+// ns returns the L2TP transport Ns value for the message.
 // Implements the ControlMessage interface.
-func (m *V3ControlMessage) Ns() uint16 {
+func (m *v3ControlMessage) ns() uint16 {
 	return m.header.Ns
 }
 
-// Nr returns the L2TP transport Ns value for the message.
+// nr returns the L2TP transport Nr value for the message.
 // Implements the ControlMessage interface.
-func (m *V3ControlMessage) Nr() uint16 {
+func (m *v3ControlMessage) nr() uint16 {
 	return m.header.Nr
 }
 
-// Avps returns the slice of Attribute Value Pair (AVP) values held by the control message.
+// getAvps returns the slice of Attribute Value Pair (AVP) values held by the control message.
 // Implements the ControlMessage interface.
-func (m *V3ControlMessage) Avps() []avp {
+func (m *v3ControlMessage) getAvps() []avp {
 	return m.avps
 }
 
-// Type returns the value of the Message Type AVP.
+// getType returns the value of the Message Type AVP.
 // Implements the ControlMessage interface.
-func (m V3ControlMessage) Type() avpMsgType {
-	avp := m.Avps()[0]
+func (m v3ControlMessage) getType() avpMsgType {
+	avp := m.getAvps()[0]
 
-	// c.f. newV2ControlMessage: we've validated this condition at message
+	// c.f. bytesToV2CtlMsg: we've validated this condition at message
 	// creation time, so this is just a belt/braces assertation to catch
 	// programming errors during development
 	if avp.getType() != avpTypeMessage {
@@ -305,24 +305,24 @@ func (m V3ControlMessage) Type() avpMsgType {
 }
 
 // ControlConnectionID returns the control connection ID held by the control message header.
-func (m *V3ControlMessage) ControlConnectionID() uint32 {
+func (m *v3ControlMessage) ControlConnectionID() uint32 {
 	return m.header.Ccid
 }
 
-// Append appends an AVP to the message.
-func (m *V3ControlMessage) Append(avp *avp) {
+// appendAvp appends an AVP to the message.
+func (m *v3ControlMessage) appendAvp(avp *avp) {
 	m.avps = append(m.avps, *avp)
 	m.header.Common.Len += uint16(avp.totalLen())
 }
 
-// SetTransportSeqNum sets the header sequence numbers.
-func (m *V3ControlMessage) SetTransportSeqNum(ns, nr uint16) {
+// setTransportSeqNum sets the header sequence numbers.
+func (m *v3ControlMessage) setTransportSeqNum(ns, nr uint16) {
 	m.header.Ns = ns
 	m.header.Nr = nr
 }
 
-// ToBytes encodes the message as bytes for transmission
-func (m *V3ControlMessage) ToBytes() ([]byte, error) {
+// toBytes encodes the message as bytes for transmission
+func (m *v3ControlMessage) toBytes() ([]byte, error) {
 	buf := new(bytes.Buffer)
 
 	if err := binary.Write(buf, binary.BigEndian, m.header); err != nil {
@@ -341,9 +341,9 @@ func (m *V3ControlMessage) ToBytes() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// ParseMessageBuffer takes a byte slice of L2TP control message data and
-// parses it into an array of ControlMessage instances.
-func ParseMessageBuffer(b []byte) (messages []ControlMessage, err error) {
+// parseMessageBuffer takes a byte slice of L2TP control message data and
+// parses it into an array of controlMessage instances.
+func parseMessageBuffer(b []byte) (messages []controlMessage, err error) {
 	r := bytes.NewReader(b)
 	for r.Len() >= controlMessageMinLen {
 		var ver nll2tp.L2tpProtocolVersion
@@ -371,14 +371,14 @@ func ParseMessageBuffer(b []byte) (messages []ControlMessage, err error) {
 		}
 
 		if ver == nll2tp.ProtocolVersion2 {
-			var msg *V2ControlMessage
-			if msg, err = newV2ControlMessage(b[cursor : cursor+int64(h.Len)]); err != nil {
+			var msg *v2ControlMessage
+			if msg, err = bytesToV2CtlMsg(b[cursor : cursor+int64(h.Len)]); err != nil {
 				return nil, err
 			}
 			messages = append(messages, msg)
 		} else if ver == nll2tp.ProtocolVersion3 {
-			var msg *V3ControlMessage
-			if msg, err = newV3ControlMessage(b[cursor : cursor+int64(+h.Len)]); err != nil {
+			var msg *v3ControlMessage
+			if msg, err = bytesToV3CtlMsg(b[cursor : cursor+int64(+h.Len)]); err != nil {
 				return nil, err
 			}
 			messages = append(messages, msg)
@@ -394,8 +394,8 @@ func ParseMessageBuffer(b []byte) (messages []ControlMessage, err error) {
 	return messages, nil
 }
 
-// NewV2ControlMessage builds a new control message
-func NewV2ControlMessage(tid ControlConnID, sid ControlConnID, avps []avp) (msg *V2ControlMessage, err error) {
+// newV2ControlMessage builds a new control message
+func newV2ControlMessage(tid ControlConnID, sid ControlConnID, avps []avp) (msg *v2ControlMessage, err error) {
 	if tid > v2TidSidMax {
 		return nil, fmt.Errorf("v2 tunnel ID %v out of range", tid)
 	}
@@ -403,16 +403,16 @@ func NewV2ControlMessage(tid ControlConnID, sid ControlConnID, avps []avp) (msg 
 		return nil, fmt.Errorf("v2 session ID %v out of range", sid)
 	}
 	// TODO: validate AVPs
-	return &V2ControlMessage{
+	return &v2ControlMessage{
 		header: *newL2tpV2MessageHeader(uint16(tid), uint16(sid), 0, 0, avpsLengthBytes(avps)),
 		avps:   avps,
 	}, nil
 }
 
-// NewV3ControlMessage builds a new control message
-func NewV3ControlMessage(ccid ControlConnID, avps []avp) (msg *V3ControlMessage, err error) {
+// newV3ControlMessage builds a new control message
+func newV3ControlMessage(ccid ControlConnID, avps []avp) (msg *v3ControlMessage, err error) {
 	// TODO: validate AVPs
-	return &V3ControlMessage{
+	return &v3ControlMessage{
 		header: *newL2tpV3MessageHeader(uint32(ccid), 0, 0, avpsLengthBytes(avps)),
 		avps:   avps,
 	}, nil

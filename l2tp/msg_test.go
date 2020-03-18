@@ -15,7 +15,7 @@ type msgInfo struct {
 	msgType          avpMsgType
 }
 
-func TestParseMessageBuffer(t *testing.T) {
+func TestparseMessageBuffer(t *testing.T) {
 	cases := []struct {
 		in   []byte
 		want []msgInfo
@@ -64,32 +64,32 @@ func TestParseMessageBuffer(t *testing.T) {
 		},
 	}
 	for _, c := range cases {
-		got, err := ParseMessageBuffer(c.in)
+		got, err := parseMessageBuffer(c.in)
 		if err == nil {
 			for i, g := range got {
 				// common checks
-				if g.ProtocolVersion() != c.want[i].version {
-					t.Errorf("ProtocolVersion() == %q, want %q", g.ProtocolVersion(), c.want[i].version)
+				if g.protocolVersion() != c.want[i].version {
+					t.Errorf("ProtocolVersion() == %q, want %q", g.protocolVersion(), c.want[i].version)
 				}
-				if g.Len() != len(c.in) {
-					t.Errorf("Len() == %q, want %q", g.Len(), len(c.in))
+				if g.getLen() != len(c.in) {
+					t.Errorf("Len() == %q, want %q", g.getLen(), len(c.in))
 				}
-				if g.Ns() != c.want[i].ns {
-					t.Errorf("Ns() == %q, want %q", g.Ns(), c.want[i].ns)
+				if g.ns() != c.want[i].ns {
+					t.Errorf("Ns() == %q, want %q", g.ns(), c.want[i].ns)
 				}
-				if g.Nr() != c.want[i].nr {
-					t.Errorf("Nr() == %q, want %q", g.Nr(), c.want[i].nr)
+				if g.nr() != c.want[i].nr {
+					t.Errorf("Nr() == %q, want %q", g.nr(), c.want[i].nr)
 				}
-				if len(g.Avps()) != c.want[i].navps {
-					t.Errorf("AVP count failed: got %q, want %q", len(g.Avps()), c.want[i].navps)
+				if len(g.getAvps()) != c.want[i].navps {
+					t.Errorf("AVP count failed: got %q, want %q", len(g.getAvps()), c.want[i].navps)
 				}
-				if g.Type() != c.want[i].msgType {
-					t.Errorf("Type() == %q, want %q", g.Type(), c.want[i].msgType)
+				if g.getType() != c.want[i].msgType {
+					t.Errorf("Type() == %q, want %q", g.getType(), c.want[i].msgType)
 				}
 				// version specifics
 				switch c.want[i].version {
 				case nll2tp.ProtocolVersion2:
-					v2msg, ok := g.(*V2ControlMessage)
+					v2msg, ok := g.(*v2ControlMessage)
 					if ok {
 						if v2msg.Tid() != c.want[i].tid {
 							t.Errorf("Tid() == %q, want %q", v2msg.Tid(), c.want[i].tid)
@@ -101,7 +101,7 @@ func TestParseMessageBuffer(t *testing.T) {
 						t.Errorf("Expected V2ControlMessage, but didn't receive one")
 					}
 				case nll2tp.ProtocolVersion3:
-					v3msg, ok := g.(*V3ControlMessage)
+					v3msg, ok := g.(*v3ControlMessage)
 					if ok {
 						if v3msg.ControlConnectionID() != c.want[i].ccid {
 							t.Errorf("ControlConnectionID() == %q, want %q", v3msg.ControlConnectionID(), c.want[i].ccid)
@@ -112,7 +112,7 @@ func TestParseMessageBuffer(t *testing.T) {
 				}
 			}
 		} else {
-			t.Errorf("ParseMessageBuffer(%q) failed: %q", c.in, err)
+			t.Errorf("parseMessageBuffer(%q) failed: %q", c.in, err)
 		}
 	}
 }
@@ -139,9 +139,9 @@ func TestV2MessageBuild(t *testing.T) {
 	}
 	for _, c := range cases {
 
-		msg, err := NewV2ControlMessage(c.tid, c.sid, []avp{})
+		msg, err := newV2ControlMessage(c.tid, c.sid, []avp{})
 		if err != nil {
-			t.Fatalf("NewV2ControlMessage(%v, %v, []) said: %v", c.tid, c.sid, err)
+			t.Fatalf("newV2ControlMessage(%v, %v, []) said: %v", c.tid, c.sid, err)
 		}
 
 		for _, in := range c.avps {
@@ -149,11 +149,11 @@ func TestV2MessageBuild(t *testing.T) {
 			if err != nil {
 				t.Fatalf("newAvp(%v, %v, %v) said: %v", in.vendorID, in.avpType, in.data, err)
 			}
-			msg.Append(avp)
+			msg.appendAvp(avp)
 		}
 
-		if msg.Type() != c.avps[0].data {
-			t.Fatalf("%v != %v", msg.Type(), c.avps[0].data)
+		if msg.getType() != c.avps[0].data {
+			t.Fatalf("%v != %v", msg.getType(), c.avps[0].data)
 		}
 	}
 }
@@ -171,9 +171,9 @@ func TestV3MessageBuild(t *testing.T) {
 	}
 	for _, c := range cases {
 
-		msg, err := NewV3ControlMessage(c.ccid, []avp{})
+		msg, err := newV3ControlMessage(c.ccid, []avp{})
 		if err != nil {
-			t.Fatalf("NewV3ControlMessage(%v, []) said: %v", c.ccid, err)
+			t.Fatalf("newV3ControlMessage(%v, []) said: %v", c.ccid, err)
 		}
 
 		for _, in := range c.avps {
@@ -181,11 +181,11 @@ func TestV3MessageBuild(t *testing.T) {
 			if err != nil {
 				t.Fatalf("newAvp(%v, %v, %v) said: %v", in.vendorID, in.avpType, in.data, err)
 			}
-			msg.Append(avp)
+			msg.appendAvp(avp)
 		}
 
-		if msg.Type() != c.avps[0].data {
-			t.Fatalf("%v != %v", msg.Type(), c.avps[0].data)
+		if msg.getType() != c.avps[0].data {
+			t.Fatalf("%v != %v", msg.getType(), c.avps[0].data)
 		}
 	}
 }
@@ -202,19 +202,19 @@ func TestParseEncode(t *testing.T) {
 		},
 	}
 	for _, c := range cases {
-		got, err := ParseMessageBuffer(c.in)
+		got, err := parseMessageBuffer(c.in)
 		if err != nil {
-			t.Fatalf("ParseMessageBuffer(%v) failed: %v", c.in, err)
+			t.Fatalf("parseMessageBuffer(%v) failed: %v", c.in, err)
 		}
 		if len(got) != 1 {
-			t.Fatalf("ParseMessageBuffer(%v): wanted 1 message, got %d", c.in, len(got))
+			t.Fatalf("parseMessageBuffer(%v): wanted 1 message, got %d", c.in, len(got))
 		}
-		mb, err := got[0].ToBytes()
+		mb, err := got[0].toBytes()
 		if err != nil {
-			t.Fatalf("ToBytes() failed: %v", err)
+			t.Fatalf("toBytes() failed: %v", err)
 		}
 		if !bytes.Equal(mb, c.in) {
-			t.Fatalf("ToBytes(): wanted %v, got %v", c.in, mb)
+			t.Fatalf("toBytes(): wanted %v, got %v", c.in, mb)
 		}
 	}
 }

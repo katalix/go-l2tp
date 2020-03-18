@@ -208,14 +208,14 @@ func transportTestNewTransport(testCfg *transportSendRecvTestInfo) (xport *Trans
 	return NewTransport(cp, testCfg.xcfg)
 }
 
-func testBasicSendRecvSenderNewHelloMsg(cfg *TransportConfig) (msg ControlMessage, err error) {
+func testBasicSendRecvSenderNewHelloMsg(cfg *TransportConfig) (msg controlMessage, err error) {
 	if cfg.Version == ProtocolVersion2 {
-		msg, err = NewV2ControlMessage(cfg.PeerControlConnID, 0, []avp{})
+		msg, err = newV2ControlMessage(cfg.PeerControlConnID, 0, []avp{})
 		if err != nil {
 			return nil, err
 		}
 	} else if cfg.Version == ProtocolVersion3 {
-		msg, err = NewV3ControlMessage(cfg.PeerControlConnID, []avp{})
+		msg, err = newV3ControlMessage(cfg.PeerControlConnID, []avp{})
 		if err != nil {
 			return nil, err
 		}
@@ -227,7 +227,7 @@ func testBasicSendRecvSenderNewHelloMsg(cfg *TransportConfig) (msg ControlMessag
 	if err != nil {
 		return nil, err
 	}
-	msg.Append(avp)
+	msg.appendAvp(avp)
 
 	return msg, nil
 }
@@ -254,8 +254,8 @@ func testBasicSendRecvHelloReceiver(xport *Transport) error {
 		if err != nil {
 			return fmt.Errorf("failed to receive message: %v", err)
 		}
-		if msg.Type() != avpMsgTypeHello {
-			return fmt.Errorf("expected message %v, got %v", avpMsgTypeHello, msg.Type())
+		if msg.getType() != avpMsgTypeHello {
+			return fmt.Errorf("expected message %v, got %v", avpMsgTypeHello, msg.getType())
 		}
 	}
 	return nil

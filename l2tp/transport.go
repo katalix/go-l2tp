@@ -16,11 +16,11 @@ type slowStartState struct {
 }
 
 // ctlMsg encapsulates state for control message transmission,
-// wrapping the basic ControlMessage with transport-specific
+// wrapping the basic controlMessage with transport-specific
 // metadata.
 type ctlMsg struct {
 	// The message for transmission
-	msg ControlMessage
+	msg controlMessage
 	// The current retry count for the message.  This is bound by
 	// the transport config MaxRetries parameter.
 	nretries uint
@@ -77,9 +77,9 @@ type Transport struct {
 	helloTimer, ackTimer *time.Timer
 	sendChan             chan *ctlMsg
 	retryChan            chan *ctlMsg
-	recvChan             chan ControlMessage
+	recvChan             chan controlMessage
 	cpChan               chan *rawMsg
-	rxQueue              []ControlMessage
+	rxQueue              []controlMessage
 	txQueue, ackQueue    []*ctlMsg
 	wg                   sync.WaitGroup
 }
@@ -160,13 +160,13 @@ func (s *slowStartState) incrementNs() {
 }
 
 // A message with ns value equal to our nr is the next packet in sequence.
-func (s *slowStartState) msgIsInSequence(msg ControlMessage) bool {
-	return seqCompare(s.nr, msg.Ns()) == 0
+func (s *slowStartState) msgIsInSequence(msg controlMessage) bool {
+	return seqCompare(s.nr, msg.ns()) == 0
 }
 
 // A message with ns value < our nr is stale/duplicated.
-func (s *slowStartState) msgIsStale(msg ControlMessage) bool {
-	return seqCompare(msg.Ns(), s.nr) == -1
+func (s *slowStartState) msgIsStale(msg controlMessage) bool {
+	return seqCompare(msg.ns(), s.nr) == -1
 }
 
 func (m *ctlMsg) completeMessageSend(err error) {
@@ -316,24 +316,24 @@ func runTransport(xport *Transport, wg *sync.WaitGroup) {
 	}
 }
 
-func (xport *Transport) recvFrame(rawMsg *rawMsg) (messages []ControlMessage, err error) {
-	messages, err = ParseMessageBuffer(rawMsg.b)
+func (xport *Transport) recvFrame(rawMsg *rawMsg) (messages []controlMessage, err error) {
+	messages, err = parseMessageBuffer(rawMsg.b)
 	if err != nil {
 		return nil, err
 	}
 
 	for _, msg := range messages {
 		// Sanity check the packet sequence number: enqueue the packet for rx if it's OK
-		if seqCompare(msg.Nr(), seqIncrement(xport.slowStart.ns)) > 0 {
+		if seqCompare(msg.nr(), seqIncrement(xport.slowStart.ns)) > 0 {
 			return nil, fmt.Errorf("dropping invalid packet %s ns %d nr %d (transport ns %d nr %d)",
-				msg.Type(), msg.Ns(), msg.Nr(), xport.slowStart.ns, xport.slowStart.nr)
+				msg.getType(), msg.ns(), msg.nr(), xport.slowStart.ns, xport.slowStart.nr)
 		}
 	}
 
 	return messages, nil
 }
 
-func (xport *Transport) recvMessage(msg ControlMessage) {
+func (xport *Transport) recvMessage(msg controlMessage) {
 	if xport.slowStart.msgIsInSequence(msg) {
 		xport.toggleAckTimer(true)
 		xport.resetHelloTimer()
@@ -352,7 +352,7 @@ func (xport *Transport) dequeueRxMessage() bool {
 			// In general we don't need to do anything more with an ack message
 			// since they're just for the transport's purposes, so just drop them
 			xport.rxQueue = append(xport.rxQueue[:i], xport.rxQueue[i+1:]...)
-			if msg.Type() != avpMsgTypeAck {
+			if msg.getType() != avpMsgTypeAck {
 				xport.recvMessage(msg)
 			}
 			return true
@@ -372,17 +372,17 @@ func (xport *Transport) processRxQueue() {
 	}
 }
 
-func (xport *Transport) sendMessage1(msg ControlMessage, isRetransmit bool) error {
+func (xport *Transport) sendMessage1(msg controlMessage, isRetransmit bool) error {
 	// Set message sequence numbers.
 	// A retransmitted message should have ns set already.
 	if isRetransmit {
-		msg.SetTransportSeqNum(msg.Ns(), xport.slowStart.nr)
+		msg.setTransportSeqNum(msg.ns(), xport.slowStart.nr)
 	} else {
-		msg.SetTransportSeqNum(xport.slowStart.ns, xport.slowStart.nr)
+		msg.setTransportSeqNum(xport.slowStart.ns, xport.slowStart.nr)
 	}
 
 	// Render as a byte slice and send.
-	b, err := msg.ToBytes()
+	b, err := msg.toBytes()
 	if err == nil {
 		_, err = xport.cp.write(b)
 	}
@@ -400,7 +400,7 @@ func (xport *Transport) sendMessage(msg *ctlMsg) error {
 	if err == nil {
 		xport.toggleAckTimer(false) // we have just sent an implicit ack
 		xport.resetHelloTimer()
-		if msg.msg.Type() != avpMsgTypeAck && msg.nretries == 0 {
+		if msg.msg.getType() != avpMsgTypeAck && msg.nretries == 0 {
 			xport.slowStart.incrementNs()
 		}
 		msg.retryTimer = time.AfterFunc(xport.scaleRetryTimeout(msg), func() {
@@ -414,7 +414,7 @@ func (xport *Transport) retransmitMessage(msg *ctlMsg) error {
 	msg.nretries++
 	if msg.nretries >= xport.config.MaxRetries {
 		return fmt.Errorf("transmit of %s failed after %d retry attempts",
-			msg.msg.Type(), xport.config.MaxRetries)
+			msg.msg.getType(), xport.config.MaxRetries)
 	}
 	err := xport.sendMessage(msg)
 	if err == nil {
@@ -447,10 +447,10 @@ func (xport *Transport) processTxQueue() error {
 	return nil
 }
 
-func (xport *Transport) processAckQueue(recvd ControlMessage) bool {
+func (xport *Transport) processAckQueue(recvd controlMessage) bool {
 	found := false
 	for i, msg := range xport.ackQueue {
-		if seqCompare(recvd.Nr(), msg.msg.Ns()) > 0 {
+		if seqCompare(recvd.nr(), msg.msg.ns()) > 0 {
 			xport.slowStart.onAck(xport.config.TxWindowSize)
 			xport.ackQueue = append(xport.ackQueue[:i], xport.ackQueue[i+1:]...)
 			msg.completeMessageSend(nil)
@@ -517,19 +517,19 @@ func (xport *Transport) sendHelloMessage() error {
 }
 
 func (xport *Transport) sendExplicitAck() (err error) {
-	var msg ControlMessage
+	var msg controlMessage
 
 	if xport.config.Version == ProtocolVersion3Fallback || xport.config.Version == ProtocolVersion3 {
 		a, err := newAvp(vendorIDIetf, avpTypeMessage, avpMsgTypeAck)
 		if err != nil {
 			return fmt.Errorf("failed to build v3 explicit ack message type AVP: %v", err)
 		}
-		msg, err = NewV3ControlMessage(xport.config.PeerControlConnID, []avp{*a})
+		msg, err = newV3ControlMessage(xport.config.PeerControlConnID, []avp{*a})
 		if err != nil {
 			return fmt.Errorf("failed to build v3 explicit ack message: %v", err)
 		}
 	} else {
-		msg, err = NewV2ControlMessage(xport.config.PeerControlConnID, 0, []avp{})
+		msg, err = newV2ControlMessage(xport.config.PeerControlConnID, 0, []avp{})
 		if err != nil {
 			return fmt.Errorf("failed to build v2 ZLB message: %v", err)
 		}
@@ -577,9 +577,9 @@ func NewTransport(cp *l2tpControlPlane, cfg TransportConfig) (xport *Transport, 
 		ackTimer:   ackTimer,
 		sendChan:   make(chan *ctlMsg),
 		retryChan:  make(chan *ctlMsg),
-		recvChan:   make(chan ControlMessage),
+		recvChan:   make(chan controlMessage),
 		cpChan:     make(chan *rawMsg),
-		rxQueue:    []ControlMessage{},
+		rxQueue:    []controlMessage{},
 		txQueue:    []*ctlMsg{},
 		ackQueue:   []*ctlMsg{},
 	}
@@ -607,7 +607,7 @@ func (xport *Transport) GetConfig() TransportConfig {
 // The caller will block until the message has been acked by the peer.
 // Failure indicates that the transport has failed and the parent tunnel
 // should be torn down.
-func (xport *Transport) Send(msg ControlMessage) error {
+func (xport *Transport) Send(msg controlMessage) error {
 	cm := ctlMsg{
 		msg:          msg,
 		nretries:     0,
@@ -624,7 +624,7 @@ func (xport *Transport) Send(msg ControlMessage) error {
 // The caller will block until a message has been received from the peer.
 // Failure indicates that the transport has failed and the parent tunnel
 // should be torn down.
-func (xport *Transport) Recv() (msg ControlMessage, err error) {
+func (xport *Transport) Recv() (msg controlMessage, err error) {
 	msg, ok := <-xport.recvChan
 	if !ok {
 		return nil, errors.New("transport is down")
