@@ -26,6 +26,10 @@ type TunnelConfig struct {
 	Version      ProtocolVersion
 	TunnelID     ControlConnID
 	PeerTunnelID ControlConnID
+	WindowSize   uint16
+	HelloTimeout time.Duration
+	RetryTimeout time.Duration
+	MaxRetries   uint
 	// map of sessions within the tunnel
 	Sessions map[string]*SessionConfig
 }
@@ -51,17 +55,48 @@ func toBool(v interface{}) (bool, error) {
 	return false, fmt.Errorf("supplied value could not be parsed as a bool")
 }
 
+// go-toml's ToMap function represents numbers as either uint64 or int64.
+// So when we are converting numbers, we need to figure out which one it
+// has picked and range check to ensure that the number from the config
+// fits within the range of the destination type.
+func toByte(v interface{}) (byte, error) {
+	if b, ok := v.(int64); ok {
+		if b < 0x0 || b > 0xff {
+			return 0, fmt.Errorf("value %x out of range", b)
+		}
+		return byte(b), nil
+	} else if b, ok := v.(uint64); ok {
+		if b > 0xff {
+			return 0, fmt.Errorf("value %x out of range", b)
+		}
+		return byte(b), nil
+	}
+	return 0, fmt.Errorf("unexpected %T value %v", v, v)
+}
+
+func toUint16(v interface{}) (uint16, error) {
+	if b, ok := v.(int64); ok {
+		if b < 0x0 || b > 0xffff {
+			return 0, fmt.Errorf("value %x out of range", b)
+		}
+		return uint16(b), nil
+	} else if b, ok := v.(uint64); ok {
+		if b > 0xffff {
+			return 0, fmt.Errorf("value %x out of range", b)
+		}
+		return uint16(b), nil
+	}
+	return 0, fmt.Errorf("unexpected %T value %v", v, v)
+}
+
 func toUint32(v interface{}) (uint32, error) {
-	// go-toml's ToMap function represents numbers as either uint64 or int64.
-	// Figure out which one it has picked and range check to ensure that each
-	// array member fits in the bounds of a byte.
 	if b, ok := v.(int64); ok {
 		if b < 0x0 || b > 0xffffffff {
 			return 0, fmt.Errorf("value %x out of range", b)
 		}
 		return uint32(b), nil
 	} else if b, ok := v.(uint64); ok {
-		if b < 0x0 || b > 0xffffffff {
+		if b > 0xffffffff {
 			return 0, fmt.Errorf("value %x out of range", b)
 		}
 		return uint32(b), nil
@@ -154,22 +189,11 @@ func toBytes(v interface{}) ([]byte, error) {
 	// TOML arrays can be mixed type, so we have to check on a value-by-value
 	// basis that the value in the array can be represented as a byte.
 	for _, number := range numbers {
-		// go-toml's ToMap function represents numbers as either uint64 or int64.
-		// Figure out which one it has picked and range check to ensure that each
-		// array member fits in the bounds of a byte.
-		if b, ok := number.(int64); ok {
-			if b < 0x0 || b > 0xff {
-				return nil, fmt.Errorf("value %x out of range in byte array", b)
-			}
-			out = append(out, byte(b))
-		} else if b, ok := number.(uint64); ok {
-			if b < 0x0 || b > 0xff {
-				return nil, fmt.Errorf("value %x out of range in byte array", b)
-			}
-			out = append(out, byte(b))
-		} else {
-			return nil, fmt.Errorf("unexpected %T value %v in byte array", number, number)
+		b, err := toByte(number)
+		if err != nil {
+			return nil, err
 		}
+		out = append(out, b)
 	}
 	return out, nil
 }
@@ -215,8 +239,7 @@ func (t *TunnelConfig) loadSessions(v interface{}) error {
 	for name, got := range sessions {
 		smap, ok := got.(map[string]interface{})
 		if !ok {
-			// Unlikely, so the slightly opaque error is probably OK
-			return fmt.Errorf("config for session %v isn't a map", name)
+			return fmt.Errorf("session instances must be named, e.g. '[tunnel.mytunnel.session.mysession]'")
 		}
 		scfg, err := newSessionConfig(smap)
 		if err != nil {
@@ -246,6 +269,16 @@ func newTunnelConfig(tcfg map[string]interface{}) (*TunnelConfig, error) {
 			tc.TunnelID, err = toCCID(v)
 		case "ptid":
 			tc.PeerTunnelID, err = toCCID(v)
+		case "window_size":
+			tc.WindowSize, err = toUint16(v)
+		case "hello_timeout":
+			tc.HelloTimeout, err = toDurationMs(v)
+		case "retry_timeout":
+			tc.RetryTimeout, err = toDurationMs(v)
+		case "max_retries":
+			if u, err := toUint16(v); err == nil {
+				tc.MaxRetries = uint(u)
+			}
 		case "session":
 			err = tc.loadSessions(v)
 		default:
@@ -275,8 +308,7 @@ func (cfg *Config) loadTunnels() error {
 	for name, got := range tunnels {
 		tmap, ok := got.(map[string]interface{})
 		if !ok {
-			// Unlikely, so the slightly opaque error is probably OK
-			return fmt.Errorf("config for tunnel %v isn't a map", name)
+			return fmt.Errorf("tunnel instances must be named, e.g. '[tunnel.mytunnel]'")
 		}
 		tcfg, err := newTunnelConfig(tmap)
 		if err != nil {
