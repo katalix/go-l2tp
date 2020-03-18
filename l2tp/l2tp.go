@@ -64,7 +64,7 @@ const (
 	DebugFlagsData = nll2tp.MsgData
 )
 
-// L2SpecType defines the Layer 2 specific sublayer for data packets as per RFC3931 sectino 3.2.2.
+// L2SpecType defines the Layer 2 specific sublayer for data packets as per RFC3931 section 3.2.2.
 type L2SpecType int32
 
 const (
