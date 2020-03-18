@@ -9,14 +9,14 @@ import (
 func TestParseAVPBufferGood(t *testing.T) {
 	cases := []struct {
 		in   []byte
-		want []AVP
+		want []avp
 	}{
 		{
 			in: []byte{0x80, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x06}, // message type
-			want: []AVP{
-				AVP{
-					header:  avpHeader{FlagLen: 0x8008, VendorID: 0, AvpType: AvpTypeMessage},
-					payload: avpPayload{dataType: AvpDataTypeMsgID, data: []byte{0x00, 0x06}},
+			want: []avp{
+				avp{
+					header:  avpHeader{FlagLen: 0x8008, VendorID: 0, AvpType: avpTypeMessage},
+					payload: avpPayload{dataType: avpDataTypeMsgID, data: []byte{0x00, 0x06}},
 				},
 			},
 		},
@@ -30,22 +30,22 @@ func TestParseAVPBufferGood(t *testing.T) {
 				0x2d, 0x37, 0x31, 0x2d, 0x67, 0x65, 0x6e, 0x65, 0x72, 0x69, 0x63, 0x20, 0x28, 0x78, 0x38, 0x36,
 				0x5f, 0x36, 0x34, 0x29, /* vendor-name AVP */
 			},
-			want: []AVP{
-				AVP{
-					header:  avpHeader{FlagLen: 0x8008, VendorID: 0, AvpType: AvpTypeMessage},
-					payload: avpPayload{dataType: AvpDataTypeMsgID, data: []byte{0x00, 0x01}},
+			want: []avp{
+				avp{
+					header:  avpHeader{FlagLen: 0x8008, VendorID: 0, AvpType: avpTypeMessage},
+					payload: avpPayload{dataType: avpDataTypeMsgID, data: []byte{0x00, 0x01}},
 				},
-				AVP{
-					header:  avpHeader{FlagLen: 0x0008, VendorID: 0, AvpType: AvpTypeProtocolVersion},
-					payload: avpPayload{dataType: AvpDataTypeBytes, data: []byte{0x01, 0x00}},
+				avp{
+					header:  avpHeader{FlagLen: 0x0008, VendorID: 0, AvpType: avpTypeProtocolVersion},
+					payload: avpPayload{dataType: avpDataTypeBytes, data: []byte{0x01, 0x00}},
 				},
-				AVP{
-					header:  avpHeader{FlagLen: 0x800a, VendorID: 0, AvpType: AvpTypeFramingCap},
-					payload: avpPayload{dataType: AvpDataTypeUint32, data: []byte{0x00, 0x00, 0x00, 0x03}},
+				avp{
+					header:  avpHeader{FlagLen: 0x800a, VendorID: 0, AvpType: avpTypeFramingCap},
+					payload: avpPayload{dataType: avpDataTypeUint32, data: []byte{0x00, 0x00, 0x00, 0x03}},
 				},
-				AVP{
-					header: avpHeader{FlagLen: 0x0034, VendorID: 0, AvpType: AvpTypeVendorName},
-					payload: avpPayload{dataType: AvpDataTypeString,
+				avp{
+					header: avpHeader{FlagLen: 0x0034, VendorID: 0, AvpType: avpTypeVendorName},
+					payload: avpPayload{dataType: avpDataTypeString,
 						data: []byte{
 							0x70, 0x72, 0x6f, 0x6c, 0x32, 0x74, 0x70, 0x20,
 							0x31, 0x2e, 0x37, 0x2e, 0x33, 0x20, 0x4c, 0x69,
@@ -64,30 +64,30 @@ func TestParseAVPBufferGood(t *testing.T) {
 				0x80, 0x08, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, // result code
 				0x80, 0x08, 0x00, 0x00, 0x00, 0x09, 0x5f, 0x2b, // assigned tunnel id
 			},
-			want: []AVP{
-				AVP{
-					header:  avpHeader{FlagLen: 0x8008, VendorID: 0, AvpType: AvpTypeMessage},
-					payload: avpPayload{dataType: AvpDataTypeMsgID, data: []byte{0x00, 0x04}},
+			want: []avp{
+				avp{
+					header:  avpHeader{FlagLen: 0x8008, VendorID: 0, AvpType: avpTypeMessage},
+					payload: avpPayload{dataType: avpDataTypeMsgID, data: []byte{0x00, 0x04}},
 				},
-				AVP{
-					header:  avpHeader{FlagLen: 0x8008, VendorID: 0, AvpType: AvpTypeResultCode},
-					payload: avpPayload{dataType: AvpDataTypeResultCode, data: []byte{0x00, 0x01}},
+				avp{
+					header:  avpHeader{FlagLen: 0x8008, VendorID: 0, AvpType: avpTypeResultCode},
+					payload: avpPayload{dataType: avpDataTypeResultCode, data: []byte{0x00, 0x01}},
 				},
-				AVP{
-					header:  avpHeader{FlagLen: 0x8008, VendorID: 0, AvpType: AvpTypeTunnelID},
-					payload: avpPayload{dataType: AvpDataTypeUint16, data: []byte{0x5f, 0x2b}},
+				avp{
+					header:  avpHeader{FlagLen: 0x8008, VendorID: 0, AvpType: avpTypeTunnelID},
+					payload: avpPayload{dataType: avpDataTypeUint16, data: []byte{0x5f, 0x2b}},
 				},
 			},
 		},
 	}
 	for _, c := range cases {
-		got, err := ParseAVPBuffer(c.in)
+		got, err := parseAVPBuffer(c.in)
 		if err == nil {
 			if !reflect.DeepEqual(got, c.want) {
-				t.Errorf("ParseAVPBuffer() == %q; want %q", got, c.want)
+				t.Errorf("parseAVPBuffer() == %q; want %q", got, c.want)
 			}
 		} else {
-			t.Errorf("ParseAVPBuffer(%q) failed: %q", c.in, err)
+			t.Errorf("parseAVPBuffer(%q) failed: %q", c.in, err)
 		}
 	}
 }
@@ -107,21 +107,21 @@ func TestParseAVPBufferBad(t *testing.T) {
 		},
 	}
 	for _, c := range cases {
-		avps, err := ParseAVPBuffer(c.in)
+		avps, err := parseAVPBuffer(c.in)
 		if err == nil {
-			t.Errorf("ParseAVPBuffer(%q): expected error, but did not get one", c.in)
+			t.Errorf("parseAVPBuffer(%q): expected error, but did not get one", c.in)
 		}
 		if len(avps) != 0 {
-			t.Errorf("ParseAVPBuffer(%q): expect zero-length AVP buffer output, but didn't get it", c.in)
+			t.Errorf("parseAVPBuffer(%q): expect zero-length AVP buffer output, but didn't get it", c.in)
 		}
 	}
 }
 
 type avpMetadata struct {
 	mandatory, hidden bool
-	typ               AVPType
-	vid               AVPVendorID
-	dtyp              AVPDataType
+	typ               avpType
+	vid               avpVendorID
+	dtyp              avpDataType
 	nbytes            int
 }
 
@@ -137,26 +137,26 @@ func TestAVPMetadata(t *testing.T) {
 		{
 			in: []byte{0x80, 0x0c, 0x00, 0x00, 0x00, 0x07, 0x6f, 0x70, 0x65, 0x6e, 0x76, 0x33}, // hostname AVP
 			want: []avpMetadata{
-				avpMetadata{mandatory: true, hidden: false, typ: AvpTypeHostName, vid: VendorIDIetf, dtyp: AvpDataTypeString, nbytes: 6},
+				avpMetadata{mandatory: true, hidden: false, typ: avpTypeHostName, vid: vendorIDIetf, dtyp: avpDataTypeString, nbytes: 6},
 			},
 		},
 		{
 			in: []byte{0x80, 0x08, 0x00, 0x00, 0x00, 0x0a, 0x00, 0x0a}, // receive window size
 			want: []avpMetadata{
-				avpMetadata{mandatory: true, hidden: false, typ: AvpTypeRxWindowSize, vid: VendorIDIetf, dtyp: AvpDataTypeUint16, nbytes: 2},
+				avpMetadata{mandatory: true, hidden: false, typ: avpTypeRxWindowSize, vid: vendorIDIetf, dtyp: avpDataTypeUint16, nbytes: 2},
 			},
 		},
 	}
 	for _, c := range cases {
-		got, err := ParseAVPBuffer(c.in)
+		got, err := parseAVPBuffer(c.in)
 		if err == nil {
 			for i, gi := range got {
-				dtyp, buf := gi.RawData()
+				dtyp, buf := gi.rawData()
 				gotmd := avpMetadata{
-					mandatory: gi.IsMandatory(),
-					hidden:    gi.IsHidden(),
-					typ:       gi.Type(),
-					vid:       gi.VendorID(),
+					mandatory: gi.isMandatory(),
+					hidden:    gi.isHidden(),
+					typ:       gi.getType(),
+					vid:       gi.vendorID(),
 					dtyp:      dtyp,
 					nbytes:    len(buf),
 				}
@@ -165,7 +165,7 @@ func TestAVPMetadata(t *testing.T) {
 				}
 			}
 		} else {
-			t.Errorf("ParseAVPBuffer(%q) failed: %q", c.in, err)
+			t.Errorf("parseAVPBuffer(%q) failed: %q", c.in, err)
 		}
 	}
 }
@@ -174,32 +174,32 @@ func TestAVPDecodeUint16(t *testing.T) {
 	cases := []struct {
 		in       []byte
 		wantVal  uint16
-		wantType AVPType
+		wantType avpType
 	}{
 		{
 			in:       []byte{0x80, 0x08, 0x00, 0x00, 0x00, 0x0E, 0x00, 0x00},
 			wantVal:  0,
-			wantType: AvpTypeSessionID,
+			wantType: avpTypeSessionID,
 		},
 		{
 			in:       []byte{0x80, 0x08, 0x00, 0x00, 0x00, 0x09, 0x5f, 0x2b},
 			wantVal:  24363,
-			wantType: AvpTypeTunnelID,
+			wantType: avpTypeTunnelID,
 		},
 	}
 	for _, c := range cases {
-		got, err := ParseAVPBuffer(c.in)
+		got, err := parseAVPBuffer(c.in)
 		if err == nil {
-			if c.wantType != got[0].Type() {
-				t.Errorf("Wanted type %q, got %q", c.wantType, got[0].Type())
+			if c.wantType != got[0].getType() {
+				t.Errorf("Wanted type %q, got %q", c.wantType, got[0].getType())
 			}
-			if val, err := got[0].DecodeUint16Data(); err == nil {
+			if val, err := got[0].decodeUint16Data(); err == nil {
 				if val != c.wantVal {
 					t.Errorf("Wanted value %q, got %q", c.wantVal, val)
 				}
 			}
 		} else {
-			t.Errorf("ParseAVPBuffer(%q) failed: %q", c.in, err)
+			t.Errorf("parseAVPBuffer(%q) failed: %q", c.in, err)
 		}
 	}
 }
@@ -208,37 +208,37 @@ func TestAVPDecodeUint32(t *testing.T) {
 	cases := []struct {
 		in       []byte
 		wantVal  uint32
-		wantType AVPType
+		wantType avpType
 	}{
 		{
 			in:       []byte{0x00, 0x0a, 0x00, 0x00, 0x00, 0x3d, 0x28, 0x46, 0xf1, 0x81},
 			wantVal:  675737985,
-			wantType: AvpTypeAssignedConnID,
+			wantType: avpTypeAssignedConnID,
 		},
 		{
 			in:       []byte{0x00, 0x0a, 0x00, 0x00, 0x00, 0x3c, 0x00, 0x00, 0x00, 0x00},
 			wantVal:  0,
-			wantType: AvpTypeRouterID,
+			wantType: avpTypeRouterID,
 		},
 		{
 			in:       []byte{0x80, 0x0a, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x03},
 			wantVal:  3,
-			wantType: AvpTypeBearerCap,
+			wantType: avpTypeBearerCap,
 		},
 	}
 	for _, c := range cases {
-		got, err := ParseAVPBuffer(c.in)
+		got, err := parseAVPBuffer(c.in)
 		if err == nil {
-			if c.wantType != got[0].Type() {
-				t.Errorf("Wanted type %q, got %q", c.wantType, got[0].Type())
+			if c.wantType != got[0].getType() {
+				t.Errorf("Wanted type %q, got %q", c.wantType, got[0].getType())
 			}
-			if val, err := got[0].DecodeUint32Data(); err == nil {
+			if val, err := got[0].decodeUint32Data(); err == nil {
 				if val != c.wantVal {
 					t.Errorf("Wanted value %q, got %q", c.wantVal, val)
 				}
 			}
 		} else {
-			t.Errorf("ParseAVPBuffer(%q) failed: %q", c.in, err)
+			t.Errorf("parseAVPBuffer(%q) failed: %q", c.in, err)
 		}
 	}
 }
@@ -247,27 +247,27 @@ func TestAVPDecodeUint64(t *testing.T) {
 	cases := []struct {
 		in       []byte
 		wantVal  uint64
-		wantType AVPType
+		wantType avpType
 	}{
 		{
 			in:       []byte{0x00, 0x0e, 0x00, 0x00, 0x00, 0x4b, 0x00, 0x00, 0x00, 0x00, 0x3b, 0x9a, 0xca, 0x00},
 			wantVal:  1000000000,
-			wantType: AvpTypeRxConnectSpeedBps,
+			wantType: avpTypeRxConnectSpeedBps,
 		},
 	}
 	for _, c := range cases {
-		got, err := ParseAVPBuffer(c.in)
+		got, err := parseAVPBuffer(c.in)
 		if err == nil {
-			if c.wantType != got[0].Type() {
-				t.Errorf("Wanted type %q, got %q", c.wantType, got[0].Type())
+			if c.wantType != got[0].getType() {
+				t.Errorf("Wanted type %q, got %q", c.wantType, got[0].getType())
 			}
-			if val, err := got[0].DecodeUint64Data(); err == nil {
+			if val, err := got[0].decodeUint64Data(); err == nil {
 				if val != c.wantVal {
 					t.Errorf("Wanted value %q, got %q", c.wantVal, val)
 				}
 			}
 		} else {
-			t.Errorf("ParseAVPBuffer(%q) failed: %q", c.in, err)
+			t.Errorf("parseAVPBuffer(%q) failed: %q", c.in, err)
 		}
 	}
 }
@@ -276,12 +276,12 @@ func TestAVPDecodeString(t *testing.T) {
 	cases := []struct {
 		in       []byte
 		wantVal  string
-		wantType AVPType
+		wantType avpType
 	}{
 		{
 			in:       []byte{0x80, 0x0c, 0x00, 0x00, 0x00, 0x07, 0x77, 0x68, 0x6f, 0x6f, 0x73, 0x68},
 			wantVal:  "whoosh",
-			wantType: AvpTypeHostName,
+			wantType: avpTypeHostName,
 		},
 		{
 			in: []byte{
@@ -291,22 +291,22 @@ func TestAVPDecodeString(t *testing.T) {
 				0x65, 0x72, 0x69, 0x63, 0x20, 0x28, 0x78, 0x38, 0x36, 0x5f, 0x36, 0x34, 0x29,
 			},
 			wantVal:  "prol2tp 1.8.2 Linux-3.13.0-85-generic (x86_64)",
-			wantType: AvpTypeVendorName,
+			wantType: avpTypeVendorName,
 		},
 	}
 	for _, c := range cases {
-		got, err := ParseAVPBuffer(c.in)
+		got, err := parseAVPBuffer(c.in)
 		if err == nil {
-			if c.wantType != got[0].Type() {
-				t.Errorf("Wanted type %q, got %q", c.wantType, got[0].Type())
+			if c.wantType != got[0].getType() {
+				t.Errorf("Wanted type %q, got %q", c.wantType, got[0].getType())
 			}
-			if val, err := got[0].DecodeStringData(); err == nil {
+			if val, err := got[0].decodeStringData(); err == nil {
 				if val != c.wantVal {
 					t.Errorf("Wanted value %q, got %q", c.wantVal, val)
 				}
 			}
 		} else {
-			t.Errorf("ParseAVPBuffer(%q) failed: %q", c.in, err)
+			t.Errorf("parseAVPBuffer(%q) failed: %q", c.in, err)
 		}
 	}
 }
@@ -314,17 +314,17 @@ func TestAVPDecodeString(t *testing.T) {
 func TestAVPDecodeResultCode(t *testing.T) {
 	cases := []struct {
 		in       []byte
-		wantVal  ResultCode
-		wantType AVPType
+		wantVal  resultCode
+		wantType avpType
 	}{
 		{
 			in: []byte{0x80, 0x08, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01},
-			wantVal: ResultCode{
-				Result:  AvpStopCCNResultCodeClearConnection,
-				ErrCode: AvpErrorCodeNoError,
-				ErrMsg:  "",
+			wantVal: resultCode{
+				result:  avpStopCCNResultCodeClearConnection,
+				errCode: avpErrorCodeNoError,
+				errMsg:  "",
 			},
-			wantType: AvpTypeResultCode,
+			wantType: avpTypeResultCode,
 		},
 		{
 			in: []byte{
@@ -332,27 +332,27 @@ func TestAVPDecodeResultCode(t *testing.T) {
 				0x00, 0x03, 0x49, 0x6e, 0x76, 0x61, 0x6c, 0x69,
 				0x64, 0x20, 0x41, 0x72, 0x67, 0x75, 0x6d, 0x65,
 				0x6e, 0x74},
-			wantVal: ResultCode{
-				Result:  AvpStopCCNResultCodeGeneralError,
-				ErrCode: AvpErrorCodeBadValue,
-				ErrMsg:  "Invalid Argument",
+			wantVal: resultCode{
+				result:  avpStopCCNResultCodeGeneralError,
+				errCode: avpErrorCodeBadValue,
+				errMsg:  "Invalid Argument",
 			},
-			wantType: AvpTypeResultCode,
+			wantType: avpTypeResultCode,
 		},
 	}
 	for _, c := range cases {
-		got, err := ParseAVPBuffer(c.in)
+		got, err := parseAVPBuffer(c.in)
 		if err == nil {
-			if c.wantType != got[0].Type() {
-				t.Errorf("Wanted type %q, got %q", c.wantType, got[0].Type())
+			if c.wantType != got[0].getType() {
+				t.Errorf("Wanted type %q, got %q", c.wantType, got[0].getType())
 			}
-			if val, err := got[0].DecodeResultCode(); err == nil {
+			if val, err := got[0].decodeResultCode(); err == nil {
 				if val != c.wantVal {
 					t.Errorf("Wanted value %q, got %q", c.wantVal, val)
 				}
 			}
 		} else {
-			t.Errorf("ParseAVPBuffer(%q) failed: %q", c.in, err)
+			t.Errorf("parseAVPBuffer(%q) failed: %q", c.in, err)
 		}
 	}
 }
@@ -360,58 +360,58 @@ func TestAVPDecodeResultCode(t *testing.T) {
 func TestAVPDecodeMsgID(t *testing.T) {
 	cases := []struct {
 		in       []byte
-		wantVal  AVPMsgType
-		wantType AVPType
+		wantVal  avpMsgType
+		wantType avpType
 	}{
 		{
 			in:       []byte{0x80, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01},
-			wantVal:  AvpMsgTypeSccrq,
-			wantType: AvpTypeMessage,
+			wantVal:  avpMsgTypeSccrq,
+			wantType: avpTypeMessage,
 		},
 		{
 			in:       []byte{0x80, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03},
-			wantVal:  AvpMsgTypeScccn,
-			wantType: AvpTypeMessage,
+			wantVal:  avpMsgTypeScccn,
+			wantType: avpTypeMessage,
 		},
 		{
 			in:       []byte{0x80, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x14},
-			wantVal:  AvpMsgTypeAck,
-			wantType: AvpTypeMessage,
+			wantVal:  avpMsgTypeAck,
+			wantType: avpTypeMessage,
 		},
 	}
 	for _, c := range cases {
-		got, err := ParseAVPBuffer(c.in)
+		got, err := parseAVPBuffer(c.in)
 		if err == nil {
-			if c.wantType != got[0].Type() {
-				t.Errorf("Wanted type %q, got %q", c.wantType, got[0].Type())
+			if c.wantType != got[0].getType() {
+				t.Errorf("Wanted type %q, got %q", c.wantType, got[0].getType())
 			}
-			if val, err := got[0].DecodeMsgType(); err == nil {
+			if val, err := got[0].decodeMsgType(); err == nil {
 				if val != c.wantVal {
 					t.Errorf("Wanted value %q, got %q", c.wantVal, val)
 				}
 			}
 		} else {
-			t.Errorf("ParseAVPBuffer(%q) failed: %q", c.in, err)
+			t.Errorf("parseAVPBuffer(%q) failed: %q", c.in, err)
 		}
 	}
 }
 
 func TestEncodeUint16(t *testing.T) {
 	cases := []struct {
-		vendorID AVPVendorID
-		avpType  AVPType
+		vendorID avpVendorID
+		avpType  avpType
 		value    interface{}
 	}{
-		{vendorID: VendorIDIetf, avpType: AvpTypeTunnelID, value: uint16(9010)},
-		{vendorID: VendorIDIetf, avpType: AvpTypeSessionID, value: uint16(59182)},
-		{vendorID: VendorIDIetf, avpType: AvpTypeRxWindowSize, value: uint16(5)},
+		{vendorID: vendorIDIetf, avpType: avpTypeTunnelID, value: uint16(9010)},
+		{vendorID: vendorIDIetf, avpType: avpTypeSessionID, value: uint16(59182)},
+		{vendorID: vendorIDIetf, avpType: avpTypeRxWindowSize, value: uint16(5)},
 	}
 	for _, c := range cases {
-		if avp, err := NewAvp(c.vendorID, c.avpType, c.value); err == nil {
-			if !avp.IsDataType(AvpDataTypeUint16) {
+		if avp, err := newAvp(c.vendorID, c.avpType, c.value); err == nil {
+			if !avp.isDataType(avpDataTypeUint16) {
 				t.Errorf("Data type check failed")
 			}
-			if val, err := avp.DecodeUint16Data(); err == nil {
+			if val, err := avp.decodeUint16Data(); err == nil {
 				if val != c.value {
 					t.Errorf("encode/decode failed: expected %q, got %q", c.value, val)
 				}
@@ -419,34 +419,34 @@ func TestEncodeUint16(t *testing.T) {
 				t.Errorf("DecodeUint16Data() failed: %q", err)
 			}
 		} else {
-			t.Errorf("NewAvp(%v, %v, %v) failed: %q", c.vendorID, c.avpType, c.value, err)
+			t.Errorf("newAvp(%v, %v, %v) failed: %q", c.vendorID, c.avpType, c.value, err)
 		}
 	}
 }
 
-func TestAVPTypeStringer(t *testing.T) {
-	for i := AvpTypeMessage; i < AvpTypeMax; i++ {
+func TestavpTypeStringer(t *testing.T) {
+	for i := avpTypeMessage; i < avpTypeMax; i++ {
 		s := i.String()
 		if len(s) == 0 {
-			t.Errorf("AVPType stringer returned empty string for value %d", uint16(i))
+			t.Errorf("avpType stringer returned empty string for value %d", uint16(i))
 		}
 	}
 }
 
-func TestAVPMsgTypeStringer(t *testing.T) {
-	for i := AvpMsgTypeIllegal; i < AvpMsgTypeMax; i++ {
+func TestavpMsgTypeStringer(t *testing.T) {
+	for i := avpMsgTypeIllegal; i < avpMsgTypeMax; i++ {
 		s := i.String()
 		if len(s) == 0 {
-			t.Errorf("AVPMsgType stringer returned empty string for value %d", uint16(i))
+			t.Errorf("avpMsgType stringer returned empty string for value %d", uint16(i))
 		}
 	}
 }
 
-func TestAVPDataTypeStringer(t *testing.T) {
-	for i := AvpDataTypeEmpty; i < AvpDataTypeMax; i++ {
+func TestavpDataTypeStringer(t *testing.T) {
+	for i := avpDataTypeEmpty; i < avpDataTypeMax; i++ {
 		s := i.String()
 		if len(s) == 0 {
-			t.Errorf("AVPDataType stringer returned empty string for value %d", uint16(i))
+			t.Errorf("avpDataType stringer returned empty string for value %d", uint16(i))
 		}
 	}
 }

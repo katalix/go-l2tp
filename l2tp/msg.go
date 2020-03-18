@@ -78,7 +78,7 @@ func newL2tpV3MessageHeader(ccid uint32, ns, nr uint16, payloadBytes int) *l2tpV
 
 func newV2ControlMessage(b []byte) (msg *V2ControlMessage, err error) {
 	var hdr l2tpV2Header
-	var avps []AVP
+	var avps []avp
 
 	r := bytes.NewReader(b)
 	if err = binary.Read(r, binary.BigEndian, &hdr); err != nil {
@@ -88,13 +88,13 @@ func newV2ControlMessage(b []byte) (msg *V2ControlMessage, err error) {
 	// Messages with no AVP payload are treated as ZLB (zero-length-body) ack messages,
 	// so they're valid L2TPv2 messages.  Don't try to parse the AVP payload in this case.
 	if hdr.Common.Len > v2HeaderLen {
-		if avps, err = ParseAVPBuffer(b[v2HeaderLen:hdr.Common.Len]); err != nil {
+		if avps, err = parseAVPBuffer(b[v2HeaderLen:hdr.Common.Len]); err != nil {
 			return nil, err
 		}
 		// RFC2661 says the first AVP in the message MUST be the Message Type AVP,
 		// so let's validate that now
 		// TODO: we need to do real actual validation
-		if avps[0].Type() != AvpTypeMessage {
+		if avps[0].getType() != avpTypeMessage {
 			return nil, errors.New("invalid L2TPv2 message: first AVP is not Message Type AVP")
 		}
 	}
@@ -107,20 +107,20 @@ func newV2ControlMessage(b []byte) (msg *V2ControlMessage, err error) {
 
 func newV3ControlMessage(b []byte) (msg *V3ControlMessage, err error) {
 	var hdr l2tpV3Header
-	var avps []AVP
+	var avps []avp
 
 	r := bytes.NewReader(b)
 	if err = binary.Read(r, binary.BigEndian, &hdr); err != nil {
 		return nil, err
 	}
 
-	if avps, err = ParseAVPBuffer(b[v3HeaderLen:hdr.Common.Len]); err != nil {
+	if avps, err = parseAVPBuffer(b[v3HeaderLen:hdr.Common.Len]); err != nil {
 		return nil, err
 	}
 
 	// RFC3931 says the first AVP in the message MUST be the Message Type AVP,
 	// so let's validate that now
-	if avps[0].Type() != AvpTypeMessage {
+	if avps[0].getType() != avpTypeMessage {
 		return nil, errors.New("invalid L2TPv3 message: first AVP is not Message Type AVP")
 	}
 
@@ -138,9 +138,9 @@ type ControlMessage interface {
 	Len() int
 	Ns() uint16
 	Nr() uint16
-	Avps() []AVP
-	Type() AVPMsgType
-	Append(avp *AVP)
+	Avps() []avp
+	Type() avpMsgType
+	Append(avp *avp)
 	SetTransportSeqNum(ns, nr uint16)
 	ToBytes() ([]byte, error)
 }
@@ -148,13 +148,13 @@ type ControlMessage interface {
 // V2ControlMessage represents an RFC2661 control message
 type V2ControlMessage struct {
 	header l2tpV2Header
-	avps   []AVP
+	avps   []avp
 }
 
 // V3ControlMessage represents an RFC3931 control message
 type V3ControlMessage struct {
 	header l2tpV3Header
-	avps   []AVP
+	avps   []avp
 }
 
 // ProtocolVersion returns the protocol version for the control message.
@@ -183,18 +183,18 @@ func (m *V2ControlMessage) Nr() uint16 {
 
 // Avps returns the slice of Attribute Value Pair (AVP) values held by the control message.
 // Implements the ControlMessage interface.
-func (m *V2ControlMessage) Avps() []AVP {
+func (m *V2ControlMessage) Avps() []avp {
 	return m.avps
 }
 
 // Type returns the value of the Message Type AVP.
 // Implements the ControlMessage interface.
-func (m V2ControlMessage) Type() AVPMsgType {
+func (m V2ControlMessage) Type() avpMsgType {
 	// Messages with no AVP payload are treated as ZLB (zero-length-body)
 	// ack messages in RFC2661.  Strictly speaking ZLBs have no message type,
 	// so we (ab)use the L2TPv3 AvpMsgTypeAck for that scenario.
 	if len(m.Avps()) == 0 {
-		return AvpMsgTypeAck
+		return avpMsgTypeAck
 	}
 
 	avp := m.Avps()[0]
@@ -202,11 +202,11 @@ func (m V2ControlMessage) Type() AVPMsgType {
 	// c.f. newV2ControlMessage: we've validated this condition at message
 	// creation time, so this is just a belt/braces assertation to catch
 	// programming errors during development
-	if avp.Type() != AvpTypeMessage {
+	if avp.getType() != avpTypeMessage {
 		panic("Invalid L2TPv2 message")
 	}
 
-	mt, err := avp.DecodeMsgType()
+	mt, err := avp.decodeMsgType()
 	if err != nil {
 		panic(fmt.Sprintf("Failed to decode AVP message type: %v", err))
 	}
@@ -224,9 +224,9 @@ func (m *V2ControlMessage) Sid() uint16 {
 }
 
 // Append appends an AVP to the message.
-func (m *V2ControlMessage) Append(avp *AVP) {
+func (m *V2ControlMessage) Append(avp *avp) {
 	m.avps = append(m.avps, *avp)
-	m.header.Common.Len += uint16(avp.Len())
+	m.header.Common.Len += uint16(avp.totalLen())
 }
 
 // SetTransportSeqNum sets the header sequence numbers.
@@ -281,23 +281,23 @@ func (m *V3ControlMessage) Nr() uint16 {
 
 // Avps returns the slice of Attribute Value Pair (AVP) values held by the control message.
 // Implements the ControlMessage interface.
-func (m *V3ControlMessage) Avps() []AVP {
+func (m *V3ControlMessage) Avps() []avp {
 	return m.avps
 }
 
 // Type returns the value of the Message Type AVP.
 // Implements the ControlMessage interface.
-func (m V3ControlMessage) Type() AVPMsgType {
+func (m V3ControlMessage) Type() avpMsgType {
 	avp := m.Avps()[0]
 
 	// c.f. newV2ControlMessage: we've validated this condition at message
 	// creation time, so this is just a belt/braces assertation to catch
 	// programming errors during development
-	if avp.Type() != AvpTypeMessage {
+	if avp.getType() != avpTypeMessage {
 		panic("Invalid L2TPv3 message")
 	}
 
-	mt, err := avp.DecodeMsgType()
+	mt, err := avp.decodeMsgType()
 	if err != nil {
 		panic(fmt.Sprintf("Failed to decode AVP message type: %v", err))
 	}
@@ -310,9 +310,9 @@ func (m *V3ControlMessage) ControlConnectionID() uint32 {
 }
 
 // Append appends an AVP to the message.
-func (m *V3ControlMessage) Append(avp *AVP) {
+func (m *V3ControlMessage) Append(avp *avp) {
 	m.avps = append(m.avps, *avp)
-	m.header.Common.Len += uint16(avp.Len())
+	m.header.Common.Len += uint16(avp.totalLen())
 }
 
 // SetTransportSeqNum sets the header sequence numbers.
@@ -395,7 +395,7 @@ func ParseMessageBuffer(b []byte) (messages []ControlMessage, err error) {
 }
 
 // NewV2ControlMessage builds a new control message
-func NewV2ControlMessage(tid ControlConnID, sid ControlConnID, avps []AVP) (msg *V2ControlMessage, err error) {
+func NewV2ControlMessage(tid ControlConnID, sid ControlConnID, avps []avp) (msg *V2ControlMessage, err error) {
 	if tid > v2TidSidMax {
 		return nil, fmt.Errorf("v2 tunnel ID %v out of range", tid)
 	}
@@ -404,16 +404,16 @@ func NewV2ControlMessage(tid ControlConnID, sid ControlConnID, avps []AVP) (msg 
 	}
 	// TODO: validate AVPs
 	return &V2ControlMessage{
-		header: *newL2tpV2MessageHeader(uint16(tid), uint16(sid), 0, 0, AvpsLengthBytes(avps)),
+		header: *newL2tpV2MessageHeader(uint16(tid), uint16(sid), 0, 0, avpsLengthBytes(avps)),
 		avps:   avps,
 	}, nil
 }
 
 // NewV3ControlMessage builds a new control message
-func NewV3ControlMessage(ccid ControlConnID, avps []AVP) (msg *V3ControlMessage, err error) {
+func NewV3ControlMessage(ccid ControlConnID, avps []avp) (msg *V3ControlMessage, err error) {
 	// TODO: validate AVPs
 	return &V3ControlMessage{
-		header: *newL2tpV3MessageHeader(uint32(ccid), 0, 0, AvpsLengthBytes(avps)),
+		header: *newL2tpV3MessageHeader(uint32(ccid), 0, 0, avpsLengthBytes(avps)),
 		avps:   avps,
 	}, nil
 }

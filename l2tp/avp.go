@@ -11,23 +11,23 @@ import (
 
 type avpFlagLen uint16
 
-// AVPVendorID is the Vendor ID from the AVP header as per RFC2661 section 4.1
-type AVPVendorID uint16
+// avpVendorID is the Vendor ID from the AVP header as per RFC2661 section 4.1
+type avpVendorID uint16
 
-// AVPType is the attribute type from the AVP header as per RFC2661 section 4.1
-type AVPType uint16
+// avpType is the attribute type from the AVP header as per RFC2661 section 4.1
+type avpType uint16
 
-// AVPMsgType stores the value of the Message Type AVP
-type AVPMsgType uint16
+// avpMsgType stores the value of the Message Type AVP
+type avpMsgType uint16
 
-// AVPDataType indicates the type of the data value carried by the AVP
-type AVPDataType int
+// avpDataType indicates the type of the data value carried by the AVP
+type avpDataType int
 
 type avpInfo struct {
-	avpType     AVPType
-	VendorID    AVPVendorID
+	avpType     avpType
+	VendorID    avpVendorID
 	isMandatory bool
-	dataType    AVPDataType
+	dataType    avpDataType
 }
 
 // Don't be tempted to try to make the fields in this structure private:
@@ -35,543 +35,543 @@ type avpInfo struct {
 // for extracting the header from the bytearray.
 type avpHeader struct {
 	FlagLen  avpFlagLen
-	VendorID AVPVendorID
-	AvpType  AVPType
+	VendorID avpVendorID
+	AvpType  avpType
 }
 
 type avpPayload struct {
-	dataType AVPDataType
+	dataType avpDataType
 	data     []byte
 }
 
-// AVP represents a single AVP in an L2TP control message
-type AVP struct {
+// avp represents a single AVP in an L2TP control message
+type avp struct {
 	header  avpHeader
 	payload avpPayload
 }
 
-// AVPResultCode represents an RFC2661/RFC3931 result code
-type AVPResultCode uint16
+// avpResultCode represents an RFC2661/RFC3931 result code
+type avpResultCode uint16
 
-// AVPErrorCode represents an RFC2661/RFC3931 error code
-type AVPErrorCode uint16
+// avpErrorCode represents an RFC2661/RFC3931 error code
+type avpErrorCode uint16
 
-// ResultCode represents an RFC2661/RFC3931 result code AVP
-type ResultCode struct {
-	Result  AVPResultCode
-	ErrCode AVPErrorCode
-	ErrMsg  string
+// resultCode represents an RFC2661/RFC3931 result code AVP
+type resultCode struct {
+	result  avpResultCode
+	errCode avpErrorCode
+	errMsg  string
 }
 
 const (
 	avpHeaderLen = 6
-	// VendorIDIetf is the namespace used for standard AVPS described
+	// vendorIDIetf is the namespace used for standard AVPS described
 	// by RFC2661 and RFC3931.
-	VendorIDIetf = 0
+	vendorIDIetf = 0
 )
 
 const (
-	// AvpDataTypeEmpty represents an AVP with no value
-	AvpDataTypeEmpty AVPDataType = iota
-	// AvpDataTypeUint8 represents an AVP carrying a single uint8 value
-	AvpDataTypeUint8 AVPDataType = iota
-	// AvpDataTypeUint16 represents an AVP carrying a single uint16 value
-	AvpDataTypeUint16 AVPDataType = iota
-	// AvpDataTypeUint32 represents an AVP carrying a single uint32 value
-	AvpDataTypeUint32 AVPDataType = iota
-	// AvpDataTypeUint64 represents an AVP carrying a single uint64 value
-	AvpDataTypeUint64 AVPDataType = iota
-	// AvpDataTypeString represents an AVP carrying an ASCII string
-	AvpDataTypeString AVPDataType = iota
-	// AvpDataTypeBytes represents an AVP carrying a raw byte array
-	AvpDataTypeBytes AVPDataType = iota
-	// AvpDataTypeResultCode represents an AVP carrying an RFC2661 result code
-	AvpDataTypeResultCode AVPDataType = iota
-	// AvpDataTypeMsgID represents an AVP carrying the message type identifier
-	AvpDataTypeMsgID AVPDataType = iota
-	// AvpDataTypeUnimplemented represents an AVP carrying a currently unimplemented data type
-	AvpDataTypeUnimplemented AVPDataType = iota
-	// AvpDataTypeIllegal represents an AVP carrying an illegal data type.
+	// avpDataTypeEmpty represents an AVP with no value
+	avpDataTypeEmpty avpDataType = iota
+	// avpDataTypeUint8 represents an AVP carrying a single uint8 value
+	avpDataTypeUint8 avpDataType = iota
+	// avpDataTypeUint16 represents an AVP carrying a single uint16 value
+	avpDataTypeUint16 avpDataType = iota
+	// avpDataTypeUint32 represents an AVP carrying a single uint32 value
+	avpDataTypeUint32 avpDataType = iota
+	// avpDataTypeUint64 represents an AVP carrying a single uint64 value
+	avpDataTypeUint64 avpDataType = iota
+	// avpDataTypeString represents an AVP carrying an ASCII string
+	avpDataTypeString avpDataType = iota
+	// avpDataTypeBytes represents an AVP carrying a raw byte array
+	avpDataTypeBytes avpDataType = iota
+	// avpDataTypeResultCode represents an AVP carrying an RFC2661 result code
+	avpDataTypeResultCode avpDataType = iota
+	// avpDataTypeMsgID represents an AVP carrying the message type identifier
+	avpDataTypeMsgID avpDataType = iota
+	// avpDataTypeUnimplemented represents an AVP carrying a currently unimplemented data type
+	avpDataTypeUnimplemented avpDataType = iota
+	// avpDataTypeIllegal represents an AVP carrying an illegal data type.
 	// AVPs falling into this category are typically those with currently
 	// reserved IDs as per the RFCs.
-	AvpDataTypeIllegal AVPDataType = iota
-	// AvpDataTypeMax is a sentinel value for test purposes
-	AvpDataTypeMax AVPDataType = iota
+	avpDataTypeIllegal avpDataType = iota
+	// avpDataTypeMax is a sentinel value for test purposes
+	avpDataTypeMax avpDataType = iota
 )
 
 var avpInfoTable = [...]avpInfo{
-	{avpType: AvpTypeMessage, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeMsgID},
-	{avpType: AvpTypeResultCode, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeResultCode},
-	{avpType: AvpTypeProtocolVersion, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeBytes},
-	{avpType: AvpTypeFramingCap, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeUint32},
-	{avpType: AvpTypeBearerCap, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeUint32},
-	{avpType: AvpTypeTiebreaker, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeUnimplemented}, // TODO
-	{avpType: AvpTypeFirmwareRevision, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeUint16},
-	{avpType: AvpTypeHostName, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeString},
-	{avpType: AvpTypeVendorName, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeString},
-	{avpType: AvpTypeTunnelID, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeUint16},
-	{avpType: AvpTypeRxWindowSize, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeUint16},
-	{avpType: AvpTypeChallenge, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeBytes},
-	{avpType: AvpTypeQ931CauseCode, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeUnimplemented}, // TODO
-	{avpType: AvpTypeChallengeResponse, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeBytes},
-	{avpType: AvpTypeSessionID, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeUint16},
-	{avpType: AvpTypeCallSerialNumber, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeUint32},
-	{avpType: AvpTypeMinimumBps, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeUint32},
-	{avpType: AvpTypeMaximumBps, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeUint32},
-	{avpType: AvpTypeBearerType, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeUint32},
-	{avpType: AvpTypeFramingType, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeUint32},
-	{avpType: AvpTypePacketProcDelay, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeUnimplemented}, // TODO
-	{avpType: AvpTypeCalledNumber, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeString},
-	{avpType: AvpTypeCallingNumber, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeString},
-	{avpType: AvpTypeSubAddress, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeString},
-	{avpType: AvpTypeConnectSpeed, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeUint32},
-	{avpType: AvpTypePhysicalChannelID, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeUint32},
-	{avpType: AvpTypeInitialRcvdLcpConfreq, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeBytes},
-	{avpType: AvpTypeLastSentLcpConfreq, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeBytes},
-	{avpType: AvpTypeLastRcvdLcpConfreq, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeBytes},
-	{avpType: AvpTypeProxyAuthType, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeUint16},
-	{avpType: AvpTypeProxyAuthName, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeString},
-	{avpType: AvpTypeProxyAuthChallenge, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeBytes},
-	{avpType: AvpTypeProxyAuthID, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeBytes},
-	{avpType: AvpTypeProxyAuthResponse, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeBytes},
-	{avpType: AvpTypeCallErrors, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeUnimplemented}, // TODO
-	{avpType: AvpTypeAccm, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeUnimplemented},       // TODO
-	{avpType: AvpTypeRandomVector, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeBytes},
-	{avpType: AvpTypePrivGroupID, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeString},
-	{avpType: AvpTypeRxConnectSpeed, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeUint32},
-	{avpType: AvpTypeSequencingRequired, VendorID: VendorIDIetf, isMandatory: true, dataType: AvpDataTypeEmpty},
-	{avpType: AvpTypeUnused40, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeIllegal},
-	{avpType: AvpTypeUnused41, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeIllegal},
-	{avpType: AvpTypeUnused42, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeIllegal},
-	{avpType: AvpTypeUnused43, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeIllegal},
-	{avpType: AvpTypeUnused44, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeIllegal},
-	{avpType: AvpTypeUnused45, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeIllegal},
-	{avpType: AvpTypeUnused46, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeIllegal},
-	{avpType: AvpTypeUnused47, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeIllegal},
-	{avpType: AvpTypeUnused48, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeIllegal},
-	{avpType: AvpTypeUnused49, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeIllegal},
-	{avpType: AvpTypeUnused50, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeIllegal},
-	{avpType: AvpTypeUnused51, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeIllegal},
-	{avpType: AvpTypeUnused52, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeIllegal},
-	{avpType: AvpTypeUnused53, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeIllegal},
-	{avpType: AvpTypeUnused54, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeIllegal},
-	{avpType: AvpTypeUnused55, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeIllegal},
-	{avpType: AvpTypeUnused56, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeIllegal},
-	{avpType: AvpTypeUnused57, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeIllegal},
-	{avpType: AvpTypeExtended, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeIllegal},
-	{avpType: AvpTypeMessageDigest, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeBytes},
-	{avpType: AvpTypeRouterID, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeUint32},
-	{avpType: AvpTypeAssignedConnID, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeUint32},
-	{avpType: AvpTypePseudowireCaps, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeUnimplemented},
-	{avpType: AvpTypeLocalSessionID, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeUint32},
-	{avpType: AvpTypeRemoteSessionID, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeUint32},
-	{avpType: AvpTypeAssignedCookie, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeBytes},
-	{avpType: AvpTypeRemoteEndID, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeBytes},
-	{avpType: AvpTypeUnused67, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeIllegal},
-	{avpType: AvpTypePseudowireType, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeUint16},
-	{avpType: AvpTypeL2specificSublayer, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeUint16},
-	{avpType: AvpTypeDataSequencing, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeUint16},
-	{avpType: AvpTypeCircuitStatus, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeUint16},
-	{avpType: AvpTypePreferredLanguage, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeBytes},
-	{avpType: AvpTypeControlAuthNonce, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeBytes},
-	{avpType: AvpTypeTxConnectSpeedBps, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeUint64},
-	{avpType: AvpTypeRxConnectSpeedBps, VendorID: VendorIDIetf, isMandatory: false, dataType: AvpDataTypeUint64},
+	{avpType: avpTypeMessage, VendorID: vendorIDIetf, isMandatory: true, dataType: avpDataTypeMsgID},
+	{avpType: avpTypeResultCode, VendorID: vendorIDIetf, isMandatory: true, dataType: avpDataTypeResultCode},
+	{avpType: avpTypeProtocolVersion, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeBytes},
+	{avpType: avpTypeFramingCap, VendorID: vendorIDIetf, isMandatory: true, dataType: avpDataTypeUint32},
+	{avpType: avpTypeBearerCap, VendorID: vendorIDIetf, isMandatory: true, dataType: avpDataTypeUint32},
+	{avpType: avpTypeTiebreaker, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeUnimplemented}, // TODO
+	{avpType: avpTypeFirmwareRevision, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeUint16},
+	{avpType: avpTypeHostName, VendorID: vendorIDIetf, isMandatory: true, dataType: avpDataTypeString},
+	{avpType: avpTypeVendorName, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeString},
+	{avpType: avpTypeTunnelID, VendorID: vendorIDIetf, isMandatory: true, dataType: avpDataTypeUint16},
+	{avpType: avpTypeRxWindowSize, VendorID: vendorIDIetf, isMandatory: true, dataType: avpDataTypeUint16},
+	{avpType: avpTypeChallenge, VendorID: vendorIDIetf, isMandatory: true, dataType: avpDataTypeBytes},
+	{avpType: avpTypeQ931CauseCode, VendorID: vendorIDIetf, isMandatory: true, dataType: avpDataTypeUnimplemented}, // TODO
+	{avpType: avpTypeChallengeResponse, VendorID: vendorIDIetf, isMandatory: true, dataType: avpDataTypeBytes},
+	{avpType: avpTypeSessionID, VendorID: vendorIDIetf, isMandatory: true, dataType: avpDataTypeUint16},
+	{avpType: avpTypeCallSerialNumber, VendorID: vendorIDIetf, isMandatory: true, dataType: avpDataTypeUint32},
+	{avpType: avpTypeMinimumBps, VendorID: vendorIDIetf, isMandatory: true, dataType: avpDataTypeUint32},
+	{avpType: avpTypeMaximumBps, VendorID: vendorIDIetf, isMandatory: true, dataType: avpDataTypeUint32},
+	{avpType: avpTypeBearerType, VendorID: vendorIDIetf, isMandatory: true, dataType: avpDataTypeUint32},
+	{avpType: avpTypeFramingType, VendorID: vendorIDIetf, isMandatory: true, dataType: avpDataTypeUint32},
+	{avpType: avpTypePacketProcDelay, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeUnimplemented}, // TODO
+	{avpType: avpTypeCalledNumber, VendorID: vendorIDIetf, isMandatory: true, dataType: avpDataTypeString},
+	{avpType: avpTypeCallingNumber, VendorID: vendorIDIetf, isMandatory: true, dataType: avpDataTypeString},
+	{avpType: avpTypeSubAddress, VendorID: vendorIDIetf, isMandatory: true, dataType: avpDataTypeString},
+	{avpType: avpTypeConnectSpeed, VendorID: vendorIDIetf, isMandatory: true, dataType: avpDataTypeUint32},
+	{avpType: avpTypePhysicalChannelID, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeUint32},
+	{avpType: avpTypeInitialRcvdLcpConfreq, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeBytes},
+	{avpType: avpTypeLastSentLcpConfreq, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeBytes},
+	{avpType: avpTypeLastRcvdLcpConfreq, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeBytes},
+	{avpType: avpTypeProxyAuthType, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeUint16},
+	{avpType: avpTypeProxyAuthName, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeString},
+	{avpType: avpTypeProxyAuthChallenge, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeBytes},
+	{avpType: avpTypeProxyAuthID, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeBytes},
+	{avpType: avpTypeProxyAuthResponse, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeBytes},
+	{avpType: avpTypeCallErrors, VendorID: vendorIDIetf, isMandatory: true, dataType: avpDataTypeUnimplemented}, // TODO
+	{avpType: avpTypeAccm, VendorID: vendorIDIetf, isMandatory: true, dataType: avpDataTypeUnimplemented},       // TODO
+	{avpType: avpTypeRandomVector, VendorID: vendorIDIetf, isMandatory: true, dataType: avpDataTypeBytes},
+	{avpType: avpTypePrivGroupID, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeString},
+	{avpType: avpTypeRxConnectSpeed, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeUint32},
+	{avpType: avpTypeSequencingRequired, VendorID: vendorIDIetf, isMandatory: true, dataType: avpDataTypeEmpty},
+	{avpType: avpTypeUnused40, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeIllegal},
+	{avpType: avpTypeUnused41, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeIllegal},
+	{avpType: avpTypeUnused42, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeIllegal},
+	{avpType: avpTypeUnused43, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeIllegal},
+	{avpType: avpTypeUnused44, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeIllegal},
+	{avpType: avpTypeUnused45, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeIllegal},
+	{avpType: avpTypeUnused46, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeIllegal},
+	{avpType: avpTypeUnused47, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeIllegal},
+	{avpType: avpTypeUnused48, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeIllegal},
+	{avpType: avpTypeUnused49, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeIllegal},
+	{avpType: avpTypeUnused50, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeIllegal},
+	{avpType: avpTypeUnused51, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeIllegal},
+	{avpType: avpTypeUnused52, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeIllegal},
+	{avpType: avpTypeUnused53, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeIllegal},
+	{avpType: avpTypeUnused54, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeIllegal},
+	{avpType: avpTypeUnused55, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeIllegal},
+	{avpType: avpTypeUnused56, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeIllegal},
+	{avpType: avpTypeUnused57, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeIllegal},
+	{avpType: avpTypeExtended, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeIllegal},
+	{avpType: avpTypeMessageDigest, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeBytes},
+	{avpType: avpTypeRouterID, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeUint32},
+	{avpType: avpTypeAssignedConnID, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeUint32},
+	{avpType: avpTypePseudowireCaps, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeUnimplemented},
+	{avpType: avpTypeLocalSessionID, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeUint32},
+	{avpType: avpTypeRemoteSessionID, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeUint32},
+	{avpType: avpTypeAssignedCookie, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeBytes},
+	{avpType: avpTypeRemoteEndID, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeBytes},
+	{avpType: avpTypeUnused67, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeIllegal},
+	{avpType: avpTypePseudowireType, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeUint16},
+	{avpType: avpTypeL2specificSublayer, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeUint16},
+	{avpType: avpTypeDataSequencing, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeUint16},
+	{avpType: avpTypeCircuitStatus, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeUint16},
+	{avpType: avpTypePreferredLanguage, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeBytes},
+	{avpType: avpTypeControlAuthNonce, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeBytes},
+	{avpType: avpTypeTxConnectSpeedBps, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeUint64},
+	{avpType: avpTypeRxConnectSpeedBps, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeUint64},
 }
 
 // AVP type identifiers as per RFC2661 and RFC3931, representing the
 // value held by a given AVP.
 const (
-	AvpTypeMessage               AVPType = 0
-	AvpTypeResultCode            AVPType = 1
-	AvpTypeProtocolVersion       AVPType = 2
-	AvpTypeFramingCap            AVPType = 3
-	AvpTypeBearerCap             AVPType = 4
-	AvpTypeTiebreaker            AVPType = 5
-	AvpTypeFirmwareRevision      AVPType = 6
-	AvpTypeHostName              AVPType = 7
-	AvpTypeVendorName            AVPType = 8
-	AvpTypeTunnelID              AVPType = 9
-	AvpTypeRxWindowSize          AVPType = 10
-	AvpTypeChallenge             AVPType = 11
-	AvpTypeQ931CauseCode         AVPType = 12
-	AvpTypeChallengeResponse     AVPType = 13
-	AvpTypeSessionID             AVPType = 14
-	AvpTypeCallSerialNumber      AVPType = 15
-	AvpTypeMinimumBps            AVPType = 16
-	AvpTypeMaximumBps            AVPType = 17
-	AvpTypeBearerType            AVPType = 18
-	AvpTypeFramingType           AVPType = 19
-	AvpTypePacketProcDelay       AVPType = 20 /* Draft only (ignored) */
-	AvpTypeCalledNumber          AVPType = 21
-	AvpTypeCallingNumber         AVPType = 22
-	AvpTypeSubAddress            AVPType = 23
-	AvpTypeConnectSpeed          AVPType = 24
-	AvpTypePhysicalChannelID     AVPType = 25
-	AvpTypeInitialRcvdLcpConfreq AVPType = 26
-	AvpTypeLastSentLcpConfreq    AVPType = 27
-	AvpTypeLastRcvdLcpConfreq    AVPType = 28
-	AvpTypeProxyAuthType         AVPType = 29
-	AvpTypeProxyAuthName         AVPType = 30
-	AvpTypeProxyAuthChallenge    AVPType = 31
-	AvpTypeProxyAuthID           AVPType = 32
-	AvpTypeProxyAuthResponse     AVPType = 33
-	AvpTypeCallErrors            AVPType = 34
-	AvpTypeAccm                  AVPType = 35
-	AvpTypeRandomVector          AVPType = 36
-	AvpTypePrivGroupID           AVPType = 37
-	AvpTypeRxConnectSpeed        AVPType = 38
-	AvpTypeSequencingRequired    AVPType = 39
-	AvpTypeUnused40              AVPType = 40
-	AvpTypeUnused41              AVPType = 41
-	AvpTypeUnused42              AVPType = 42
-	AvpTypeUnused43              AVPType = 43
-	AvpTypeUnused44              AVPType = 44
-	AvpTypeUnused45              AVPType = 45
-	AvpTypeUnused46              AVPType = 46
-	AvpTypeUnused47              AVPType = 47
-	AvpTypeUnused48              AVPType = 48
-	AvpTypeUnused49              AVPType = 49
-	AvpTypeUnused50              AVPType = 50
-	AvpTypeUnused51              AVPType = 51
-	AvpTypeUnused52              AVPType = 52
-	AvpTypeUnused53              AVPType = 53
-	AvpTypeUnused54              AVPType = 54
-	AvpTypeUnused55              AVPType = 55
-	AvpTypeUnused56              AVPType = 56
-	AvpTypeUnused57              AVPType = 57
-	AvpTypeExtended              AVPType = 58
-	AvpTypeMessageDigest         AVPType = 59
-	AvpTypeRouterID              AVPType = 60
-	AvpTypeAssignedConnID        AVPType = 61
-	AvpTypePseudowireCaps        AVPType = 62
-	AvpTypeLocalSessionID        AVPType = 63
-	AvpTypeRemoteSessionID       AVPType = 64
-	AvpTypeAssignedCookie        AVPType = 65
-	AvpTypeRemoteEndID           AVPType = 66
-	AvpTypeUnused67              AVPType = 67
-	AvpTypePseudowireType        AVPType = 68
-	AvpTypeL2specificSublayer    AVPType = 69
-	AvpTypeDataSequencing        AVPType = 70
-	AvpTypeCircuitStatus         AVPType = 71
-	AvpTypePreferredLanguage     AVPType = 72
-	AvpTypeControlAuthNonce      AVPType = 73
-	AvpTypeTxConnectSpeedBps     AVPType = 74
-	AvpTypeRxConnectSpeedBps     AVPType = 75
-	AvpTypeMax                   AVPType = 76
+	avpTypeMessage               avpType = 0
+	avpTypeResultCode            avpType = 1
+	avpTypeProtocolVersion       avpType = 2
+	avpTypeFramingCap            avpType = 3
+	avpTypeBearerCap             avpType = 4
+	avpTypeTiebreaker            avpType = 5
+	avpTypeFirmwareRevision      avpType = 6
+	avpTypeHostName              avpType = 7
+	avpTypeVendorName            avpType = 8
+	avpTypeTunnelID              avpType = 9
+	avpTypeRxWindowSize          avpType = 10
+	avpTypeChallenge             avpType = 11
+	avpTypeQ931CauseCode         avpType = 12
+	avpTypeChallengeResponse     avpType = 13
+	avpTypeSessionID             avpType = 14
+	avpTypeCallSerialNumber      avpType = 15
+	avpTypeMinimumBps            avpType = 16
+	avpTypeMaximumBps            avpType = 17
+	avpTypeBearerType            avpType = 18
+	avpTypeFramingType           avpType = 19
+	avpTypePacketProcDelay       avpType = 20 /* Draft only (ignored) */
+	avpTypeCalledNumber          avpType = 21
+	avpTypeCallingNumber         avpType = 22
+	avpTypeSubAddress            avpType = 23
+	avpTypeConnectSpeed          avpType = 24
+	avpTypePhysicalChannelID     avpType = 25
+	avpTypeInitialRcvdLcpConfreq avpType = 26
+	avpTypeLastSentLcpConfreq    avpType = 27
+	avpTypeLastRcvdLcpConfreq    avpType = 28
+	avpTypeProxyAuthType         avpType = 29
+	avpTypeProxyAuthName         avpType = 30
+	avpTypeProxyAuthChallenge    avpType = 31
+	avpTypeProxyAuthID           avpType = 32
+	avpTypeProxyAuthResponse     avpType = 33
+	avpTypeCallErrors            avpType = 34
+	avpTypeAccm                  avpType = 35
+	avpTypeRandomVector          avpType = 36
+	avpTypePrivGroupID           avpType = 37
+	avpTypeRxConnectSpeed        avpType = 38
+	avpTypeSequencingRequired    avpType = 39
+	avpTypeUnused40              avpType = 40
+	avpTypeUnused41              avpType = 41
+	avpTypeUnused42              avpType = 42
+	avpTypeUnused43              avpType = 43
+	avpTypeUnused44              avpType = 44
+	avpTypeUnused45              avpType = 45
+	avpTypeUnused46              avpType = 46
+	avpTypeUnused47              avpType = 47
+	avpTypeUnused48              avpType = 48
+	avpTypeUnused49              avpType = 49
+	avpTypeUnused50              avpType = 50
+	avpTypeUnused51              avpType = 51
+	avpTypeUnused52              avpType = 52
+	avpTypeUnused53              avpType = 53
+	avpTypeUnused54              avpType = 54
+	avpTypeUnused55              avpType = 55
+	avpTypeUnused56              avpType = 56
+	avpTypeUnused57              avpType = 57
+	avpTypeExtended              avpType = 58
+	avpTypeMessageDigest         avpType = 59
+	avpTypeRouterID              avpType = 60
+	avpTypeAssignedConnID        avpType = 61
+	avpTypePseudowireCaps        avpType = 62
+	avpTypeLocalSessionID        avpType = 63
+	avpTypeRemoteSessionID       avpType = 64
+	avpTypeAssignedCookie        avpType = 65
+	avpTypeRemoteEndID           avpType = 66
+	avpTypeUnused67              avpType = 67
+	avpTypePseudowireType        avpType = 68
+	avpTypeL2specificSublayer    avpType = 69
+	avpTypeDataSequencing        avpType = 70
+	avpTypeCircuitStatus         avpType = 71
+	avpTypePreferredLanguage     avpType = 72
+	avpTypeControlAuthNonce      avpType = 73
+	avpTypeTxConnectSpeedBps     avpType = 74
+	avpTypeRxConnectSpeedBps     avpType = 75
+	avpTypeMax                   avpType = 76
 )
 
 // AVP message types as per RFC2661 and RFC3931, representing the various
 // control protocol messages used in the L2TPv2 and L2TPv3 protocols.
 const (
-	AvpMsgTypeIllegal    AVPMsgType = 0
-	AvpMsgTypeSccrq      AVPMsgType = 1
-	AvpMsgTypeSccrp      AVPMsgType = 2
-	AvpMsgTypeScccn      AVPMsgType = 3
-	AvpMsgTypeStopccn    AVPMsgType = 4
-	AvpMsgTypeReserved5  AVPMsgType = 5
-	AvpMsgTypeHello      AVPMsgType = 6
-	AvpMsgTypeOcrq       AVPMsgType = 7
-	AvpMsgTypeOcrp       AVPMsgType = 8
-	AvpMsgTypeOccn       AVPMsgType = 9
-	AvpMsgTypeIcrq       AVPMsgType = 10
-	AvpMsgTypeIcrp       AVPMsgType = 11
-	AvpMsgTypeIccn       AVPMsgType = 12
-	AvpMsgTypeReserved13 AVPMsgType = 13
-	AvpMsgTypeCdn        AVPMsgType = 14
-	AvpMsgTypeWen        AVPMsgType = 15
-	AvpMsgTypeSli        AVPMsgType = 16
-	AvpMsgTypeMdmst      AVPMsgType = 17
-	AvpMsgTypeSrrq       AVPMsgType = 18
-	AvpMsgTypeSrrp       AVPMsgType = 19
-	AvpMsgTypeAck        AVPMsgType = 20
-	AvpMsgTypeFsq        AVPMsgType = 21
-	AvpMsgTypeFsr        AVPMsgType = 22
-	AvpMsgTypeMsrq       AVPMsgType = 23
-	AvpMsgTypeMsrp       AVPMsgType = 24
-	AvpMsgTypeMse        AVPMsgType = 25
-	AvpMsgTypeMsi        AVPMsgType = 26
-	AvpMsgTypeMsen       AVPMsgType = 27
-	AvpMsgTypeCsun       AVPMsgType = 28
-	AvpMsgTypeCsurq      AVPMsgType = 29
-	AvpMsgTypeMax        AVPMsgType = 30
+	avpMsgTypeIllegal    avpMsgType = 0
+	avpMsgTypeSccrq      avpMsgType = 1
+	avpMsgTypeSccrp      avpMsgType = 2
+	avpMsgTypeScccn      avpMsgType = 3
+	avpMsgTypeStopccn    avpMsgType = 4
+	avpMsgTypeReserved5  avpMsgType = 5
+	avpMsgTypeHello      avpMsgType = 6
+	avpMsgTypeOcrq       avpMsgType = 7
+	avpMsgTypeOcrp       avpMsgType = 8
+	avpMsgTypeOccn       avpMsgType = 9
+	avpMsgTypeIcrq       avpMsgType = 10
+	avpMsgTypeIcrp       avpMsgType = 11
+	avpMsgTypeIccn       avpMsgType = 12
+	avpMsgTypeReserved13 avpMsgType = 13
+	avpMsgTypeCdn        avpMsgType = 14
+	avpMsgTypeWen        avpMsgType = 15
+	avpMsgTypeSli        avpMsgType = 16
+	avpMsgTypeMdmst      avpMsgType = 17
+	avpMsgTypeSrrq       avpMsgType = 18
+	avpMsgTypeSrrp       avpMsgType = 19
+	avpMsgTypeAck        avpMsgType = 20
+	avpMsgTypeFsq        avpMsgType = 21
+	avpMsgTypeFsr        avpMsgType = 22
+	avpMsgTypeMsrq       avpMsgType = 23
+	avpMsgTypeMsrp       avpMsgType = 24
+	avpMsgTypeMse        avpMsgType = 25
+	avpMsgTypeMsi        avpMsgType = 26
+	avpMsgTypeMsen       avpMsgType = 27
+	avpMsgTypeCsun       avpMsgType = 28
+	avpMsgTypeCsurq      avpMsgType = 29
+	avpMsgTypeMax        avpMsgType = 30
 )
 
 // AVP result codes as per RFC2661 and RFC3931.
 // StopCCN messages and CDN messages have seperate result codes.
 const (
-	AvpStopCCNResultCodeReserved                          AVPResultCode = 0
-	AvpStopCCNResultCodeClearConnection                   AVPResultCode = 1
-	AvpStopCCNResultCodeGeneralError                      AVPResultCode = 2
-	AvpStopCCNResultCodeChannelExists                     AVPResultCode = 3
-	AvpStopCCNResultCodeChannelNotAuthorized              AVPResultCode = 4
-	AvpStopCCNResultCodeChannelProtocolVersionUnsupported AVPResultCode = 5
-	AvpStopCCNResultCodeChannelShuttingDown               AVPResultCode = 6
-	AvpStopCCNResultCodeChannelFSMError                   AVPResultCode = 7
-	AvpCDNResultCodeReserved                              AVPResultCode = 0
-	AvpCDNResultCodeLostCarrier                           AVPResultCode = 1
-	AvpCDNResultCodeGeneralError                          AVPResultCode = 2
-	AvpCDNResultCodeAdminDisconnect                       AVPResultCode = 3
-	AvpCDNResultCodeNoResources                           AVPResultCode = 4
-	AvpCDNResultCodeNotAvailable                          AVPResultCode = 5
-	AvpCDNResultCodeInvalidDestination                    AVPResultCode = 6
-	AvpCDNResultCodeNoAnswer                              AVPResultCode = 7
-	AvpCDNResultCodeBusy                                  AVPResultCode = 8
-	AvpCDNResultCodeNoDialTone                            AVPResultCode = 9
-	AvpCDNResultCodeTimeout                               AVPResultCode = 10
-	AvpCDNResultCodeBadTransport                          AVPResultCode = 11
+	avpStopCCNResultCodeReserved                          avpResultCode = 0
+	avpStopCCNResultCodeClearConnection                   avpResultCode = 1
+	avpStopCCNResultCodeGeneralError                      avpResultCode = 2
+	avpStopCCNResultCodeChannelExists                     avpResultCode = 3
+	avpStopCCNResultCodeChannelNotAuthorized              avpResultCode = 4
+	avpStopCCNResultCodeChannelProtocolVersionUnsupported avpResultCode = 5
+	avpStopCCNResultCodeChannelShuttingDown               avpResultCode = 6
+	avpStopCCNResultCodeChannelFSMError                   avpResultCode = 7
+	avpCDNResultCodeReserved                              avpResultCode = 0
+	avpCDNResultCodeLostCarrier                           avpResultCode = 1
+	avpCDNResultCodeGeneralError                          avpResultCode = 2
+	avpCDNResultCodeAdminDisconnect                       avpResultCode = 3
+	avpCDNResultCodeNoResources                           avpResultCode = 4
+	avpCDNResultCodeNotAvailable                          avpResultCode = 5
+	avpCDNResultCodeInvalidDestination                    avpResultCode = 6
+	avpCDNResultCodeNoAnswer                              avpResultCode = 7
+	avpCDNResultCodeBusy                                  avpResultCode = 8
+	avpCDNResultCodeNoDialTone                            avpResultCode = 9
+	avpCDNResultCodeTimeout                               avpResultCode = 10
+	avpCDNResultCodeBadTransport                          avpResultCode = 11
 )
 
 // AVP error codes as per RFC2661 and RFC3931
 const (
-	AvpErrorCodeNoError             AVPErrorCode = 0
-	AvpErrorCodeNoControlConnection AVPErrorCode = 1
-	AvpErrorCodeBadLength           AVPErrorCode = 2
-	AvpErrorCodeBadValue            AVPErrorCode = 3
-	AvpErrorCodeNoResource          AVPErrorCode = 4
-	AvpErrorCodeInvalidSessionID    AVPErrorCode = 5
-	AvpErrorCodeVendorSpecificError AVPErrorCode = 6
-	AvpErrorCodeTryAnother          AVPErrorCode = 7
-	AvpErrorCodeMBitShutdown        AVPErrorCode = 8
+	avpErrorCodeNoError             avpErrorCode = 0
+	avpErrorCodeNoControlConnection avpErrorCode = 1
+	avpErrorCodeBadLength           avpErrorCode = 2
+	avpErrorCodeBadValue            avpErrorCode = 3
+	avpErrorCodeNoResource          avpErrorCode = 4
+	avpErrorCodeInvalidSessionID    avpErrorCode = 5
+	avpErrorCodeVendorSpecificError avpErrorCode = 6
+	avpErrorCodeTryAnother          avpErrorCode = 7
+	avpErrorCodeMBitShutdown        avpErrorCode = 8
 )
 
-// String converts an AVPType identifier into a human-readable string.
+// String converts an avpType identifier into a human-readable string.
 // Implements the fmt.Stringer() interface.
-func (t AVPType) String() string {
+func (t avpType) String() string {
 	switch t {
-	case AvpTypeMessage:
-		return "AvpTypeMessage"
-	case AvpTypeResultCode:
-		return "AvpTypeResultCode"
-	case AvpTypeProtocolVersion:
-		return "AvpTypeProtocolVersion"
-	case AvpTypeFramingCap:
-		return "AvpTypeFramingCap"
-	case AvpTypeBearerCap:
-		return "AvpTypeBearerCap"
-	case AvpTypeTiebreaker:
-		return "AvpTypeTiebreaker"
-	case AvpTypeFirmwareRevision:
-		return "AvpTypeFirmwareRevision"
-	case AvpTypeHostName:
-		return "AvpTypeHostName"
-	case AvpTypeVendorName:
-		return "AvpTypeVendorName"
-	case AvpTypeTunnelID:
-		return "AvpTypeTunnelID"
-	case AvpTypeRxWindowSize:
-		return "AvpTypeRxWindowSize"
-	case AvpTypeChallenge:
-		return "AvpTypeChallenge"
-	case AvpTypeQ931CauseCode:
-		return "AvpTypeQ931CauseCode"
-	case AvpTypeChallengeResponse:
-		return "AvpTypeChallengeResponse"
-	case AvpTypeSessionID:
-		return "AvpTypeSessionID"
-	case AvpTypeCallSerialNumber:
-		return "AvpTypeCallSerialNumber"
-	case AvpTypeMinimumBps:
-		return "AvpTypeMinimumBps"
-	case AvpTypeMaximumBps:
-		return "AvpTypeMaximumBps"
-	case AvpTypeBearerType:
-		return "AvpTypeBearerType"
-	case AvpTypeFramingType:
-		return "AvpTypeFramingType"
-	case AvpTypePacketProcDelay:
-		return "AvpTypePacketProcDelay"
-	case AvpTypeCalledNumber:
-		return "AvpTypeCalledNumber"
-	case AvpTypeCallingNumber:
-		return "AvpTypeCallingNumber"
-	case AvpTypeSubAddress:
-		return "AvpTypeSubAddress"
-	case AvpTypeConnectSpeed:
-		return "AvpTypeConnectSpeed"
-	case AvpTypePhysicalChannelID:
-		return "AvpTypePhysicalChannelID"
-	case AvpTypeInitialRcvdLcpConfreq:
-		return "AvpTypeInitialRcvdLcpConfreq"
-	case AvpTypeLastSentLcpConfreq:
-		return "AvpTypeLastSentLcpConfreq"
-	case AvpTypeLastRcvdLcpConfreq:
-		return "AvpTypeLastRcvdLcpConfreq"
-	case AvpTypeProxyAuthType:
-		return "AvpTypeProxyAuthType"
-	case AvpTypeProxyAuthName:
-		return "AvpTypeProxyAuthName"
-	case AvpTypeProxyAuthChallenge:
-		return "AvpTypeProxyAuthChallenge"
-	case AvpTypeProxyAuthID:
-		return "AvpTypeProxyAuthID"
-	case AvpTypeProxyAuthResponse:
-		return "AvpTypeProxyAuthResponse"
-	case AvpTypeCallErrors:
-		return "AvpTypeCallErrors"
-	case AvpTypeAccm:
-		return "AvpTypeAccm"
-	case AvpTypeRandomVector:
-		return "AvpTypeRandomVector"
-	case AvpTypePrivGroupID:
-		return "AvpTypePrivGroupID"
-	case AvpTypeRxConnectSpeed:
-		return "AvpTypeRxConnectSpeed"
-	case AvpTypeSequencingRequired:
-		return "AvpTypeSequencingRequired"
-	case AvpTypeUnused40:
-		return "AvpTypeUnused40"
-	case AvpTypeUnused41:
-		return "AvpTypeUnused41"
-	case AvpTypeUnused42:
-		return "AvpTypeUnused42"
-	case AvpTypeUnused43:
-		return "AvpTypeUnused43"
-	case AvpTypeUnused44:
-		return "AvpTypeUnused44"
-	case AvpTypeUnused45:
-		return "AvpTypeUnused45"
-	case AvpTypeUnused46:
-		return "AvpTypeUnused46"
-	case AvpTypeUnused47:
-		return "AvpTypeUnused47"
-	case AvpTypeUnused48:
-		return "AvpTypeUnused48"
-	case AvpTypeUnused49:
-		return "AvpTypeUnused49"
-	case AvpTypeUnused50:
-		return "AvpTypeUnused50"
-	case AvpTypeUnused51:
-		return "AvpTypeUnused51"
-	case AvpTypeUnused52:
-		return "AvpTypeUnused52"
-	case AvpTypeUnused53:
-		return "AvpTypeUnused53"
-	case AvpTypeUnused54:
-		return "AvpTypeUnused54"
-	case AvpTypeUnused55:
-		return "AvpTypeUnused55"
-	case AvpTypeUnused56:
-		return "AvpTypeUnused56"
-	case AvpTypeUnused57:
-		return "AvpTypeUnused57"
-	case AvpTypeExtended:
-		return "AvpTypeExtended"
-	case AvpTypeMessageDigest:
-		return "AvpTypeMessageDigest"
-	case AvpTypeRouterID:
-		return "AvpTypeRouterID"
-	case AvpTypeAssignedConnID:
-		return "AvpTypeAssignedConnID"
-	case AvpTypePseudowireCaps:
-		return "AvpTypePseudowireCaps"
-	case AvpTypeLocalSessionID:
-		return "AvpTypeLocalSessionID"
-	case AvpTypeRemoteSessionID:
-		return "AvpTypeRemoteSessionID"
-	case AvpTypeAssignedCookie:
-		return "AvpTypeAssignedCookie"
-	case AvpTypeRemoteEndID:
-		return "AvpTypeRemoteEndID"
-	case AvpTypeUnused67:
-		return "AvpTypeUnused67"
-	case AvpTypePseudowireType:
-		return "AvpTypePseudowireType"
-	case AvpTypeL2specificSublayer:
-		return "AvpTypeL2specificSublayer"
-	case AvpTypeDataSequencing:
-		return "AvpTypeDataSequencing"
-	case AvpTypeCircuitStatus:
-		return "AvpTypeCircuitStatus"
-	case AvpTypePreferredLanguage:
-		return "AvpTypePreferredLanguage"
-	case AvpTypeControlAuthNonce:
-		return "AvpTypeControlAuthNonce"
-	case AvpTypeTxConnectSpeedBps:
-		return "AvpTypeTxConnectSpeedBps"
-	case AvpTypeRxConnectSpeedBps:
-		return "AvpTypeRxConnectSpeedBps"
+	case avpTypeMessage:
+		return "avpTypeMessage"
+	case avpTypeResultCode:
+		return "avpTypeResultCode"
+	case avpTypeProtocolVersion:
+		return "avpTypeProtocolVersion"
+	case avpTypeFramingCap:
+		return "avpTypeFramingCap"
+	case avpTypeBearerCap:
+		return "avpTypeBearerCap"
+	case avpTypeTiebreaker:
+		return "avpTypeTiebreaker"
+	case avpTypeFirmwareRevision:
+		return "avpTypeFirmwareRevision"
+	case avpTypeHostName:
+		return "avpTypeHostName"
+	case avpTypeVendorName:
+		return "avpTypeVendorName"
+	case avpTypeTunnelID:
+		return "avpTypeTunnelID"
+	case avpTypeRxWindowSize:
+		return "avpTypeRxWindowSize"
+	case avpTypeChallenge:
+		return "avpTypeChallenge"
+	case avpTypeQ931CauseCode:
+		return "avpTypeQ931CauseCode"
+	case avpTypeChallengeResponse:
+		return "avpTypeChallengeResponse"
+	case avpTypeSessionID:
+		return "avpTypeSessionID"
+	case avpTypeCallSerialNumber:
+		return "avpTypeCallSerialNumber"
+	case avpTypeMinimumBps:
+		return "avpTypeMinimumBps"
+	case avpTypeMaximumBps:
+		return "avpTypeMaximumBps"
+	case avpTypeBearerType:
+		return "avpTypeBearerType"
+	case avpTypeFramingType:
+		return "avpTypeFramingType"
+	case avpTypePacketProcDelay:
+		return "avpTypePacketProcDelay"
+	case avpTypeCalledNumber:
+		return "avpTypeCalledNumber"
+	case avpTypeCallingNumber:
+		return "avpTypeCallingNumber"
+	case avpTypeSubAddress:
+		return "avpTypeSubAddress"
+	case avpTypeConnectSpeed:
+		return "avpTypeConnectSpeed"
+	case avpTypePhysicalChannelID:
+		return "avpTypePhysicalChannelID"
+	case avpTypeInitialRcvdLcpConfreq:
+		return "avpTypeInitialRcvdLcpConfreq"
+	case avpTypeLastSentLcpConfreq:
+		return "avpTypeLastSentLcpConfreq"
+	case avpTypeLastRcvdLcpConfreq:
+		return "avpTypeLastRcvdLcpConfreq"
+	case avpTypeProxyAuthType:
+		return "avpTypeProxyAuthType"
+	case avpTypeProxyAuthName:
+		return "avpTypeProxyAuthName"
+	case avpTypeProxyAuthChallenge:
+		return "avpTypeProxyAuthChallenge"
+	case avpTypeProxyAuthID:
+		return "avpTypeProxyAuthID"
+	case avpTypeProxyAuthResponse:
+		return "avpTypeProxyAuthResponse"
+	case avpTypeCallErrors:
+		return "avpTypeCallErrors"
+	case avpTypeAccm:
+		return "avpTypeAccm"
+	case avpTypeRandomVector:
+		return "avpTypeRandomVector"
+	case avpTypePrivGroupID:
+		return "avpTypePrivGroupID"
+	case avpTypeRxConnectSpeed:
+		return "avpTypeRxConnectSpeed"
+	case avpTypeSequencingRequired:
+		return "avpTypeSequencingRequired"
+	case avpTypeUnused40:
+		return "avpTypeUnused40"
+	case avpTypeUnused41:
+		return "avpTypeUnused41"
+	case avpTypeUnused42:
+		return "avpTypeUnused42"
+	case avpTypeUnused43:
+		return "avpTypeUnused43"
+	case avpTypeUnused44:
+		return "avpTypeUnused44"
+	case avpTypeUnused45:
+		return "avpTypeUnused45"
+	case avpTypeUnused46:
+		return "avpTypeUnused46"
+	case avpTypeUnused47:
+		return "avpTypeUnused47"
+	case avpTypeUnused48:
+		return "avpTypeUnused48"
+	case avpTypeUnused49:
+		return "avpTypeUnused49"
+	case avpTypeUnused50:
+		return "avpTypeUnused50"
+	case avpTypeUnused51:
+		return "avpTypeUnused51"
+	case avpTypeUnused52:
+		return "avpTypeUnused52"
+	case avpTypeUnused53:
+		return "avpTypeUnused53"
+	case avpTypeUnused54:
+		return "avpTypeUnused54"
+	case avpTypeUnused55:
+		return "avpTypeUnused55"
+	case avpTypeUnused56:
+		return "avpTypeUnused56"
+	case avpTypeUnused57:
+		return "avpTypeUnused57"
+	case avpTypeExtended:
+		return "avpTypeExtended"
+	case avpTypeMessageDigest:
+		return "avpTypeMessageDigest"
+	case avpTypeRouterID:
+		return "avpTypeRouterID"
+	case avpTypeAssignedConnID:
+		return "avpTypeAssignedConnID"
+	case avpTypePseudowireCaps:
+		return "avpTypePseudowireCaps"
+	case avpTypeLocalSessionID:
+		return "avpTypeLocalSessionID"
+	case avpTypeRemoteSessionID:
+		return "avpTypeRemoteSessionID"
+	case avpTypeAssignedCookie:
+		return "avpTypeAssignedCookie"
+	case avpTypeRemoteEndID:
+		return "avpTypeRemoteEndID"
+	case avpTypeUnused67:
+		return "avpTypeUnused67"
+	case avpTypePseudowireType:
+		return "avpTypePseudowireType"
+	case avpTypeL2specificSublayer:
+		return "avpTypeL2specificSublayer"
+	case avpTypeDataSequencing:
+		return "avpTypeDataSequencing"
+	case avpTypeCircuitStatus:
+		return "avpTypeCircuitStatus"
+	case avpTypePreferredLanguage:
+		return "avpTypePreferredLanguage"
+	case avpTypeControlAuthNonce:
+		return "avpTypeControlAuthNonce"
+	case avpTypeTxConnectSpeedBps:
+		return "avpTypeTxConnectSpeedBps"
+	case avpTypeRxConnectSpeedBps:
+		return "avpTypeRxConnectSpeedBps"
 	}
 	return ""
 }
 
-// String converts an AVPMsgType identifier into a human-readable string.
+// String converts an avpMsgType identifier into a human-readable string.
 // Implements the fmt.Stringer() interface.
-func (t AVPMsgType) String() string {
+func (t avpMsgType) String() string {
 	switch t {
-	case AvpMsgTypeIllegal:
-		return "AvpMsgTypeIllegal"
-	case AvpMsgTypeSccrq:
-		return "AvpMsgTypeSccrq"
-	case AvpMsgTypeSccrp:
-		return "AvpMsgTypeSccrp"
-	case AvpMsgTypeScccn:
-		return "AvpMsgTypeScccn"
-	case AvpMsgTypeStopccn:
-		return "AvpMsgTypeStopccn"
-	case AvpMsgTypeReserved5:
-		return "AvpMsgTypeReserved5"
-	case AvpMsgTypeHello:
-		return "AvpMsgTypeHello"
-	case AvpMsgTypeOcrq:
-		return "AvpMsgTypeOcrq"
-	case AvpMsgTypeOcrp:
-		return "AvpMsgTypeOcrp"
-	case AvpMsgTypeOccn:
-		return "AvpMsgTypeOccn"
-	case AvpMsgTypeIcrq:
-		return "AvpMsgTypeIcrq"
-	case AvpMsgTypeIcrp:
-		return "AvpMsgTypeIcrp"
-	case AvpMsgTypeIccn:
-		return "AvpMsgTypeIccn"
-	case AvpMsgTypeReserved13:
-		return "AvpMsgTypeReserved13"
-	case AvpMsgTypeCdn:
-		return "AvpMsgTypeCdn"
-	case AvpMsgTypeWen:
-		return "AvpMsgTypeWen"
-	case AvpMsgTypeSli:
-		return "AvpMsgTypeSli"
-	case AvpMsgTypeMdmst:
-		return "AvpMsgTypeMdmst"
-	case AvpMsgTypeSrrq:
-		return "AvpMsgTypeSrrq"
-	case AvpMsgTypeSrrp:
-		return "AvpMsgTypeSrrp"
-	case AvpMsgTypeAck:
-		return "AvpMsgTypeAck"
-	case AvpMsgTypeFsq:
-		return "AvpMsgTypeFsq"
-	case AvpMsgTypeFsr:
-		return "AvpMsgTypeFsr"
-	case AvpMsgTypeMsrq:
-		return "AvpMsgTypeMsrq"
-	case AvpMsgTypeMsrp:
-		return "AvpMsgTypeMsrp"
-	case AvpMsgTypeMse:
-		return "AvpMsgTypeMse"
-	case AvpMsgTypeMsi:
-		return "AvpMsgTypeMsi"
-	case AvpMsgTypeMsen:
-		return "AvpMsgTypeMsen"
-	case AvpMsgTypeCsun:
-		return "AvpMsgTypeCsun"
-	case AvpMsgTypeCsurq:
-		return "AvpMsgTypeCsurq"
+	case avpMsgTypeIllegal:
+		return "avpMsgTypeIllegal"
+	case avpMsgTypeSccrq:
+		return "avpMsgTypeSccrq"
+	case avpMsgTypeSccrp:
+		return "avpMsgTypeSccrp"
+	case avpMsgTypeScccn:
+		return "avpMsgTypeScccn"
+	case avpMsgTypeStopccn:
+		return "avpMsgTypeStopccn"
+	case avpMsgTypeReserved5:
+		return "avpMsgTypeReserved5"
+	case avpMsgTypeHello:
+		return "avpMsgTypeHello"
+	case avpMsgTypeOcrq:
+		return "avpMsgTypeOcrq"
+	case avpMsgTypeOcrp:
+		return "avpMsgTypeOcrp"
+	case avpMsgTypeOccn:
+		return "avpMsgTypeOccn"
+	case avpMsgTypeIcrq:
+		return "avpMsgTypeIcrq"
+	case avpMsgTypeIcrp:
+		return "avpMsgTypeIcrp"
+	case avpMsgTypeIccn:
+		return "avpMsgTypeIccn"
+	case avpMsgTypeReserved13:
+		return "avpMsgTypeReserved13"
+	case avpMsgTypeCdn:
+		return "avpMsgTypeCdn"
+	case avpMsgTypeWen:
+		return "avpMsgTypeWen"
+	case avpMsgTypeSli:
+		return "avpMsgTypeSli"
+	case avpMsgTypeMdmst:
+		return "avpMsgTypeMdmst"
+	case avpMsgTypeSrrq:
+		return "avpMsgTypeSrrq"
+	case avpMsgTypeSrrp:
+		return "avpMsgTypeSrrp"
+	case avpMsgTypeAck:
+		return "avpMsgTypeAck"
+	case avpMsgTypeFsq:
+		return "avpMsgTypeFsq"
+	case avpMsgTypeFsr:
+		return "avpMsgTypeFsr"
+	case avpMsgTypeMsrq:
+		return "avpMsgTypeMsrq"
+	case avpMsgTypeMsrp:
+		return "avpMsgTypeMsrp"
+	case avpMsgTypeMse:
+		return "avpMsgTypeMse"
+	case avpMsgTypeMsi:
+		return "avpMsgTypeMsi"
+	case avpMsgTypeMsen:
+		return "avpMsgTypeMsen"
+	case avpMsgTypeCsun:
+		return "avpMsgTypeCsun"
+	case avpMsgTypeCsurq:
+		return "avpMsgTypeCsurq"
 	}
 	return ""
 }
 
 // String represents the AVP as a human-readable string.
 // Implements the fmt.Stringer() interface.
-func (avp AVP) String() string {
+func (avp avp) String() string {
 	return fmt.Sprintf("%s %s", avp.header, avp.payload)
 }
 
 // String represents the vendor ID as a human-readable string.
 // Implements the fmt.Stringer() interface.
-func (v AVPVendorID) String() string {
-	if v == VendorIDIetf {
+func (v avpVendorID) String() string {
+	if v == vendorIDIetf {
 		return "IETF"
 	}
 	return fmt.Sprintf("Vendor %d", v)
@@ -579,29 +579,29 @@ func (v AVPVendorID) String() string {
 
 // String represents the AVP data type as a human-readable string.
 // Implements the fmt.Stringer() interface.
-func (t AVPDataType) String() string {
+func (t avpDataType) String() string {
 	switch t {
-	case AvpDataTypeEmpty:
+	case avpDataTypeEmpty:
 		return "no data"
-	case AvpDataTypeUint8:
+	case avpDataTypeUint8:
 		return "uint8"
-	case AvpDataTypeUint16:
+	case avpDataTypeUint16:
 		return "uint16"
-	case AvpDataTypeUint32:
+	case avpDataTypeUint32:
 		return "uint32"
-	case AvpDataTypeUint64:
+	case avpDataTypeUint64:
 		return "uint64"
-	case AvpDataTypeString:
+	case avpDataTypeString:
 		return "string"
-	case AvpDataTypeBytes:
+	case avpDataTypeBytes:
 		return "byte array"
-	case AvpDataTypeResultCode:
+	case avpDataTypeResultCode:
 		return "result code"
-	case AvpDataTypeMsgID:
+	case avpDataTypeMsgID:
 		return "message ID"
-	case AvpDataTypeUnimplemented:
+	case avpDataTypeUnimplemented:
 		return "unimplemented AVP data type"
-	case AvpDataTypeIllegal:
+	case avpDataTypeIllegal:
 		return "illegal AVP"
 	}
 	return "Unrecognised AVP data type"
@@ -611,7 +611,7 @@ func (hdr avpHeader) String() string {
 	m := "-"
 	h := "-"
 	var t string
-	if hdr.VendorID == VendorIDIetf {
+	if hdr.VendorID == vendorIDIetf {
 		t = hdr.AvpType.String()
 	} else {
 		t = fmt.Sprintf("Vendor %d AVP %d", hdr.VendorID, uint16(hdr.AvpType))
@@ -631,24 +631,24 @@ func (p avpPayload) String() string {
 	str.WriteString(fmt.Sprintf("(%s) ", p.dataType))
 
 	switch p.dataType {
-	case AvpDataTypeUint8:
+	case avpDataTypeUint8:
 		v, _ := p.toUint8()
 		str.WriteString(fmt.Sprintf("%d", v))
-	case AvpDataTypeUint16:
+	case avpDataTypeUint16:
 		v, _ := p.toUint16()
 		str.WriteString(fmt.Sprintf("%d", v))
-	case AvpDataTypeUint32:
+	case avpDataTypeUint32:
 		v, _ := p.toUint32()
 		str.WriteString(fmt.Sprintf("%d", v))
-	case AvpDataTypeUint64:
+	case avpDataTypeUint64:
 		v, _ := p.toUint64()
 		str.WriteString(fmt.Sprintf("%d", v))
-	case AvpDataTypeString:
+	case avpDataTypeString:
 		s, _ := p.toString()
 		str.WriteString(s)
-	case AvpDataTypeBytes:
+	case avpDataTypeBytes:
 		str.WriteString(fmt.Sprintf("%s", p.data))
-	case AvpDataTypeEmpty, AvpDataTypeUnimplemented, AvpDataTypeIllegal:
+	case avpDataTypeEmpty, avpDataTypeUnimplemented, avpDataTypeIllegal:
 		str.WriteString("")
 	}
 
@@ -673,8 +673,8 @@ func (hdr *avpHeader) dataLen() int {
 
 func newAvpHeader(isMandatory, isHidden bool,
 	payloadBytes uint,
-	vid AVPVendorID,
-	typ AVPType) *avpHeader {
+	vid avpVendorID,
+	typ avpType) *avpHeader {
 	var flagLen avpFlagLen = 0x0
 	if isMandatory {
 		flagLen = flagLen ^ 0x8000
@@ -690,44 +690,44 @@ func newAvpHeader(isMandatory, isHidden bool,
 	}
 }
 
-// IsMandatory returns true if a given AVP is flagged as being mandatory.
+// isMandatory returns true if a given AVP is flagged as being mandatory.
 // The RFCs state that if an unrecognised AVP with the mandatory flag set
 // is received by an implementation, the implementation MUST terminate the
 // associated tunnel or session instance.
-func (avp *AVP) IsMandatory() bool {
+func (avp *avp) isMandatory() bool {
 	return avp.header.isMandatory()
 }
 
-// IsHidden returns true if a given AVP has been obscured using the hiding
+// isHidden returns true if a given AVP has been obscured using the hiding
 // algorithm described by RFC2661 Section 4.3.
-func (avp *AVP) IsHidden() bool {
+func (avp *avp) isHidden() bool {
 	return avp.header.isHidden()
 }
 
-// Type returns the type identifier for the AVP.
-func (avp *AVP) Type() AVPType {
+// type returns the type identifier for the AVP.
+func (avp *avp) getType() avpType {
 	return avp.header.AvpType
 }
 
-// VendorID returns the vendor ID for the AVP.
+// vendorID returns the vendor ID for the AVP.
 // Standard AVPs per RFC2661 and RFC3931 will use the IETF namespace.
 // Vendor-specific AVPs will use a per-vendor ID.
-func (avp *AVP) VendorID() AVPVendorID {
+func (avp *avp) vendorID() avpVendorID {
 	return avp.header.VendorID
 }
 
-// DataLen returns the number of bytes in the AVP's payload.
-func (avp *AVP) DataLen() int {
+// dataLen returns the number of bytes in the AVP's payload.
+func (avp *avp) dataLen() int {
 	return avp.header.dataLen()
 }
 
-// Len returns the total number of bytes consumed by the AVP, inclusive
+// totalLen returns the total number of bytes consumed by the AVP, inclusive
 // of the AVP header and data payload.
-func (avp *AVP) Len() int {
+func (avp *avp) totalLen() int {
 	return avp.header.totalLen()
 }
 
-func getAVPInfo(avpType AVPType, VendorID AVPVendorID) (*avpInfo, error) {
+func getAVPInfo(avpType avpType, VendorID avpVendorID) (*avpInfo, error) {
 	for _, info := range avpInfoTable {
 		if info.avpType == avpType && info.VendorID == VendorID {
 			return &info, nil
@@ -736,9 +736,9 @@ func getAVPInfo(avpType AVPType, VendorID AVPVendorID) (*avpInfo, error) {
 	return nil, errors.New("unrecognised AVP type")
 }
 
-// ParseAVPBuffer takes a byte slice of encoded AVP data and parses it
+// parseAVPBuffer takes a byte slice of encoded AVP data and parses it
 // into an array of AVP instances.
-func ParseAVPBuffer(b []byte) (avps []AVP, err error) {
+func parseAVPBuffer(b []byte) (avps []avp, err error) {
 	r := bytes.NewReader(b)
 	for r.Len() >= avpHeaderLen {
 		var h avpHeader
@@ -770,7 +770,7 @@ func ParseAVPBuffer(b []byte) (avps []AVP, err error) {
 			return nil, errors.New("malformed AVP buffer: unable to determine offset of current AVP")
 		}
 
-		avps = append(avps, AVP{
+		avps = append(avps, avp{
 			header: h,
 			payload: avpPayload{
 				dataType: info.dataType,
@@ -792,8 +792,8 @@ func ParseAVPBuffer(b []byte) (avps []AVP, err error) {
 	return avps, nil
 }
 
-// NewAvp builds an AVP containing the specified data
-func NewAvp(vendorID AVPVendorID, avpType AVPType, value interface{}) (avp *AVP, err error) {
+// newAvp builds an AVP containing the specified data
+func newAvp(vendorID avpVendorID, avpType avpType, value interface{}) (a *avp, err error) {
 	var info *avpInfo
 	encBuf := new(bytes.Buffer)
 
@@ -803,24 +803,24 @@ func NewAvp(vendorID AVPVendorID, avpType AVPType, value interface{}) (avp *AVP,
 
 	var ok bool
 	switch info.dataType {
-	case AvpDataTypeEmpty:
-	case AvpDataTypeUint8:
+	case avpDataTypeEmpty:
+	case avpDataTypeUint8:
 		_, ok = value.(uint8)
-	case AvpDataTypeUint16:
+	case avpDataTypeUint16:
 		_, ok = value.(uint16)
-	case AvpDataTypeUint32:
+	case avpDataTypeUint32:
 		_, ok = value.(uint32)
-	case AvpDataTypeUint64:
+	case avpDataTypeUint64:
 		_, ok = value.(uint64)
-	case AvpDataTypeString:
+	case avpDataTypeString:
 		_, ok = value.(string)
-	case AvpDataTypeBytes:
+	case avpDataTypeBytes:
 		_, ok = value.([]byte)
-	case AvpDataTypeMsgID:
-		_, ok = value.(AVPMsgType)
-	case AvpDataTypeResultCode:
-		_, ok = value.(ResultCode)
-	case AvpDataTypeUnimplemented, AvpDataTypeIllegal:
+	case avpDataTypeMsgID:
+		_, ok = value.(avpMsgType)
+	case avpDataTypeResultCode:
+		_, ok = value.(resultCode)
+	case avpDataTypeUnimplemented, avpDataTypeIllegal:
 		return nil, fmt.Errorf("AVP %v is not currently supported", avpType)
 	}
 
@@ -833,7 +833,7 @@ func NewAvp(vendorID AVPVendorID, avpType AVPType, value interface{}) (avp *AVP,
 		return nil, err
 	}
 
-	return &AVP{
+	return &avp{
 		header: *newAvpHeader(info.isMandatory, false, uint(encBuf.Len()), vendorID, avpType),
 		payload: avpPayload{
 			dataType: info.dataType,
@@ -842,14 +842,14 @@ func NewAvp(vendorID AVPVendorID, avpType AVPType, value interface{}) (avp *AVP,
 	}, nil
 }
 
-// RawData returns the data type for the AVP, along with the raw byte
+// rawData returns the data type for the AVP, along with the raw byte
 // slice for the data carried by the AVP.
-func (avp *AVP) RawData() (dataType AVPDataType, buffer []byte) {
+func (avp *avp) rawData() (dataType avpDataType, buffer []byte) {
 	return avp.payload.dataType, avp.payload.data
 }
 
-// IsDataType returns true if the AVP holds the specified data type.
-func (avp *AVP) IsDataType(dt AVPDataType) bool {
+// isDataType returns true if the AVP holds the specified data type.
+func (avp *avp) isDataType(dt avpDataType) bool {
 	return avp.payload.dataType == dt
 }
 
@@ -885,96 +885,96 @@ func (p *avpPayload) toString() (out string, err error) {
 	return string(p.data), nil
 }
 
-func (p *avpPayload) toResultCode() (out ResultCode, err error) {
+func (p *avpPayload) toResultCode() (out resultCode, err error) {
 	var resCode, errCode uint16
 	var errMsg string
 
 	r := bytes.NewReader(p.data)
 
 	if err = binary.Read(r, binary.BigEndian, &resCode); err != nil {
-		return ResultCode{}, err
+		return resultCode{}, err
 	}
 	if r.Len() > 0 {
 		if err = binary.Read(r, binary.BigEndian, &errCode); err != nil {
-			return ResultCode{}, err
+			return resultCode{}, err
 		}
 		if r.Len() > 0 {
 			errMsg = string(p.data[4:])
 		}
 	}
-	return ResultCode{
-		Result:  AVPResultCode(resCode),
-		ErrCode: AVPErrorCode(errCode),
-		ErrMsg:  errMsg,
+	return resultCode{
+		result:  avpResultCode(resCode),
+		errCode: avpErrorCode(errCode),
+		errMsg:  errMsg,
 	}, nil
 }
 
-// DecodeUint16Data decodes an AVP holding a uint16 value.
+// decodeUint16Data decodes an AVP holding a uint16 value.
 // It is an error to call this function on an AVP which doesn't
 // contain a uint16 payload.
-func (avp *AVP) DecodeUint16Data() (value uint16, err error) {
-	if !avp.IsDataType(AvpDataTypeUint16) {
+func (avp *avp) decodeUint16Data() (value uint16, err error) {
+	if !avp.isDataType(avpDataTypeUint16) {
 		return 0, errors.New("AVP data is not of type uint16, cannot decode")
 	}
 	return avp.payload.toUint16()
 }
 
-// DecodeUint32Data decodes an AVP holding a uint32 value.
+// decodeUint32Data decodes an AVP holding a uint32 value.
 // It is an error to call this function on an AVP which doesn't
 // contain a uint32 payload.
-func (avp *AVP) DecodeUint32Data() (value uint32, err error) {
-	if !avp.IsDataType(AvpDataTypeUint32) {
+func (avp *avp) decodeUint32Data() (value uint32, err error) {
+	if !avp.isDataType(avpDataTypeUint32) {
 		return 0, errors.New("AVP data is not of type uint32, cannot decode")
 	}
 	return avp.payload.toUint32()
 }
 
-// DecodeUint64Data decodes an AVP holding a uint64 value.
+// decodeUint64Data decodes an AVP holding a uint64 value.
 // It is an error to call this function on an AVP which doesn't
 // contain a uint64 payload.
-func (avp *AVP) DecodeUint64Data() (value uint64, err error) {
-	if !avp.IsDataType(AvpDataTypeUint64) {
+func (avp *avp) decodeUint64Data() (value uint64, err error) {
+	if !avp.isDataType(avpDataTypeUint64) {
 		return 0, errors.New("AVP data is not of type uint64, cannot decode")
 	}
 	return avp.payload.toUint64()
 }
 
-// DecodeStringData decodes an AVP holding a string value.
+// decodeStringData decodes an AVP holding a string value.
 // It is an error to call this function on an AVP which doesn't
 // contain a string payload.
-func (avp *AVP) DecodeStringData() (value string, err error) {
-	if !avp.IsDataType(AvpDataTypeString) {
+func (avp *avp) decodeStringData() (value string, err error) {
+	if !avp.isDataType(avpDataTypeString) {
 		return "", errors.New("AVP data is not of type string, cannot decode")
 	}
 	return avp.payload.toString()
 }
 
-// DecodeResultCode decodes an AVP holding a RFC2661/RFC3931 Result Code.
+// decodeResultCode decodes an AVP holding a RFC2661/RFC3931 Result Code.
 // It is an error to call this function on an AVP which doesn't contain
 // a result code payload.
-func (avp *AVP) DecodeResultCode() (value ResultCode, err error) {
-	if !avp.IsDataType(AvpDataTypeResultCode) {
-		return ResultCode{}, errors.New("AVP is not of type result code, cannot decode")
+func (avp *avp) decodeResultCode() (value resultCode, err error) {
+	if !avp.isDataType(avpDataTypeResultCode) {
+		return resultCode{}, errors.New("AVP is not of type result code, cannot decode")
 	}
 	return avp.payload.toResultCode()
 }
 
-// DecodeMsgType decodes an AVP holding a message type ID.
+// decodeMsgType decodes an AVP holding a message type ID.
 // It is an error to call this function on an AVP which doesn't contain
 // a message ID payload.
-func (avp *AVP) DecodeMsgType() (value AVPMsgType, err error) {
-	if !avp.IsDataType(AvpDataTypeMsgID) {
-		return AvpMsgTypeIllegal, errors.New("AVP is not of type message ID, cannot decode")
+func (avp *avp) decodeMsgType() (value avpMsgType, err error) {
+	if !avp.isDataType(avpDataTypeMsgID) {
+		return avpMsgTypeIllegal, errors.New("AVP is not of type message ID, cannot decode")
 	}
 	out, err := avp.payload.toUint16()
-	return AVPMsgType(out), err
+	return avpMsgType(out), err
 }
 
-// AvpsLengthBytes returns the length of a slice of AVPs in bytes
-func AvpsLengthBytes(avps []AVP) int {
+// avpsLengthBytes returns the length of a slice of AVPs in bytes
+func avpsLengthBytes(avps []avp) int {
 	var nb int
 	for _, avp := range avps {
-		nb += avp.Len()
+		nb += avp.totalLen()
 	}
 	return nb
 }

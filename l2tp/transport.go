@@ -352,7 +352,7 @@ func (xport *Transport) dequeueRxMessage() bool {
 			// In general we don't need to do anything more with an ack message
 			// since they're just for the transport's purposes, so just drop them
 			xport.rxQueue = append(xport.rxQueue[:i], xport.rxQueue[i+1:]...)
-			if msg.Type() != AvpMsgTypeAck {
+			if msg.Type() != avpMsgTypeAck {
 				xport.recvMessage(msg)
 			}
 			return true
@@ -400,7 +400,7 @@ func (xport *Transport) sendMessage(msg *ctlMsg) error {
 	if err == nil {
 		xport.toggleAckTimer(false) // we have just sent an implicit ack
 		xport.resetHelloTimer()
-		if msg.msg.Type() != AvpMsgTypeAck && msg.nretries == 0 {
+		if msg.msg.Type() != avpMsgTypeAck && msg.nretries == 0 {
 			xport.slowStart.incrementNs()
 		}
 		msg.retryTimer = time.AfterFunc(xport.scaleRetryTimeout(msg), func() {
@@ -520,16 +520,16 @@ func (xport *Transport) sendExplicitAck() (err error) {
 	var msg ControlMessage
 
 	if xport.config.Version == ProtocolVersion3Fallback || xport.config.Version == ProtocolVersion3 {
-		avp, err := NewAvp(VendorIDIetf, AvpTypeMessage, AvpMsgTypeAck)
+		a, err := newAvp(vendorIDIetf, avpTypeMessage, avpMsgTypeAck)
 		if err != nil {
 			return fmt.Errorf("failed to build v3 explicit ack message type AVP: %v", err)
 		}
-		msg, err = NewV3ControlMessage(xport.config.PeerControlConnID, []AVP{*avp})
+		msg, err = NewV3ControlMessage(xport.config.PeerControlConnID, []avp{*a})
 		if err != nil {
 			return fmt.Errorf("failed to build v3 explicit ack message: %v", err)
 		}
 	} else {
-		msg, err = NewV2ControlMessage(xport.config.PeerControlConnID, 0, []AVP{})
+		msg, err = NewV2ControlMessage(xport.config.PeerControlConnID, 0, []avp{})
 		if err != nil {
 			return fmt.Errorf("failed to build v2 ZLB message: %v", err)
 		}

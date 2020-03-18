@@ -12,7 +12,7 @@ type msgInfo struct {
 	ns, nr, tid, sid uint16
 	ccid             uint32
 	navps            int
-	msgType          AVPMsgType
+	msgType          avpMsgType
 }
 
 func TestParseMessageBuffer(t *testing.T) {
@@ -27,7 +27,7 @@ func TestParseMessageBuffer(t *testing.T) {
 				0x00, 0x00, 0x00, 0x06,
 			},
 			want: []msgInfo{
-				{version: nll2tp.ProtocolVersion2, ns: 1, nr: 1, tid: 1, sid: 0, navps: 1, msgType: AvpMsgTypeHello},
+				{version: nll2tp.ProtocolVersion2, ns: 1, nr: 1, tid: 1, sid: 0, navps: 1, msgType: avpMsgTypeHello},
 			},
 		},
 		{
@@ -36,7 +36,7 @@ func TestParseMessageBuffer(t *testing.T) {
 				0x00, 0x01, 0x00, 0x01,
 			},
 			want: []msgInfo{
-				{version: nll2tp.ProtocolVersion2, tid: 1, sid: 0, ns: 1, nr: 1, navps: 0, msgType: AvpMsgTypeAck},
+				{version: nll2tp.ProtocolVersion2, tid: 1, sid: 0, ns: 1, nr: 1, navps: 0, msgType: avpMsgTypeAck},
 			},
 		},
 		{
@@ -59,7 +59,7 @@ func TestParseMessageBuffer(t *testing.T) {
 				0x00, 0x05, 0x00, 0x04,
 			},
 			want: []msgInfo{
-				{version: nll2tp.ProtocolVersion3, ns: 0, nr: 0, ccid: 0, navps: 7, msgType: AvpMsgTypeSccrq},
+				{version: nll2tp.ProtocolVersion3, ns: 0, nr: 0, ccid: 0, navps: 7, msgType: avpMsgTypeSccrq},
 			},
 		},
 	}
@@ -119,9 +119,9 @@ func TestParseMessageBuffer(t *testing.T) {
 
 type msgTestAvpMetadata struct {
 	isMandatory, isHidden bool
-	avpType               AVPType
-	vendorID              AVPVendorID
-	dataType              AVPDataType
+	avpType               avpType
+	vendorID              avpVendorID
+	dataType              avpDataType
 	data                  interface{}
 }
 
@@ -133,21 +133,21 @@ func TestV2MessageBuild(t *testing.T) {
 	}{
 		{
 			tid: 42, sid: 42, avps: []msgTestAvpMetadata{
-				{true, false, AvpTypeMessage, VendorIDIetf, AvpDataTypeMsgID, AvpMsgTypeHello},
+				{true, false, avpTypeMessage, vendorIDIetf, avpDataTypeMsgID, avpMsgTypeHello},
 			},
 		},
 	}
 	for _, c := range cases {
 
-		msg, err := NewV2ControlMessage(c.tid, c.sid, []AVP{})
+		msg, err := NewV2ControlMessage(c.tid, c.sid, []avp{})
 		if err != nil {
 			t.Fatalf("NewV2ControlMessage(%v, %v, []) said: %v", c.tid, c.sid, err)
 		}
 
 		for _, in := range c.avps {
-			avp, err := NewAvp(in.vendorID, in.avpType, in.data)
+			avp, err := newAvp(in.vendorID, in.avpType, in.data)
 			if err != nil {
-				t.Fatalf("NewAvp(%v, %v, %v) said: %v", in.vendorID, in.avpType, in.data, err)
+				t.Fatalf("newAvp(%v, %v, %v) said: %v", in.vendorID, in.avpType, in.data, err)
 			}
 			msg.Append(avp)
 		}
@@ -165,21 +165,21 @@ func TestV3MessageBuild(t *testing.T) {
 	}{
 		{
 			ccid: 90210, avps: []msgTestAvpMetadata{
-				{true, false, AvpTypeMessage, VendorIDIetf, AvpDataTypeMsgID, AvpMsgTypeHello},
+				{true, false, avpTypeMessage, vendorIDIetf, avpDataTypeMsgID, avpMsgTypeHello},
 			},
 		},
 	}
 	for _, c := range cases {
 
-		msg, err := NewV3ControlMessage(c.ccid, []AVP{})
+		msg, err := NewV3ControlMessage(c.ccid, []avp{})
 		if err != nil {
 			t.Fatalf("NewV3ControlMessage(%v, []) said: %v", c.ccid, err)
 		}
 
 		for _, in := range c.avps {
-			avp, err := NewAvp(in.vendorID, in.avpType, in.data)
+			avp, err := newAvp(in.vendorID, in.avpType, in.data)
 			if err != nil {
-				t.Fatalf("NewAvp(%v, %v, %v) said: %v", in.vendorID, in.avpType, in.data, err)
+				t.Fatalf("newAvp(%v, %v, %v) said: %v", in.vendorID, in.avpType, in.data, err)
 			}
 			msg.Append(avp)
 		}
