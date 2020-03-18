@@ -41,9 +41,9 @@ type rawMsg struct {
 	sa unix.Sockaddr
 }
 
-// TransportConfig represents the tunable parameters governing
+// transportConfig represents the tunable parameters governing
 // the behaviour of the reliable transport algorithm.
-type TransportConfig struct {
+type transportConfig struct {
 	// Duration to wait after last message receipt before
 	// sending a HELLO keepalive message.  If set to 0, no HELLO messages
 	// are transmitted.
@@ -68,11 +68,11 @@ type TransportConfig struct {
 	PeerControlConnID ControlConnID
 }
 
-// Transport represents the RFC2661/RFC3931
+// transport represents the RFC2661/RFC3931
 // reliable transport algorithm state.
-type Transport struct {
+type transport struct {
 	slowStart            slowStartState
-	config               TransportConfig
+	config               transportConfig
 	cp                   *l2tpControlPlane
 	helloTimer, ackTimer *time.Timer
 	sendChan             chan *ctlMsg
@@ -189,19 +189,19 @@ func newTimer(duration time.Duration) *time.Timer {
 	return t
 }
 
-func sanitiseConfig(cfg *TransportConfig) {
+func sanitiseConfig(cfg *transportConfig) {
 	if cfg.TxWindowSize == 0 || cfg.TxWindowSize > 65535 {
-		cfg.TxWindowSize = DefaultTransportConfig().TxWindowSize
+		cfg.TxWindowSize = defaulttransportConfig().TxWindowSize
 	}
 	if cfg.RetryTimeout == 0 {
-		cfg.RetryTimeout = DefaultTransportConfig().RetryTimeout
+		cfg.RetryTimeout = defaulttransportConfig().RetryTimeout
 	}
 	if cfg.AckTimeout == 0 {
-		cfg.AckTimeout = DefaultTransportConfig().AckTimeout
+		cfg.AckTimeout = defaulttransportConfig().AckTimeout
 	}
 }
 
-func cpRead(xport *Transport, wg *sync.WaitGroup) {
+func cpRead(xport *transport, wg *sync.WaitGroup) {
 	defer wg.Done()
 	for {
 		b := make([]byte, 4096)
@@ -216,7 +216,7 @@ func cpRead(xport *Transport, wg *sync.WaitGroup) {
 	}
 }
 
-func runTransport(xport *Transport, wg *sync.WaitGroup) {
+func runTransport(xport *transport, wg *sync.WaitGroup) {
 	defer wg.Done()
 	for {
 		fmt.Printf("runTransport(%p): enter select\n", xport)
@@ -316,7 +316,7 @@ func runTransport(xport *Transport, wg *sync.WaitGroup) {
 	}
 }
 
-func (xport *Transport) recvFrame(rawMsg *rawMsg) (messages []controlMessage, err error) {
+func (xport *transport) recvFrame(rawMsg *rawMsg) (messages []controlMessage, err error) {
 	messages, err = parseMessageBuffer(rawMsg.b)
 	if err != nil {
 		return nil, err
@@ -333,7 +333,7 @@ func (xport *Transport) recvFrame(rawMsg *rawMsg) (messages []controlMessage, er
 	return messages, nil
 }
 
-func (xport *Transport) recvMessage(msg controlMessage) {
+func (xport *transport) recvMessage(msg controlMessage) {
 	if xport.slowStart.msgIsInSequence(msg) {
 		xport.toggleAckTimer(true)
 		xport.resetHelloTimer()
@@ -344,7 +344,7 @@ func (xport *Transport) recvMessage(msg controlMessage) {
 	}
 }
 
-func (xport *Transport) dequeueRxMessage() bool {
+func (xport *transport) dequeueRxMessage() bool {
 	for i, msg := range xport.rxQueue {
 		if xport.slowStart.msgIsInSequence(msg) || xport.slowStart.msgIsStale(msg) {
 			// Remove the message from the rx queue, and bubble it up for
@@ -361,7 +361,7 @@ func (xport *Transport) dequeueRxMessage() bool {
 	return false
 }
 
-func (xport *Transport) processRxQueue() {
+func (xport *transport) processRxQueue() {
 	// Loop the receive queue looking for messages in sequence.
 	// We give up once we've been through the queue without finding
 	// an in-sequence message.
@@ -372,7 +372,7 @@ func (xport *Transport) processRxQueue() {
 	}
 }
 
-func (xport *Transport) sendMessage1(msg controlMessage, isRetransmit bool) error {
+func (xport *transport) sendMessage1(msg controlMessage, isRetransmit bool) error {
 	// Set message sequence numbers.
 	// A retransmitted message should have ns set already.
 	if isRetransmit {
@@ -390,11 +390,11 @@ func (xport *Transport) sendMessage1(msg controlMessage, isRetransmit bool) erro
 }
 
 // Exponential retry timeout scaling as per RFC2661/RFC3931
-func (xport *Transport) scaleRetryTimeout(msg *ctlMsg) time.Duration {
+func (xport *transport) scaleRetryTimeout(msg *ctlMsg) time.Duration {
 	return xport.config.RetryTimeout * (1 << msg.nretries)
 }
 
-func (xport *Transport) sendMessage(msg *ctlMsg) error {
+func (xport *transport) sendMessage(msg *ctlMsg) error {
 
 	err := xport.sendMessage1(msg.msg, msg.nretries > 0)
 	if err == nil {
@@ -410,7 +410,7 @@ func (xport *Transport) sendMessage(msg *ctlMsg) error {
 	return err
 }
 
-func (xport *Transport) retransmitMessage(msg *ctlMsg) error {
+func (xport *transport) retransmitMessage(msg *ctlMsg) error {
 	msg.nretries++
 	if msg.nretries >= xport.config.MaxRetries {
 		return fmt.Errorf("transmit of %s failed after %d retry attempts",
@@ -423,7 +423,7 @@ func (xport *Transport) retransmitMessage(msg *ctlMsg) error {
 	return err
 }
 
-func (xport *Transport) processTxQueue() error {
+func (xport *transport) processTxQueue() error {
 	// Loop the transmit queue sending messages in order while
 	// the transmit window is open.
 	for i, msg := range xport.txQueue {
@@ -447,7 +447,7 @@ func (xport *Transport) processTxQueue() error {
 	return nil
 }
 
-func (xport *Transport) processAckQueue(recvd controlMessage) bool {
+func (xport *transport) processAckQueue(recvd controlMessage) bool {
 	found := false
 	for i, msg := range xport.ackQueue {
 		if seqCompare(recvd.nr(), msg.msg.ns()) > 0 {
@@ -460,7 +460,7 @@ func (xport *Transport) processAckQueue(recvd controlMessage) bool {
 	return found
 }
 
-func (xport *Transport) down(err error) {
+func (xport *transport) down(err error) {
 
 	fmt.Printf("xport(%p) is down: %v\n", xport, err)
 
@@ -497,7 +497,7 @@ func (xport *Transport) down(err error) {
 	xport.cp.close()
 }
 
-func (xport *Transport) toggleAckTimer(enable bool) {
+func (xport *transport) toggleAckTimer(enable bool) {
 	if enable {
 		xport.ackTimer.Reset(xport.config.AckTimeout)
 	} else {
@@ -506,17 +506,17 @@ func (xport *Transport) toggleAckTimer(enable bool) {
 	}
 }
 
-func (xport *Transport) resetHelloTimer() {
+func (xport *transport) resetHelloTimer() {
 	if xport.config.HelloTimeout > 0 {
 		xport.helloTimer.Reset(xport.config.HelloTimeout)
 	}
 }
 
-func (xport *Transport) sendHelloMessage() error {
+func (xport *transport) sendHelloMessage() error {
 	return errors.New("Transport.sendHelloMessage not implemented")
 }
 
-func (xport *Transport) sendExplicitAck() (err error) {
+func (xport *transport) sendExplicitAck() (err error) {
 	var msg controlMessage
 
 	if xport.config.Version == ProtocolVersion3Fallback || xport.config.Version == ProtocolVersion3 {
@@ -537,9 +537,9 @@ func (xport *Transport) sendExplicitAck() (err error) {
 	return xport.sendMessage1(msg, false)
 }
 
-// DefaultTransportConfig returns a default configuration for the transport.
-func DefaultTransportConfig() TransportConfig {
-	return TransportConfig{
+// defaulttransportConfig returns a default configuration for the transport.
+func defaulttransportConfig() transportConfig {
+	return transportConfig{
 		HelloTimeout: 0 * time.Second,
 		TxWindowSize: 4,
 		MaxRetries:   3,
@@ -549,10 +549,10 @@ func DefaultTransportConfig() TransportConfig {
 	}
 }
 
-// NewTransport creates a new RFC2661/RFC3931 reliable transport.
+// newTransport creates a new RFC2661/RFC3931 reliable transport.
 // The control plane passed in is owned by the transport and will
 // be closed by the transport when the transport is closed.
-func NewTransport(cp *l2tpControlPlane, cfg TransportConfig) (xport *Transport, err error) {
+func newTransport(cp *l2tpControlPlane, cfg transportConfig) (xport *transport, err error) {
 
 	if cp == nil {
 		return nil, errors.New("illegal nil control plane argument")
@@ -569,7 +569,7 @@ func NewTransport(cp *l2tpControlPlane, cfg TransportConfig) (xport *Transport, 
 	helloTimer := newTimer(cfg.HelloTimeout)
 	ackTimer := newTimer(cfg.AckTimeout)
 
-	xport = &Transport{
+	xport = &transport{
 		slowStart:  slowStart,
 		config:     cfg,
 		cp:         cp,
@@ -591,23 +591,23 @@ func NewTransport(cp *l2tpControlPlane, cfg TransportConfig) (xport *Transport, 
 	return xport, nil
 }
 
-// Reconfigure allows transport parameters to be tweaked.
+// reconfigure allows transport parameters to be tweaked.
 // Out of range values are automatically reset to sane default values.
-func (xport *Transport) Reconfigure(cfg TransportConfig) {
+func (xport *transport) reconfigure(cfg transportConfig) {
 	sanitiseConfig(&cfg)
 	xport.config = cfg
 }
 
-// GetConfig allows transport parameters to be queried.
-func (xport *Transport) GetConfig() TransportConfig {
+// getConfig allows transport parameters to be queried.
+func (xport *transport) getConfig() transportConfig {
 	return xport.config
 }
 
-// Send sends a control message using the reliable transport.
+// send sends a control message using the reliable transport.
 // The caller will block until the message has been acked by the peer.
 // Failure indicates that the transport has failed and the parent tunnel
 // should be torn down.
-func (xport *Transport) Send(msg controlMessage) error {
+func (xport *transport) send(msg controlMessage) error {
 	cm := ctlMsg{
 		msg:          msg,
 		nretries:     0,
@@ -620,11 +620,11 @@ func (xport *Transport) Send(msg controlMessage) error {
 	return err
 }
 
-// Recv receives a control message using the reliable transport.
+// recv receives a control message using the reliable transport.
 // The caller will block until a message has been received from the peer.
 // Failure indicates that the transport has failed and the parent tunnel
 // should be torn down.
-func (xport *Transport) Recv() (msg controlMessage, err error) {
+func (xport *transport) recv() (msg controlMessage, err error) {
 	msg, ok := <-xport.recvChan
 	if !ok {
 		return nil, errors.New("transport is down")
@@ -632,8 +632,8 @@ func (xport *Transport) Recv() (msg controlMessage, err error) {
 	return msg, nil
 }
 
-// Close closes the transport.
-func (xport *Transport) Close() {
+// close closes the transport.
+func (xport *transport) close() {
 	close(xport.sendChan)
 	xport.cp.close()
 	xport.wg.Wait()

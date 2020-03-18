@@ -9,11 +9,11 @@ import (
 )
 
 func TestNilControlPlane(t *testing.T) {
-	xport, err := NewTransport(nil, DefaultTransportConfig())
+	xport, err := newTransport(nil, defaulttransportConfig())
 	if xport != nil {
-		t.Fatalf("NewTransport() with nil controlplane succeeded")
+		t.Fatalf("newTransport() with nil controlplane succeeded")
 	} else if err == nil {
-		t.Fatalf("NewTransport() with nil controlplane didn't report error")
+		t.Fatalf("newTransport() with nil controlplane didn't report error")
 	}
 }
 
@@ -155,8 +155,8 @@ type transportSendRecvTestInfo struct {
 	local, peer      string
 	tid              ControlConnID
 	encap            EncapType
-	xcfg             TransportConfig
-	sender, receiver func(xport *Transport) error
+	xcfg             transportConfig
+	sender, receiver func(xport *transport) error
 }
 
 func flipTestInfo(info *transportSendRecvTestInfo) *transportSendRecvTestInfo {
@@ -173,7 +173,7 @@ func flipTestInfo(info *transportSendRecvTestInfo) *transportSendRecvTestInfo {
 	return &flipped
 }
 
-func transportTestNewTransport(testCfg *transportSendRecvTestInfo) (xport *Transport, err error) {
+func transportTestnewTransport(testCfg *transportSendRecvTestInfo) (xport *transport, err error) {
 
 	var sal, sap unix.Sockaddr
 	var cp *l2tpControlPlane
@@ -205,10 +205,10 @@ func transportTestNewTransport(testCfg *transportSendRecvTestInfo) (xport *Trans
 		return nil, fmt.Errorf("failed to connect control plane socket: %v", err)
 	}
 
-	return NewTransport(cp, testCfg.xcfg)
+	return newTransport(cp, testCfg.xcfg)
 }
 
-func testBasicSendRecvSenderNewHelloMsg(cfg *TransportConfig) (msg controlMessage, err error) {
+func testBasicSendRecvSenderNewHelloMsg(cfg *transportConfig) (msg controlMessage, err error) {
 	if cfg.Version == ProtocolVersion2 {
 		msg, err = newV2ControlMessage(cfg.PeerControlConnID, 0, []avp{})
 		if err != nil {
@@ -232,15 +232,15 @@ func testBasicSendRecvSenderNewHelloMsg(cfg *TransportConfig) (msg controlMessag
 	return msg, nil
 }
 
-func testBasicSendRecvHelloSender(xport *Transport) error {
+func testBasicSendRecvHelloSender(xport *transport) error {
 	// Send sufficient HELLO messages to exercise slowstart a bit
-	for i := uint16(0); i < 3*xport.GetConfig().TxWindowSize; i++ {
-		cfg := xport.GetConfig()
+	for i := uint16(0); i < 3*xport.getConfig().TxWindowSize; i++ {
+		cfg := xport.getConfig()
 		msg, err := testBasicSendRecvSenderNewHelloMsg(&cfg)
 		if err != nil {
 			return fmt.Errorf("failed to build Hello message: %v", err)
 		}
-		err = xport.Send(msg)
+		err = xport.send(msg)
 		if err != nil {
 			return fmt.Errorf("failed to send Hello message: %v", err)
 		}
@@ -248,9 +248,9 @@ func testBasicSendRecvHelloSender(xport *Transport) error {
 	return nil
 }
 
-func testBasicSendRecvHelloReceiver(xport *Transport) error {
-	for i := uint16(0); i < 3*xport.GetConfig().TxWindowSize; i++ {
-		msg, err := xport.Recv()
+func testBasicSendRecvHelloReceiver(xport *transport) error {
+	for i := uint16(0); i < 3*xport.getConfig().TxWindowSize; i++ {
+		msg, err := xport.recv()
 		if err != nil {
 			return fmt.Errorf("failed to receive message: %v", err)
 		}
@@ -268,7 +268,7 @@ func TestBasicSendReceive(t *testing.T) {
 			tid:   42,
 			peer:  "127.0.0.1:9001",
 			encap: EncapTypeUDP,
-			xcfg: TransportConfig{
+			xcfg: transportConfig{
 				Version:           ProtocolVersion2,
 				AckTimeout:        5 * time.Millisecond,
 				PeerControlConnID: 90,
@@ -281,7 +281,7 @@ func TestBasicSendReceive(t *testing.T) {
 			tid:   42,
 			peer:  "[::1]:9001",
 			encap: EncapTypeUDP,
-			xcfg: TransportConfig{
+			xcfg: transportConfig{
 				Version:           ProtocolVersion2,
 				AckTimeout:        5 * time.Millisecond,
 				PeerControlConnID: 90,
@@ -294,7 +294,7 @@ func TestBasicSendReceive(t *testing.T) {
 			tid:   42,
 			peer:  "127.0.0.1:9001",
 			encap: EncapTypeUDP,
-			xcfg: TransportConfig{
+			xcfg: transportConfig{
 				Version:           ProtocolVersion3,
 				AckTimeout:        5 * time.Millisecond,
 				PeerControlConnID: 90,
@@ -307,7 +307,7 @@ func TestBasicSendReceive(t *testing.T) {
 			tid:   42,
 			peer:  "[::1]:9001",
 			encap: EncapTypeUDP,
-			xcfg: TransportConfig{
+			xcfg: transportConfig{
 				Version:           ProtocolVersion3,
 				AckTimeout:        5 * time.Millisecond,
 				PeerControlConnID: 90,
@@ -320,7 +320,7 @@ func TestBasicSendReceive(t *testing.T) {
 			tid:   42,
 			peer:  "127.0.0.1:9001",
 			encap: EncapTypeIP,
-			xcfg: TransportConfig{
+			xcfg: transportConfig{
 				Version:           ProtocolVersion3,
 				AckTimeout:        5 * time.Millisecond,
 				PeerControlConnID: 90,
@@ -333,7 +333,7 @@ func TestBasicSendReceive(t *testing.T) {
 			tid:   42,
 			peer:  "[::1]:9001",
 			encap: EncapTypeIP,
-			xcfg: TransportConfig{
+			xcfg: transportConfig{
 				Version:           ProtocolVersion3,
 				AckTimeout:        5 * time.Millisecond,
 				PeerControlConnID: 90,
@@ -346,18 +346,18 @@ func TestBasicSendReceive(t *testing.T) {
 		t.Run(
 			fmt.Sprintf("%d: send/recv %s %s L2TPv%v", i, c.local, c.peer, c.xcfg.Version),
 			func(t *testing.T) {
-				tx, err := transportTestNewTransport(&c)
+				tx, err := transportTestnewTransport(&c)
 				if err != nil {
-					t.Fatalf("transportTestNewTransport(%v) said: %v", c, err)
+					t.Fatalf("transportTestnewTransport(%v) said: %v", c, err)
 				}
-				defer tx.Close()
+				defer tx.close()
 
 				pcfg := flipTestInfo(&c)
-				rx, err := transportTestNewTransport(pcfg)
+				rx, err := transportTestnewTransport(pcfg)
 				if err != nil {
-					t.Fatalf("transportTestNewTransport(%v) said: %v", pcfg, err)
+					t.Fatalf("transportTestnewTransport(%v) said: %v", pcfg, err)
 				}
-				defer rx.Close()
+				defer rx.close()
 
 				txCompletion := make(chan error)
 				rxCompletion := make(chan error)
