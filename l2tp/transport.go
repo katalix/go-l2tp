@@ -205,7 +205,7 @@ func cpRead(xport *Transport, wg *sync.WaitGroup) {
 	defer wg.Done()
 	for {
 		b := make([]byte, 4096)
-		n, sa, err := xport.cp.ReadFrom(b)
+		n, sa, err := xport.cp.readFrom(b)
 		if err != nil {
 			close(xport.cpChan)
 			fmt.Printf("cpRead(%p): error reading from socket: %v\n", xport, err)
@@ -384,7 +384,7 @@ func (xport *Transport) sendMessage1(msg ControlMessage, isRetransmit bool) erro
 	// Render as a byte slice and send.
 	b, err := msg.ToBytes()
 	if err == nil {
-		_, err = xport.cp.Write(b)
+		_, err = xport.cp.write(b)
 	}
 	return err
 }
@@ -494,7 +494,7 @@ func (xport *Transport) down(err error) {
 	close(xport.recvChan)
 
 	// Unblock control plane read goroutine
-	xport.cp.Close()
+	xport.cp.close()
 }
 
 func (xport *Transport) toggleAckTimer(enable bool) {
@@ -635,6 +635,6 @@ func (xport *Transport) Recv() (msg ControlMessage, err error) {
 // Close closes the transport.
 func (xport *Transport) Close() {
 	close(xport.sendChan)
-	xport.cp.Close()
+	xport.cp.close()
 	xport.wg.Wait()
 }

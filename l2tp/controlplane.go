@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"syscall"
-	"time"
 
 	"golang.org/x/sys/unix"
 )
@@ -17,14 +16,12 @@ type l2tpControlPlane struct {
 	connected     bool
 }
 
-// Read data from the connection.
-func (cp *l2tpControlPlane) Read(b []byte) (n int, err error) {
-	n, _, err = cp.ReadFrom(b)
+func (cp *l2tpControlPlane) read(b []byte) (n int, err error) {
+	n, _, err = cp.readFrom(b)
 	return n, err
 }
 
-// Read data and sender address from the connection
-func (cp *l2tpControlPlane) ReadFrom(p []byte) (n int, sa unix.Sockaddr, err error) {
+func (cp *l2tpControlPlane) readFrom(p []byte) (n int, sa unix.Sockaddr, err error) {
 	return cp.recvfrom(p)
 }
 
@@ -39,16 +36,14 @@ func (cp *l2tpControlPlane) recvfrom(p []byte) (n int, addr unix.Sockaddr, err e
 	return n, addr, cerr
 }
 
-// Write data to the connection
-func (cp *l2tpControlPlane) Write(b []byte) (n int, err error) {
+func (cp *l2tpControlPlane) write(b []byte) (n int, err error) {
 	if cp.connected {
 		return cp.file.Write(b)
 	}
-	return cp.WriteTo(b, cp.remote)
+	return cp.writeTo(b, cp.remote)
 }
 
-// WriteTo writes a packet with payload p to addr.
-func (cp *l2tpControlPlane) WriteTo(p []byte, addr unix.Sockaddr) (n int, err error) {
+func (cp *l2tpControlPlane) writeTo(p []byte, addr unix.Sockaddr) (n int, err error) {
 	return len(p), cp.sendto(p, addr)
 }
 
@@ -63,29 +58,12 @@ func (cp *l2tpControlPlane) sendto(p []byte, to unix.Sockaddr) (err error) {
 	return cerr
 }
 
-// Set deadline for read and write operations
-func (cp *l2tpControlPlane) SetDeadline(t time.Time) error {
-	return cp.file.SetDeadline(t)
-}
-
-// Set deadline for read operations
-func (cp *l2tpControlPlane) SetReadDeadline(t time.Time) error {
-	return cp.file.SetReadDeadline(t)
-}
-
-// Set deadline for write operations
-func (cp *l2tpControlPlane) SetWriteDeadline(t time.Time) error {
-	return cp.file.SetWriteDeadline(t)
-}
-
-// Close the control plane
-func (cp *l2tpControlPlane) Close() error {
+func (cp *l2tpControlPlane) close() error {
 	// TODO: kick the protocol to shut down
 	return cp.file.Close() // TODO: verify this closes the underlying fd
 }
 
-// Connect the control plane socket to the peer
-func (cp *l2tpControlPlane) Connect() error {
+func (cp *l2tpControlPlane) connect() error {
 	err := tunnelSocketConnect(cp.fd, cp.remote)
 	if err == nil {
 		cp.connected = true
@@ -93,12 +71,11 @@ func (cp *l2tpControlPlane) Connect() error {
 	return err
 }
 
-// Bind the control plane socket to local address
-func (cp *l2tpControlPlane) Bind() error {
+func (cp *l2tpControlPlane) bind() error {
 	return tunnelSocketBind(cp.fd, cp.local)
 }
 
-func tunnelSocket2(family, protocol int) (fd int, err error) {
+func tunnelSocket(family, protocol int) (fd int, err error) {
 
 	fd, err = unix.Socket(family, unix.SOCK_DGRAM, protocol)
 	if err != nil {
@@ -154,7 +131,7 @@ func newL2tpControlPlane(localAddr, remoteAddr unix.Sockaddr) (*l2tpControlPlane
 		return nil, fmt.Errorf("unexpected address type %T", localAddr)
 	}
 
-	fd, err := tunnelSocket2(family, protocol)
+	fd, err := tunnelSocket(family, protocol)
 	if err != nil {
 		return nil, err
 	}

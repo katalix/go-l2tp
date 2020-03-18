@@ -191,7 +191,7 @@ func (qt *QuiescentTunnel) NewSession(name string, cfg *SessionConfig) (Session,
 func (qt *QuiescentTunnel) Close() {
 	if qt != nil {
 		if qt.cp != nil {
-			qt.cp.Close()
+			qt.cp.close()
 		}
 		if qt.dp != nil {
 			qt.dp.Close()
@@ -210,13 +210,13 @@ func newQuiescentTunnel(nl *nll2tp.Conn, sal, sap unix.Sockaddr, cfg *QuiescentT
 		return nil, err
 	}
 
-	err = qt.cp.Bind()
+	err = qt.cp.bind()
 	if err != nil {
 		qt.Close()
 		return nil, err
 	}
 
-	err = qt.cp.Connect()
+	err = qt.cp.connect()
 	if err != nil {
 		qt.Close()
 		return nil, err

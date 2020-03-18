@@ -195,12 +195,12 @@ func transportTestNewTransport(testCfg *transportSendRecvTestInfo) (xport *Trans
 		return nil, fmt.Errorf("failed to create control plane: %v", err)
 	}
 
-	err = cp.Bind()
+	err = cp.bind()
 	if err != nil {
 		return nil, fmt.Errorf("failed to bind control plane socket: %v", err)
 	}
 
-	err = cp.Connect()
+	err = cp.connect()
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect control plane socket: %v", err)
 	}
