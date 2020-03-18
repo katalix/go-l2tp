@@ -74,47 +74,25 @@ const (
 	L2SpecTypeDefault = nll2tp.L2spectypeDefault
 )
 
-// QuiescentTunnel creates a user space socket for the
+// quiescentTunnel creates a user space socket for the
 // L2TP control plane, but does not run the control protocol
 // beyond acknowledging messages and optionally sending HELLO
 // messages.
 // The data plane is established on creation of the tunnel instance.
-type QuiescentTunnel struct {
+type quiescentTunnel struct {
 	cp *l2tpControlPlane
 	dp *l2tpDataPlane
 }
 
-// QuiescentTunnelConfig encapsulates configuration for a "quiescent"
-// L2TP tunnel.  Quiescent tunnels may be either L2TPv2 or L2TPv3.
-// For L2TPv2, set the TunnelID and PeerTunnelID fields.
-type QuiescentTunnelConfig struct {
-	LocalAddress      string
-	RemoteAddress     string
-	Version           ProtocolVersion
-	ControlConnID     ControlConnID
-	PeerControlConnID ControlConnID
-	Encap             EncapType
-}
-
-// StaticTunnel does not run any control protocol
+// staticTunnel does not run any control protocol
 // and instead merely instantiates the data plane in the
 // kernel.  This is equivalent to the Linux 'ip l2tp'
 // command(s).
 // Static L2TPv2 tunnels are not practically useful,
 // so NewStaticTunnel only supports creation of L2TPv3
 // unmanaged tunnel instances.
-type StaticTunnel struct {
+type staticTunnel struct {
 	dp *l2tpDataPlane
-}
-
-// StaticTunnelConfig encapsulates configuration for a static
-// L2TP tunnel.  Static tunnels are L2TPv3 only.
-type StaticTunnelConfig struct {
-	LocalAddress      string
-	RemoteAddress     string
-	ControlConnID     ControlConnID
-	PeerControlConnID ControlConnID
-	Encap             EncapType
 }
 
 // Session is an interface representing an L2TP session.
@@ -140,7 +118,7 @@ func (e EncapType) String() string {
 }
 
 // NewQuiescentTunnel creates a new "quiescent" L2TP tunnel.
-func NewQuiescentTunnel(nl *nll2tp.Conn, cfg *QuiescentTunnelConfig) (tunl Tunnel, err error) {
+func NewQuiescentTunnel(nl *nll2tp.Conn, cfg *TunnelConfig) (tunl Tunnel, err error) {
 
 	var sal, sap unix.Sockaddr
 
@@ -153,25 +131,25 @@ func NewQuiescentTunnel(nl *nll2tp.Conn, cfg *QuiescentTunnelConfig) (tunl Tunne
 		return nil, fmt.Errorf("IP encapsulation only supported for L2TPv3 tunnels")
 	}
 	if cfg.Version == ProtocolVersion2 {
-		if cfg.ControlConnID == 0 || cfg.ControlConnID > 65535 {
-			return nil, fmt.Errorf("L2TPv2 connection ID %v out of range", cfg.ControlConnID)
-		} else if cfg.PeerControlConnID == 0 || cfg.PeerControlConnID > 65535 {
-			return nil, fmt.Errorf("L2TPv2 peer connection ID %v out of range", cfg.PeerControlConnID)
+		if cfg.TunnelID == 0 || cfg.TunnelID > 65535 {
+			return nil, fmt.Errorf("L2TPv2 connection ID %v out of range", cfg.TunnelID)
+		} else if cfg.PeerTunnelID == 0 || cfg.PeerTunnelID > 65535 {
+			return nil, fmt.Errorf("L2TPv2 peer connection ID %v out of range", cfg.PeerTunnelID)
 		}
 	} else {
-		if cfg.ControlConnID == 0 || cfg.PeerControlConnID == 0 {
+		if cfg.TunnelID == 0 || cfg.PeerTunnelID == 0 {
 			return nil, fmt.Errorf("L2TPv3 tunnel IDs %v and %v must both be > 0",
-				cfg.ControlConnID, cfg.PeerControlConnID)
+				cfg.TunnelID, cfg.PeerTunnelID)
 		}
 	}
 
 	// Initialise tunnel address structures
 	switch cfg.Encap {
 	case EncapTypeUDP:
-		sal, sap, err = newUDPAddressPair(cfg.LocalAddress, cfg.RemoteAddress)
+		sal, sap, err = newUDPAddressPair(cfg.Local, cfg.Peer)
 	case EncapTypeIP:
-		sal, sap, err = newIPAddressPair(cfg.LocalAddress, cfg.ControlConnID,
-			cfg.RemoteAddress, cfg.PeerControlConnID)
+		sal, sap, err = newIPAddressPair(cfg.Local, cfg.TunnelID,
+			cfg.Peer, cfg.PeerTunnelID)
 	default:
 		err = fmt.Errorf("unrecognised encapsulation type %v", cfg.Encap)
 	}
@@ -183,12 +161,12 @@ func NewQuiescentTunnel(nl *nll2tp.Conn, cfg *QuiescentTunnelConfig) (tunl Tunne
 }
 
 // NewSession adds a session to the tunnel
-func (qt *QuiescentTunnel) NewSession(name string, cfg *SessionConfig) (Session, error) {
+func (qt *quiescentTunnel) NewSession(name string, cfg *SessionConfig) (Session, error) {
 	return nil, fmt.Errorf("QuiescentTunnel: NewSession not implemented")
 }
 
 // Close closes the tunnel, releasing allocated resources.
-func (qt *QuiescentTunnel) Close() {
+func (qt *quiescentTunnel) Close() {
 	if qt != nil {
 		if qt.cp != nil {
 			qt.cp.close()
@@ -199,8 +177,8 @@ func (qt *QuiescentTunnel) Close() {
 	}
 }
 
-func newQuiescentTunnel(nl *nll2tp.Conn, sal, sap unix.Sockaddr, cfg *QuiescentTunnelConfig) (qt *QuiescentTunnel, err error) {
-	qt = &QuiescentTunnel{}
+func newQuiescentTunnel(nl *nll2tp.Conn, sal, sap unix.Sockaddr, cfg *TunnelConfig) (qt *quiescentTunnel, err error) {
+	qt = &quiescentTunnel{}
 
 	// Initialise the control plane.
 	// We bind/connect immediately since we're not runnning most of the control protocol.
@@ -223,8 +201,8 @@ func newQuiescentTunnel(nl *nll2tp.Conn, sal, sap unix.Sockaddr, cfg *QuiescentT
 	}
 
 	qt.dp, err = newL2tpDataPlane(nl, sal, sap, &nll2tp.TunnelConfig{
-		Tid:     nll2tp.L2tpTunnelID(cfg.ControlConnID),
-		Ptid:    nll2tp.L2tpTunnelID(cfg.PeerControlConnID),
+		Tid:     nll2tp.L2tpTunnelID(cfg.TunnelID),
+		Ptid:    nll2tp.L2tpTunnelID(cfg.PeerTunnelID),
 		Version: nll2tp.L2tpProtocolVersion(cfg.Version),
 		Encap:   nll2tp.L2tpEncapType(cfg.Encap),
 		// TODO: do we want/need to enable kernel debug?
@@ -244,27 +222,27 @@ func newQuiescentTunnel(nl *nll2tp.Conn, sal, sap unix.Sockaddr, cfg *QuiescentT
 }
 
 // NewStaticTunnel creates a new unmanaged L2TP tunnel.
-func NewStaticTunnel(nl *nll2tp.Conn, cfg *StaticTunnelConfig) (tunl Tunnel, err error) {
+func NewStaticTunnel(nl *nll2tp.Conn, cfg *TunnelConfig) (tunl Tunnel, err error) {
 
 	var sal, sap unix.Sockaddr
 
 	if nl == nil || cfg == nil {
-		return nil, fmt.Errorf("invalid nil argument(s) to NewQuiescentTunnel")
+		return nil, fmt.Errorf("invalid nil argument(s) to NewStaticTunnel")
 	}
 
 	// Sanity check  the configuration
-	if cfg.ControlConnID == 0 || cfg.PeerControlConnID == 0 {
+	if cfg.TunnelID == 0 || cfg.PeerTunnelID == 0 {
 		return nil, fmt.Errorf("L2TPv3 tunnel IDs %v and %v must both be > 0",
-			cfg.ControlConnID, cfg.PeerControlConnID)
+			cfg.TunnelID, cfg.PeerTunnelID)
 	}
 
 	// Initialise tunnel address structures
 	switch cfg.Encap {
 	case EncapTypeUDP:
-		sal, sap, err = newUDPAddressPair(cfg.LocalAddress, cfg.RemoteAddress)
+		sal, sap, err = newUDPAddressPair(cfg.Local, cfg.Peer)
 	case EncapTypeIP:
-		sal, sap, err = newIPAddressPair(cfg.LocalAddress, cfg.ControlConnID,
-			cfg.RemoteAddress, cfg.PeerControlConnID)
+		sal, sap, err = newIPAddressPair(cfg.Local, cfg.TunnelID,
+			cfg.Peer, cfg.PeerTunnelID)
 	default:
 		err = fmt.Errorf("unrecognised encapsulation type %v", cfg.Encap)
 	}
@@ -276,12 +254,12 @@ func NewStaticTunnel(nl *nll2tp.Conn, cfg *StaticTunnelConfig) (tunl Tunnel, err
 }
 
 // NewSession adds a session to the tunnel
-func (st *StaticTunnel) NewSession(name string, cfg *SessionConfig) (Session, error) {
+func (st *staticTunnel) NewSession(name string, cfg *SessionConfig) (Session, error) {
 	return nil, fmt.Errorf("StaticTunnel: NewSession not implemented")
 }
 
 // Close closes the tunnel, releasing allocated resources.
-func (st *StaticTunnel) Close() {
+func (st *staticTunnel) Close() {
 	if st != nil {
 		if st.dp != nil {
 			st.dp.Close()
@@ -289,13 +267,13 @@ func (st *StaticTunnel) Close() {
 	}
 }
 
-func newStaticTunnel(nl *nll2tp.Conn, sal, sap unix.Sockaddr, cfg *StaticTunnelConfig) (st *StaticTunnel, err error) {
-	st = &StaticTunnel{}
+func newStaticTunnel(nl *nll2tp.Conn, sal, sap unix.Sockaddr, cfg *TunnelConfig) (st *staticTunnel, err error) {
+	st = &staticTunnel{}
 
 	// Initialise the data plane.
 	st.dp, err = newL2tpDataPlane(nl, sal, sap, &nll2tp.TunnelConfig{
-		Tid:     nll2tp.L2tpTunnelID(cfg.ControlConnID),
-		Ptid:    nll2tp.L2tpTunnelID(cfg.PeerControlConnID),
+		Tid:     nll2tp.L2tpTunnelID(cfg.TunnelID),
+		Ptid:    nll2tp.L2tpTunnelID(cfg.PeerTunnelID),
 		Version: nll2tp.ProtocolVersion3,
 		Encap:   nll2tp.L2tpEncapType(cfg.Encap),
 		// TODO: do we want/need to enable kernel debug?
