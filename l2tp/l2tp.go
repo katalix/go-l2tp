@@ -81,10 +81,12 @@ const (
 // messages.
 // The data plane is established on creation of the tunnel instance.
 type quiescentTunnel struct {
-	nl    *nll2tp.Conn
-	cp    *l2tpControlPlane
-	xport *transport
-	dp    dataPlane
+	nl       *nll2tp.Conn
+	cfg      *TunnelConfig
+	cp       *l2tpControlPlane
+	xport    *transport
+	dp       dataPlane
+	sessions map[string]Session
 }
 
 // staticTunnel does not run any control protocol
@@ -95,8 +97,10 @@ type quiescentTunnel struct {
 // so NewStaticTunnel only supports creation of L2TPv3
 // unmanaged tunnel instances.
 type staticTunnel struct {
-	nl *nll2tp.Conn
-	dp dataPlane
+	nl       *nll2tp.Conn
+	cfg      *TunnelConfig
+	dp       dataPlane
+	sessions map[string]Session
 }
 
 // staticSession does not run any control protocol
@@ -106,6 +110,7 @@ type staticTunnel struct {
 type staticSession struct {
 	parent Tunnel
 	cfg    *SessionConfig
+	dp     dataPlane
 }
 
 // Session is an interface representing an L2TP session.
@@ -118,6 +123,8 @@ type Tunnel interface {
 	NewSession(name string, cfg *SessionConfig) (Session, error)
 	//FindSessionByName(name string) (Session, error)
 	Close()
+	getCfg() *TunnelConfig
+	getNLConn() *nll2tp.Conn
 }
 
 func (e EncapType) String() string {
@@ -175,7 +182,19 @@ func NewQuiescentTunnel(nl *nll2tp.Conn, cfg *TunnelConfig) (tunl Tunnel, err er
 
 // NewSession adds a session to the tunnel
 func (qt *quiescentTunnel) NewSession(name string, cfg *SessionConfig) (Session, error) {
-	return nil, fmt.Errorf("QuiescentTunnel: NewSession not implemented")
+
+	if _, ok := qt.sessions[name]; ok {
+		return nil, fmt.Errorf("already have session %q", name)
+	}
+
+	s, err := newStaticSession(qt, cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	qt.sessions[name] = s
+
+	return s, nil
 }
 
 // Close closes the tunnel, releasing allocated resources.
@@ -193,8 +212,20 @@ func (qt *quiescentTunnel) Close() {
 	}
 }
 
+func (qt *quiescentTunnel) getCfg() *TunnelConfig {
+	return qt.cfg
+}
+
+func (qt *quiescentTunnel) getNLConn() *nll2tp.Conn {
+	return qt.nl
+}
+
 func newQuiescentTunnel(nl *nll2tp.Conn, sal, sap unix.Sockaddr, cfg *TunnelConfig) (qt *quiescentTunnel, err error) {
-	qt = &quiescentTunnel{nl: nl}
+	qt = &quiescentTunnel{
+		nl:       nl,
+		cfg:      cfg,
+		sessions: make(map[string]Session),
+	}
 
 	// Initialise the control plane.
 	// We bind/connect immediately since we're not runnning most of the control protocol.
@@ -276,7 +307,20 @@ func NewStaticTunnel(nl *nll2tp.Conn, cfg *TunnelConfig) (tunl Tunnel, err error
 
 // NewSession adds a session to the tunnel
 func (st *staticTunnel) NewSession(name string, cfg *SessionConfig) (Session, error) {
-	return nil, fmt.Errorf("StaticTunnel: NewSession not implemented")
+
+	if _, ok := st.sessions[name]; ok {
+		return nil, fmt.Errorf("already have session %q", name)
+	}
+
+	s, err := newStaticSession(st, cfg)
+
+	if err != nil {
+		return nil, err
+	}
+
+	st.sessions[name] = s
+
+	return s, nil
 }
 
 // Close closes the tunnel, releasing allocated resources.
@@ -288,8 +332,20 @@ func (st *staticTunnel) Close() {
 	}
 }
 
+func (st *staticTunnel) getCfg() *TunnelConfig {
+	return st.cfg
+}
+
+func (st *staticTunnel) getNLConn() *nll2tp.Conn {
+	return st.nl
+}
+
 func newStaticTunnel(nl *nll2tp.Conn, sal, sap unix.Sockaddr, cfg *TunnelConfig) (st *staticTunnel, err error) {
-	st = &staticTunnel{nl: nl}
+	st = &staticTunnel{
+		nl:       nl,
+		cfg:      cfg,
+		sessions: make(map[string]Session),
+	}
 
 	st.dp, err = newStaticTunnelDataPlane(nl, sal, sap, cfg)
 	if err != nil {
@@ -298,6 +354,27 @@ func newStaticTunnel(nl *nll2tp.Conn, sal, sap unix.Sockaddr, cfg *TunnelConfig)
 	}
 
 	return
+}
+
+func newStaticSession(parent Tunnel, cfg *SessionConfig) (ss *staticSession, err error) {
+	// Since we're static we instantiate the session in the
+	// dataplane at the point of creation.
+	dp, err := newSessionDataPlane(parent.getNLConn(), parent.getCfg().TunnelID, parent.getCfg().PeerTunnelID, cfg)
+	if err != nil {
+		return
+	}
+
+	ss = &staticSession{
+		parent: parent,
+		cfg:    cfg,
+		dp:     dp,
+	}
+
+	return
+}
+
+func (ss *staticSession) Close() {
+	ss.dp.close(ss.parent.getNLConn())
 }
 
 func newUDPTunnelAddress(address string) (unix.Sockaddr, error) {
