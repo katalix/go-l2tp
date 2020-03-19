@@ -15,7 +15,7 @@ type msgInfo struct {
 	msgType          avpMsgType
 }
 
-func TestparseMessageBuffer(t *testing.T) {
+func TestParseMessageBuffer(t *testing.T) {
 	cases := []struct {
 		in   []byte
 		want []msgInfo

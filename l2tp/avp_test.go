@@ -424,7 +424,7 @@ func TestEncodeUint16(t *testing.T) {
 	}
 }
 
-func TestavpTypeStringer(t *testing.T) {
+func TestAvpTypeStringer(t *testing.T) {
 	for i := avpTypeMessage; i < avpTypeMax; i++ {
 		s := i.String()
 		if len(s) == 0 {
@@ -433,7 +433,7 @@ func TestavpTypeStringer(t *testing.T) {
 	}
 }
 
-func TestavpMsgTypeStringer(t *testing.T) {
+func TestAvpMsgTypeStringer(t *testing.T) {
 	for i := avpMsgTypeIllegal; i < avpMsgTypeMax; i++ {
 		s := i.String()
 		if len(s) == 0 {
@@ -442,7 +442,7 @@ func TestavpMsgTypeStringer(t *testing.T) {
 	}
 }
 
-func TestavpDataTypeStringer(t *testing.T) {
+func TestAvpDataTypeStringer(t *testing.T) {
 	for i := avpDataTypeEmpty; i < avpDataTypeMax; i++ {
 		s := i.String()
 		if len(s) == 0 {
