@@ -336,6 +336,8 @@ const (
 
 // String converts an avpType identifier into a human-readable string.
 // Implements the fmt.Stringer() interface.
+var _ fmt.Stringer = (*avpType)(nil)
+
 func (t avpType) String() string {
 	switch t {
 	case avpTypeMessage:
@@ -496,6 +498,8 @@ func (t avpType) String() string {
 
 // String converts an avpMsgType identifier into a human-readable string.
 // Implements the fmt.Stringer() interface.
+var _ fmt.Stringer = (*avpMsgType)(nil)
+
 func (t avpMsgType) String() string {
 	switch t {
 	case avpMsgTypeIllegal:
@@ -564,12 +568,16 @@ func (t avpMsgType) String() string {
 
 // String represents the AVP as a human-readable string.
 // Implements the fmt.Stringer() interface.
+var _ fmt.Stringer = (*avp)(nil)
+
 func (avp avp) String() string {
 	return fmt.Sprintf("%s %s", avp.header, avp.payload)
 }
 
 // String represents the vendor ID as a human-readable string.
 // Implements the fmt.Stringer() interface.
+var _ fmt.Stringer = (*avpVendorID)(nil)
+
 func (v avpVendorID) String() string {
 	if v == vendorIDIetf {
 		return "IETF"
@@ -579,6 +587,8 @@ func (v avpVendorID) String() string {
 
 // String represents the AVP data type as a human-readable string.
 // Implements the fmt.Stringer() interface.
+var _ fmt.Stringer = (*avpDataType)(nil)
+
 func (t avpDataType) String() string {
 	switch t {
 	case avpDataTypeEmpty:
@@ -607,6 +617,8 @@ func (t avpDataType) String() string {
 	return "Unrecognised AVP data type"
 }
 
+var _ fmt.Stringer = (*avpHeader)(nil)
+
 func (hdr avpHeader) String() string {
 	m := "-"
 	h := "-"
@@ -624,6 +636,8 @@ func (hdr avpHeader) String() string {
 	}
 	return fmt.Sprintf("%s [%s%s]", t, m, h)
 }
+
+var _ fmt.Stringer = (*avpPayload)(nil)
 
 func (p avpPayload) String() string {
 	var str strings.Builder
