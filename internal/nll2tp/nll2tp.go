@@ -452,11 +452,11 @@ func sessionCreateAttr(config *SessionConfig) ([]netlink.Attribute, error) {
 		},
 		{
 			Type: AttrSessionId,
-			Data: nlenc.Uint32Bytes(uint32(config.Tid)),
+			Data: nlenc.Uint32Bytes(uint32(config.Sid)),
 		},
 		{
 			Type: AttrPeerSessionId,
-			Data: nlenc.Uint32Bytes(uint32(config.Ptid)),
+			Data: nlenc.Uint32Bytes(uint32(config.Psid)),
 		},
 	}
 
