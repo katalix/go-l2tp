@@ -58,9 +58,12 @@ func (cp *l2tpControlPlane) sendto(p []byte, to unix.Sockaddr) (err error) {
 	return cerr
 }
 
-func (cp *l2tpControlPlane) close() error {
-	// TODO: kick the protocol to shut down
-	return cp.file.Close() // TODO: verify this closes the underlying fd
+func (cp *l2tpControlPlane) close() (err error) {
+	if cp.file != nil {
+		err = cp.file.Close()
+		cp.file = nil
+	}
+	return
 }
 
 func (cp *l2tpControlPlane) connect() error {

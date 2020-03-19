@@ -3,6 +3,7 @@ package l2tp
 import (
 	"fmt"
 	"net"
+	"time"
 
 	"github.com/katalix/sl2tpd/internal/nll2tp"
 	"golang.org/x/sys/unix"
@@ -80,8 +81,9 @@ const (
 // messages.
 // The data plane is established on creation of the tunnel instance.
 type quiescentTunnel struct {
-	cp *l2tpControlPlane
-	dp *l2tpDataPlane
+	cp    *l2tpControlPlane
+	xport *transport
+	dp    *l2tpDataPlane
 }
 
 // staticTunnel does not run any control protocol
@@ -93,6 +95,15 @@ type quiescentTunnel struct {
 // unmanaged tunnel instances.
 type staticTunnel struct {
 	dp *l2tpDataPlane
+}
+
+// staticSession does not run any control protocol
+// and instead merely instantiates the data plane in the
+// kernel.  This is equivalent to the Linux 'ip l2tp'
+// commands(s).
+type staticSession struct {
+	parent Tunnel
+	cfg    *SessionConfig
 }
 
 // Session is an interface representing an L2TP session.
@@ -168,6 +179,9 @@ func (qt *quiescentTunnel) NewSession(name string, cfg *SessionConfig) (Session,
 // Close closes the tunnel, releasing allocated resources.
 func (qt *quiescentTunnel) Close() {
 	if qt != nil {
+		if qt.xport != nil {
+			qt.xport.close()
+		}
 		if qt.cp != nil {
 			qt.cp.close()
 		}
@@ -213,6 +227,20 @@ func newQuiescentTunnel(nl *nll2tp.Conn, sal, sap unix.Sockaddr, cfg *TunnelConf
 	}
 
 	err = qt.dp.Up(qt.cp.fd)
+	if err != nil {
+		qt.Close()
+		return nil, err
+	}
+
+	qt.xport, err = newTransport(qt.cp, transportConfig{
+		HelloTimeout:      cfg.HelloTimeout,
+		TxWindowSize:      cfg.WindowSize,
+		MaxRetries:        cfg.MaxRetries,
+		RetryTimeout:      cfg.RetryTimeout,
+		AckTimeout:        time.Millisecond * 100,
+		Version:           cfg.Version,
+		PeerControlConnID: cfg.PeerTunnelID,
+	})
 	if err != nil {
 		qt.Close()
 		return nil, err
