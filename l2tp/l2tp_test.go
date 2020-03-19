@@ -158,9 +158,10 @@ func TestRequiresRoot(t *testing.T) {
 		}{
 			{
 				cfg: TunnelConfig{
-					Local: "127.0.0.1:6000",
-					Peer:  "localhost:5000",
-					Encap: EncapTypeUDP,
+					Local:   "127.0.0.1:6000",
+					Peer:    "localhost:5000",
+					Encap:   EncapTypeUDP,
+					Version: ProtocolVersion3,
 				},
 				// Must call out control connection IDs
 				expectFail: true,
@@ -172,6 +173,7 @@ func TestRequiresRoot(t *testing.T) {
 					TunnelID:     5001,
 					PeerTunnelID: 6001,
 					Encap:        EncapTypeUDP,
+					Version:      ProtocolVersion3,
 				},
 			},
 			{
@@ -181,6 +183,7 @@ func TestRequiresRoot(t *testing.T) {
 					TunnelID:     5002,
 					PeerTunnelID: 6002,
 					Encap:        EncapTypeUDP,
+					Version:      ProtocolVersion3,
 				},
 			},
 			{
@@ -190,6 +193,7 @@ func TestRequiresRoot(t *testing.T) {
 					TunnelID:     5003,
 					PeerTunnelID: 6003,
 					Encap:        EncapTypeIP,
+					Version:      ProtocolVersion3,
 				},
 			},
 			{
@@ -199,6 +203,7 @@ func TestRequiresRoot(t *testing.T) {
 					TunnelID:     5004,
 					PeerTunnelID: 6004,
 					Encap:        EncapTypeIP,
+					Version:      ProtocolVersion3,
 				},
 			},
 		}

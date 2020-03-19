@@ -214,13 +214,7 @@ func newQuiescentTunnel(nl *nll2tp.Conn, sal, sap unix.Sockaddr, cfg *TunnelConf
 		return nil, err
 	}
 
-	qt.dp, err = newL2tpDataPlane(nl, sal, sap, &nll2tp.TunnelConfig{
-		Tid:     nll2tp.L2tpTunnelID(cfg.TunnelID),
-		Ptid:    nll2tp.L2tpTunnelID(cfg.PeerTunnelID),
-		Version: nll2tp.L2tpProtocolVersion(cfg.Version),
-		Encap:   nll2tp.L2tpEncapType(cfg.Encap),
-		// TODO: do we want/need to enable kernel debug?
-		DebugFlags: nll2tp.L2tpDebugFlags(0)})
+	qt.dp, err = newL2tpDataPlane(nl, sal, sap, cfg)
 	if err != nil {
 		qt.Close()
 		return nil, err
@@ -259,6 +253,9 @@ func NewStaticTunnel(nl *nll2tp.Conn, cfg *TunnelConfig) (tunl Tunnel, err error
 	}
 
 	// Sanity check  the configuration
+	if cfg.Version != ProtocolVersion3 {
+		return nil, fmt.Errorf("Static tunnels can be L2TPv3 only")
+	}
 	if cfg.TunnelID == 0 || cfg.PeerTunnelID == 0 {
 		return nil, fmt.Errorf("L2TPv3 tunnel IDs %v and %v must both be > 0",
 			cfg.TunnelID, cfg.PeerTunnelID)
@@ -299,13 +296,7 @@ func newStaticTunnel(nl *nll2tp.Conn, sal, sap unix.Sockaddr, cfg *TunnelConfig)
 	st = &staticTunnel{}
 
 	// Initialise the data plane.
-	st.dp, err = newL2tpDataPlane(nl, sal, sap, &nll2tp.TunnelConfig{
-		Tid:     nll2tp.L2tpTunnelID(cfg.TunnelID),
-		Ptid:    nll2tp.L2tpTunnelID(cfg.PeerTunnelID),
-		Version: nll2tp.ProtocolVersion3,
-		Encap:   nll2tp.L2tpEncapType(cfg.Encap),
-		// TODO: do we want/need to enable kernel debug?
-		DebugFlags: nll2tp.L2tpDebugFlags(0)})
+	st.dp, err = newL2tpDataPlane(nl, sal, sap, cfg)
 	if err != nil {
 		st.Close()
 		return nil, err

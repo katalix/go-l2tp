@@ -10,8 +10,18 @@ import (
 type l2tpDataPlane struct {
 	local, remote unix.Sockaddr
 	nl            *nll2tp.Conn
-	cfg           *nll2tp.TunnelConfig
+	cfg           *TunnelConfig
 	isUp          bool
+}
+
+func tunnelCfgToNl(cfg *TunnelConfig) *nll2tp.TunnelConfig {
+	// TODO: facilitate kernel level debug
+	return &nll2tp.TunnelConfig{
+		Tid:        nll2tp.L2tpTunnelID(cfg.TunnelID),
+		Ptid:       nll2tp.L2tpTunnelID(cfg.PeerTunnelID),
+		Version:    nll2tp.L2tpProtocolVersion(cfg.Version),
+		Encap:      nll2tp.L2tpEncapType(cfg.Encap),
+		DebugFlags: nll2tp.L2tpDebugFlags(0)}
 }
 
 func sockaddrAddrPort(sa unix.Sockaddr) (addr []byte, port uint16, err error) {
@@ -30,7 +40,7 @@ func sockaddrAddrPort(sa unix.Sockaddr) (addr []byte, port uint16, err error) {
 
 // Bring up the data plane: managed tunnel
 func (dp *l2tpDataPlane) Up(tunnelSk int) error {
-	err := dp.nl.CreateManagedTunnel(tunnelSk, dp.cfg)
+	err := dp.nl.CreateManagedTunnel(tunnelSk, tunnelCfgToNl(dp.cfg))
 	if err == nil {
 		dp.isUp = true
 	}
@@ -50,7 +60,7 @@ func (dp *l2tpDataPlane) UpStatic() error {
 		return fmt.Errorf("invalid remote address %v: %v", dp.remote, err)
 	}
 
-	err = dp.nl.CreateStaticTunnel(la, lp, ra, rp, dp.cfg)
+	err = dp.nl.CreateStaticTunnel(la, lp, ra, rp, tunnelCfgToNl(dp.cfg))
 	if err == nil {
 		dp.isUp = true
 	}
@@ -60,12 +70,12 @@ func (dp *l2tpDataPlane) UpStatic() error {
 // Close the data plane
 func (dp *l2tpDataPlane) Close() error {
 	if dp.isUp {
-		return dp.nl.DeleteTunnel(dp.cfg)
+		return dp.nl.DeleteTunnel(tunnelCfgToNl(dp.cfg))
 	}
 	return nil
 }
 
-func newL2tpDataPlane(nl *nll2tp.Conn, local, remote unix.Sockaddr, cfg *nll2tp.TunnelConfig) (*l2tpDataPlane, error) {
+func newL2tpDataPlane(nl *nll2tp.Conn, local, remote unix.Sockaddr, cfg *TunnelConfig) (*l2tpDataPlane, error) {
 	return &l2tpDataPlane{
 		local:  local,
 		remote: remote,
