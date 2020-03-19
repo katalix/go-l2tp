@@ -81,9 +81,10 @@ const (
 // messages.
 // The data plane is established on creation of the tunnel instance.
 type quiescentTunnel struct {
+	nl    *nll2tp.Conn
 	cp    *l2tpControlPlane
 	xport *transport
-	dp    *l2tpDataPlane
+	dp    dataPlane
 }
 
 // staticTunnel does not run any control protocol
@@ -94,7 +95,8 @@ type quiescentTunnel struct {
 // so NewStaticTunnel only supports creation of L2TPv3
 // unmanaged tunnel instances.
 type staticTunnel struct {
-	dp *l2tpDataPlane
+	nl *nll2tp.Conn
+	dp dataPlane
 }
 
 // staticSession does not run any control protocol
@@ -186,13 +188,13 @@ func (qt *quiescentTunnel) Close() {
 			qt.cp.close()
 		}
 		if qt.dp != nil {
-			qt.dp.Close()
+			qt.dp.close(qt.nl)
 		}
 	}
 }
 
 func newQuiescentTunnel(nl *nll2tp.Conn, sal, sap unix.Sockaddr, cfg *TunnelConfig) (qt *quiescentTunnel, err error) {
-	qt = &quiescentTunnel{}
+	qt = &quiescentTunnel{nl: nl}
 
 	// Initialise the control plane.
 	// We bind/connect immediately since we're not runnning most of the control protocol.
@@ -214,13 +216,7 @@ func newQuiescentTunnel(nl *nll2tp.Conn, sal, sap unix.Sockaddr, cfg *TunnelConf
 		return nil, err
 	}
 
-	qt.dp, err = newL2tpDataPlane(nl, sal, sap, cfg)
-	if err != nil {
-		qt.Close()
-		return nil, err
-	}
-
-	err = qt.dp.Up(qt.cp.fd)
+	qt.dp, err = newManagedTunnelDataPlane(nl, qt.cp.fd, cfg)
 	if err != nil {
 		qt.Close()
 		return nil, err
@@ -287,22 +283,15 @@ func (st *staticTunnel) NewSession(name string, cfg *SessionConfig) (Session, er
 func (st *staticTunnel) Close() {
 	if st != nil {
 		if st.dp != nil {
-			st.dp.Close()
+			st.dp.close(st.nl)
 		}
 	}
 }
 
 func newStaticTunnel(nl *nll2tp.Conn, sal, sap unix.Sockaddr, cfg *TunnelConfig) (st *staticTunnel, err error) {
-	st = &staticTunnel{}
+	st = &staticTunnel{nl: nl}
 
-	// Initialise the data plane.
-	st.dp, err = newL2tpDataPlane(nl, sal, sap, cfg)
-	if err != nil {
-		st.Close()
-		return nil, err
-	}
-
-	err = st.dp.UpStatic()
+	st.dp, err = newStaticTunnelDataPlane(nl, sal, sap, cfg)
 	if err != nil {
 		st.Close()
 		return nil, err
