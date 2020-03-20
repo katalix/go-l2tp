@@ -7,8 +7,6 @@ import (
 	"os/user"
 	"strings"
 	"testing"
-
-	"github.com/katalix/sl2tpd/internal/nll2tp"
 )
 
 // Must be called with root permissions
@@ -123,12 +121,15 @@ func testQuiescentTunnels(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			tunl, err := NewQuiescentTunnel(nlconn, &c.cfg)
+			ctx, err := NewContext(nil)
+			if err != nil {
+				t.Fatalf("NewContext(): %v", err)
+			}
+			defer ctx.Close()
+
+			_, err = ctx.NewQuiescentTunnel("t1", &c.cfg)
 			if c.expectFail {
 				if err == nil {
-					if tunl != nil {
-						tunl.Close()
-					}
 					t.Fatalf("Expected NewQuiescentTunnel(%v) to fail", c.cfg)
 				}
 			} else {
@@ -137,8 +138,6 @@ func testQuiescentTunnels(t *testing.T) {
 				}
 
 				err = checkTunnel(&c.cfg)
-				tunl.Close()
-
 				if err != nil {
 					t.Errorf("NewQuiescentTunnel(%v): failed to validate: %v", c.cfg, err)
 				}
@@ -176,17 +175,21 @@ func testQuiescentSessions(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			tunl, err := NewQuiescentTunnel(nlconn, &c.tcfg)
+			ctx, err := NewContext(nil)
+			if err != nil {
+				t.Fatalf("NewContext(): %v", err)
+			}
+			defer ctx.Close()
+
+			tunl, err := ctx.NewQuiescentTunnel("t1", &c.tcfg)
 			if err != nil {
 				t.Fatalf("NewQuiescentTunnel(%v): %v", c.tcfg, err)
 			}
-			defer tunl.Close()
 
-			sess, err := tunl.NewSession("s1", &c.scfg)
+			_, err = tunl.NewSession("s1", &c.scfg)
 			if err != nil {
 				t.Fatalf("NewSession(%v): %v", c.scfg, err)
 			}
-			defer sess.Close()
 
 			err = checkSession(&c.tcfg, &c.scfg)
 			if err != nil {
@@ -262,12 +265,15 @@ func testStaticTunnels(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			tunl, err := NewStaticTunnel(nlconn, &c.cfg)
+			ctx, err := NewContext(nil)
+			if err != nil {
+				t.Fatalf("NewContext(): %v", err)
+			}
+			defer ctx.Close()
+
+			_, err = ctx.NewStaticTunnel("t1", &c.cfg)
 			if c.expectFail {
 				if err == nil {
-					if tunl != nil {
-						tunl.Close()
-					}
 					t.Fatalf("Expected NewStaticTunnel(%v) to fail", c.cfg)
 				}
 			} else {
@@ -276,8 +282,6 @@ func testStaticTunnels(t *testing.T) {
 				}
 
 				err = checkTunnel(&c.cfg)
-				tunl.Close()
-
 				if err != nil {
 					t.Errorf("NewStaticTunnel(%v): failed to validate: %v", c.cfg, err)
 				}
@@ -315,17 +319,21 @@ func testStaticSessions(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			tunl, err := NewStaticTunnel(nlconn, &c.tcfg)
+			ctx, err := NewContext(nil)
+			if err != nil {
+				t.Fatalf("NewContext(): %v", err)
+			}
+			defer ctx.Close()
+
+			tunl, err := ctx.NewStaticTunnel("t1", &c.tcfg)
 			if err != nil {
 				t.Fatalf("NewStaticTunnel(%v): %v", c.tcfg, err)
 			}
-			defer tunl.Close()
 
-			sess, err := tunl.NewSession("s1", &c.scfg)
+			_, err = tunl.NewSession("s1", &c.scfg)
 			if err != nil {
 				t.Fatalf("NewSession(%v): %v", c.scfg, err)
 			}
-			defer sess.Close()
 
 			err = checkSession(&c.tcfg, &c.scfg)
 			if err != nil {
@@ -334,8 +342,6 @@ func testStaticSessions(t *testing.T) {
 		})
 	}
 }
-
-var nlconn *nll2tp.Conn
 
 func TestRequiresRoot(t *testing.T) {
 
@@ -347,12 +353,6 @@ func TestRequiresRoot(t *testing.T) {
 	if user.Uid != "0" {
 		t.Skip("skipping test because we don't have root permissions")
 	}
-
-	nlconn, err = nll2tp.Dial()
-	if err != nil {
-		t.Errorf("Failed to establish netlink/L2TP connection: %q", err)
-	}
-	defer nlconn.Close()
 
 	tests := []struct {
 		name   string

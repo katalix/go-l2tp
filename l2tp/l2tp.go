@@ -9,79 +9,36 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// ProtocolVersion is the version of the L2TP protocol to use
-type ProtocolVersion int
+// Context is a container for a collection of L2TP tunnels and
+// their sessions, and associated configuration.
+type Context struct {
+	nlconn  *nll2tp.Conn
+	tunnels map[string]Tunnel
+}
 
-const (
-	// ProtocolVersion3Fallback is used for RFC3931 fallback mode
-	ProtocolVersion3Fallback = 1
-	// ProtocolVersion2 is used for RFC2661
-	ProtocolVersion2 = nll2tp.ProtocolVersion2
-	// ProtocolVersion3 is used for RFC3931
-	ProtocolVersion3 = nll2tp.ProtocolVersion3
-)
+// ContextConfig encodes top-level configuration for an L2TP
+// context.
+type ContextConfig struct {
+	// TODO
+}
 
-// ControlConnID is a generic identifier used for RFC2661 tunnel
-// and session IDs as well as RFC3931 control connection IDs.
-type ControlConnID uint32
+// Tunnel is an interface representing an L2TP tunnel.
+type Tunnel interface {
+	NewSession(name string, cfg *SessionConfig) (Session, error)
+	Close()
+	getCfg() *TunnelConfig
+	getNLConn() *nll2tp.Conn
+	unlinkSession(name string)
+}
 
-const (
-	v2TidSidMax = ControlConnID(^uint16(0))
-)
+// Session is an interface representing an L2TP session.
+type Session interface {
+	Close()
+}
 
-// EncapType is the lower-level encapsulation to use for a tunnel
-type EncapType int
-
-const (
-	// EncapTypeUDP is used for RFC2661 and RFC3931 tunnels using UDP encapsulation
-	EncapTypeUDP = nll2tp.EncaptypeUdp
-	// EncapTypeIP is used for RFC3931 tunnels using IP encapsulation
-	EncapTypeIP = nll2tp.EncaptypeIp
-)
-
-// PseudowireType is the session type for a given session.
-// RFC2661 is PPP-only; whereas RFC3931 supports multiple types.
-type PseudowireType int
-
-const (
-	// PseudowireTypePPP specifies a PPP pseudowire
-	PseudowireTypePPP = nll2tp.PwtypePpp
-	// PseudowireTypeEth specifies an Ethernet pseudowire
-	PseudowireTypeEth = nll2tp.PwtypeEth
-)
-
-// DebugFlags is used for kernel-space tunnel and session logging control.
-// Logging is emitted using the kernel's printk facility, and may be viewed
-// using dmesg, syslog, or the systemd journal depending on distro configuration.
-// Multiple flags may be combined to enable different log messages.
-type DebugFlags uint32
-
-const (
-	// DebugFlagsControl enables logging of userspace/kernelspace API interactions
-	DebugFlagsControl = nll2tp.MsgControl
-	// DebugFlagsSeq enables logging of data sequence numbers if enabled for a given session
-	DebugFlagsSeq = nll2tp.MsgSeq
-	// DebugFlagsData enables logging of session data messages
-	DebugFlagsData = nll2tp.MsgData
-)
-
-// L2SpecType defines the Layer 2 specific sublayer for data packets as per RFC3931 section 3.2.2.
-type L2SpecType int32
-
-const (
-	// L2SpecTypeNone defines no sublayer is to be used
-	L2SpecTypeNone = nll2tp.L2spectypeNone
-	// L2SpecTypeDefault defines use of the default sublayer
-	L2SpecTypeDefault = nll2tp.L2spectypeDefault
-)
-
-// quiescentTunnel creates a user space socket for the
-// L2TP control plane, but does not run the control protocol
-// beyond acknowledging messages and optionally sending HELLO
-// messages.
-// The data plane is established on creation of the tunnel instance.
 type quiescentTunnel struct {
-	nl       *nll2tp.Conn
+	name     string
+	parent   *Context
 	cfg      *TunnelConfig
 	cp       *l2tpControlPlane
 	xport    *transport
@@ -89,15 +46,9 @@ type quiescentTunnel struct {
 	sessions map[string]Session
 }
 
-// staticTunnel does not run any control protocol
-// and instead merely instantiates the data plane in the
-// kernel.  This is equivalent to the Linux 'ip l2tp'
-// command(s).
-// Static L2TPv2 tunnels are not practically useful,
-// so NewStaticTunnel only supports creation of L2TPv3
-// unmanaged tunnel instances.
 type staticTunnel struct {
-	nl       *nll2tp.Conn
+	name     string
+	parent   *Context
 	cfg      *TunnelConfig
 	dp       dataPlane
 	sessions map[string]Session
@@ -108,42 +59,54 @@ type staticTunnel struct {
 // kernel.  This is equivalent to the Linux 'ip l2tp'
 // commands(s).
 type staticSession struct {
+	name   string
 	parent Tunnel
 	cfg    *SessionConfig
 	dp     dataPlane
 }
 
-// Session is an interface representing an L2TP session.
-type Session interface {
-	Close()
-}
+// NewContext creates a new L2TP context, which can then be used
+// to instantiate tunnel and session instances.
+// If a nil configuration is passed, default configuration will
+// be used.
+func NewContext(cfg *ContextConfig) (*Context, error) {
 
-// Tunnel is an interface representing an L2TP tunnel.
-type Tunnel interface {
-	NewSession(name string, cfg *SessionConfig) (Session, error)
-	//FindSessionByName(name string) (Session, error)
-	Close()
-	getCfg() *TunnelConfig
-	getNLConn() *nll2tp.Conn
-}
-
-func (e EncapType) String() string {
-	switch e {
-	case EncapTypeIP:
-		return "IP"
-	case EncapTypeUDP:
-		return "UDP"
+	if cfg == nil {
+		// TODO: default configuration.
+		// Eventually we might set things like host name, router ID,
+		// etc, etc.
 	}
-	panic("unhandled encap type")
+
+	nlconn, err := nll2tp.Dial()
+	if err != nil {
+		return nil, fmt.Errorf("failed to establish a netlink/L2TP connection: %v", err)
+	}
+
+	return &Context{
+		nlconn:  nlconn,
+		tunnels: make(map[string]Tunnel),
+	}, nil
 }
 
 // NewQuiescentTunnel creates a new "quiescent" L2TP tunnel.
-func NewQuiescentTunnel(nl *nll2tp.Conn, cfg *TunnelConfig) (tunl Tunnel, err error) {
+// A quiescent tunnel creates a user space socket for the
+// L2TP control plane, but does not run the control protocol
+// beyond acknowledging messages and optionally sending HELLO
+// messages.
+// The data plane is established on creation of the tunnel instance.
+// The name provided must be unique in the Context.
+func (ctx *Context) NewQuiescentTunnel(name string, cfg *TunnelConfig) (tunl Tunnel, err error) {
 
 	var sal, sap unix.Sockaddr
 
-	if nl == nil || cfg == nil {
-		return nil, fmt.Errorf("invalid nil argument(s) to NewQuiescentTunnel")
+	// Must have configuration
+	if cfg == nil {
+		return nil, fmt.Errorf("invalid nil config")
+	}
+
+	// Must not have name clashes
+	if _, ok := ctx.tunnels[name]; ok {
+		return nil, fmt.Errorf("already have tunnel %q", name)
 	}
 
 	// Sanity check the configuration
@@ -177,106 +140,36 @@ func NewQuiescentTunnel(nl *nll2tp.Conn, cfg *TunnelConfig) (tunl Tunnel, err er
 		return nil, fmt.Errorf("failed to initialise tunnel addresses: %v", err)
 	}
 
-	return newQuiescentTunnel(nl, sal, sap, cfg)
-}
-
-// NewSession adds a session to the tunnel
-func (qt *quiescentTunnel) NewSession(name string, cfg *SessionConfig) (Session, error) {
-
-	if _, ok := qt.sessions[name]; ok {
-		return nil, fmt.Errorf("already have session %q", name)
-	}
-
-	s, err := newStaticSession(qt, cfg)
+	tunl, err = newQuiescentTunnel(name, ctx, sal, sap, cfg)
 	if err != nil {
 		return nil, err
 	}
 
-	qt.sessions[name] = s
-
-	return s, nil
-}
-
-// Close closes the tunnel, releasing allocated resources.
-func (qt *quiescentTunnel) Close() {
-	if qt != nil {
-		if qt.xport != nil {
-			qt.xport.close()
-		}
-		if qt.cp != nil {
-			qt.cp.close()
-		}
-		if qt.dp != nil {
-			qt.dp.close(qt.nl)
-		}
-	}
-}
-
-func (qt *quiescentTunnel) getCfg() *TunnelConfig {
-	return qt.cfg
-}
-
-func (qt *quiescentTunnel) getNLConn() *nll2tp.Conn {
-	return qt.nl
-}
-
-func newQuiescentTunnel(nl *nll2tp.Conn, sal, sap unix.Sockaddr, cfg *TunnelConfig) (qt *quiescentTunnel, err error) {
-	qt = &quiescentTunnel{
-		nl:       nl,
-		cfg:      cfg,
-		sessions: make(map[string]Session),
-	}
-
-	// Initialise the control plane.
-	// We bind/connect immediately since we're not runnning most of the control protocol.
-	qt.cp, err = newL2tpControlPlane(sal, sap)
-	if err != nil {
-		qt.Close()
-		return nil, err
-	}
-
-	err = qt.cp.bind()
-	if err != nil {
-		qt.Close()
-		return nil, err
-	}
-
-	err = qt.cp.connect()
-	if err != nil {
-		qt.Close()
-		return nil, err
-	}
-
-	qt.dp, err = newManagedTunnelDataPlane(nl, qt.cp.fd, cfg)
-	if err != nil {
-		qt.Close()
-		return nil, err
-	}
-
-	qt.xport, err = newTransport(qt.cp, transportConfig{
-		HelloTimeout:      cfg.HelloTimeout,
-		TxWindowSize:      cfg.WindowSize,
-		MaxRetries:        cfg.MaxRetries,
-		RetryTimeout:      cfg.RetryTimeout,
-		AckTimeout:        time.Millisecond * 100,
-		Version:           cfg.Version,
-		PeerControlConnID: cfg.PeerTunnelID,
-	})
-	if err != nil {
-		qt.Close()
-		return nil, err
-	}
-
-	return
+	ctx.tunnels[name] = tunl
+	return tunl, nil
 }
 
 // NewStaticTunnel creates a new unmanaged L2TP tunnel.
-func NewStaticTunnel(nl *nll2tp.Conn, cfg *TunnelConfig) (tunl Tunnel, err error) {
+// A static tunnel does not run any control protocol
+// and instead merely instantiates the data plane in the
+// kernel.  This is equivalent to the Linux 'ip l2tp'
+// command(s).
+// Static L2TPv2 tunnels are not practically useful,
+// so NewStaticTunnel only supports creation of L2TPv3
+// unmanaged tunnel instances.
+// The name provided must be unique in the Context.
+func (ctx *Context) NewStaticTunnel(name string, cfg *TunnelConfig) (tunl Tunnel, err error) {
 
 	var sal, sap unix.Sockaddr
 
-	if nl == nil || cfg == nil {
-		return nil, fmt.Errorf("invalid nil argument(s) to NewStaticTunnel")
+	// Must have configuration
+	if cfg == nil {
+		return nil, fmt.Errorf("invalid nil config")
+	}
+
+	// Must not have name clashes
+	if _, ok := ctx.tunnels[name]; ok {
+		return nil, fmt.Errorf("already have tunnel %q", name)
 	}
 
 	// Sanity check  the configuration
@@ -302,17 +195,156 @@ func NewStaticTunnel(nl *nll2tp.Conn, cfg *TunnelConfig) (tunl Tunnel, err error
 		return nil, fmt.Errorf("failed to initialise tunnel addresses: %v", err)
 	}
 
-	return newStaticTunnel(nl, sal, sap, cfg)
+	tunl, err = newStaticTunnel(name, ctx, sal, sap, cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	ctx.tunnels[name] = tunl
+	return tunl, nil
 }
 
-// NewSession adds a session to the tunnel
+// Close tears down the context, including all the L2TP tunnels and sessions
+// running inside it.
+func (ctx *Context) Close() {
+	for name, tunl := range ctx.tunnels {
+		tunl.Close()
+		ctx.unlinkTunnel(name)
+	}
+	ctx.nlconn.Close()
+}
+
+func (ctx *Context) unlinkTunnel(name string) {
+	if _, ok := ctx.tunnels[name]; ok {
+		delete(ctx.tunnels, name)
+	}
+}
+
+// NewSession adds a session to a quiescent tunnel.
+// Since the tunnel is running a limited control protocol
+// the session data plane is instantiated on creation of
+// the session.  All configuration parameters must be provided
+// at point of instantiation, and must match up with the
+// peer's configuartion.
+func (qt *quiescentTunnel) NewSession(name string, cfg *SessionConfig) (Session, error) {
+
+	if _, ok := qt.sessions[name]; ok {
+		return nil, fmt.Errorf("already have session %q", name)
+	}
+
+	s, err := newStaticSession(name, qt, cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	qt.sessions[name] = s
+
+	return s, nil
+}
+
+// Close closes the tunnel, releasing allocated resources.
+// The control plane socket is closed, and the data plane is
+// torn down.
+// Any sessions instantiated inside the tunnel are removed.
+func (qt *quiescentTunnel) Close() {
+	if qt != nil {
+		fmt.Printf("################## close tunnel %v\n", qt)
+
+		for name, session := range qt.sessions {
+			session.Close()
+			qt.unlinkSession(name)
+		}
+
+		if qt.xport != nil {
+			qt.xport.close()
+		}
+		if qt.cp != nil {
+			qt.cp.close()
+		}
+		if qt.dp != nil {
+			qt.dp.close(qt.getNLConn())
+		}
+	}
+}
+
+func (qt *quiescentTunnel) getCfg() *TunnelConfig {
+	return qt.cfg
+}
+
+func (qt *quiescentTunnel) getNLConn() *nll2tp.Conn {
+	return qt.parent.nlconn
+}
+
+func (qt *quiescentTunnel) unlinkSession(name string) {
+	if _, ok := qt.sessions[name]; ok {
+		delete(qt.sessions, name)
+	}
+}
+
+func newQuiescentTunnel(name string, parent *Context, sal, sap unix.Sockaddr, cfg *TunnelConfig) (qt *quiescentTunnel, err error) {
+	qt = &quiescentTunnel{
+		name:     name,
+		parent:   parent,
+		cfg:      cfg,
+		sessions: make(map[string]Session),
+	}
+
+	// Initialise the control plane.
+	// We bind/connect immediately since we're not runnning most of the control protocol.
+	qt.cp, err = newL2tpControlPlane(sal, sap)
+	if err != nil {
+		qt.Close()
+		return nil, err
+	}
+
+	err = qt.cp.bind()
+	if err != nil {
+		qt.Close()
+		return nil, err
+	}
+
+	err = qt.cp.connect()
+	if err != nil {
+		qt.Close()
+		return nil, err
+	}
+
+	qt.dp, err = newManagedTunnelDataPlane(parent.nlconn, qt.cp.fd, cfg)
+	if err != nil {
+		qt.Close()
+		return nil, err
+	}
+
+	qt.xport, err = newTransport(qt.cp, transportConfig{
+		HelloTimeout:      cfg.HelloTimeout,
+		TxWindowSize:      cfg.WindowSize,
+		MaxRetries:        cfg.MaxRetries,
+		RetryTimeout:      cfg.RetryTimeout,
+		AckTimeout:        time.Millisecond * 100,
+		Version:           cfg.Version,
+		PeerControlConnID: cfg.PeerTunnelID,
+	})
+	if err != nil {
+		qt.Close()
+		return nil, err
+	}
+
+	return
+}
+
+// NewSession adds a session to a static tunnel.
+// Since the tunnel is running no control protocol
+// the session data plane is instantiated on the creation
+// of the session.  All configuration parameters must be
+// provided at the point of instantiation, and must match
+// up with the peer's configuration.
 func (st *staticTunnel) NewSession(name string, cfg *SessionConfig) (Session, error) {
 
 	if _, ok := st.sessions[name]; ok {
 		return nil, fmt.Errorf("already have session %q", name)
 	}
 
-	s, err := newStaticSession(st, cfg)
+	s, err := newStaticSession(name, st, cfg)
 
 	if err != nil {
 		return nil, err
@@ -324,10 +356,19 @@ func (st *staticTunnel) NewSession(name string, cfg *SessionConfig) (Session, er
 }
 
 // Close closes the tunnel, releasing allocated resources.
+// The control plane socket is closed, and the data plane is
+// torn down.
+// Any sessions instantiated inside the tunnel are removed.
 func (st *staticTunnel) Close() {
 	if st != nil {
+
+		for name, session := range st.sessions {
+			session.Close()
+			st.unlinkSession(name)
+		}
+
 		if st.dp != nil {
-			st.dp.close(st.nl)
+			st.dp.close(st.getNLConn())
 		}
 	}
 }
@@ -337,17 +378,24 @@ func (st *staticTunnel) getCfg() *TunnelConfig {
 }
 
 func (st *staticTunnel) getNLConn() *nll2tp.Conn {
-	return st.nl
+	return st.parent.nlconn
 }
 
-func newStaticTunnel(nl *nll2tp.Conn, sal, sap unix.Sockaddr, cfg *TunnelConfig) (st *staticTunnel, err error) {
+func (st *staticTunnel) unlinkSession(name string) {
+	if _, ok := st.sessions[name]; ok {
+		delete(st.sessions, name)
+	}
+}
+
+func newStaticTunnel(name string, parent *Context, sal, sap unix.Sockaddr, cfg *TunnelConfig) (st *staticTunnel, err error) {
 	st = &staticTunnel{
-		nl:       nl,
+		name:     name,
+		parent:   parent,
 		cfg:      cfg,
 		sessions: make(map[string]Session),
 	}
 
-	st.dp, err = newStaticTunnelDataPlane(nl, sal, sap, cfg)
+	st.dp, err = newStaticTunnelDataPlane(parent.nlconn, sal, sap, cfg)
 	if err != nil {
 		st.Close()
 		return nil, err
@@ -356,7 +404,7 @@ func newStaticTunnel(nl *nll2tp.Conn, sal, sap unix.Sockaddr, cfg *TunnelConfig)
 	return
 }
 
-func newStaticSession(parent Tunnel, cfg *SessionConfig) (ss *staticSession, err error) {
+func newStaticSession(name string, parent Tunnel, cfg *SessionConfig) (ss *staticSession, err error) {
 	// Since we're static we instantiate the session in the
 	// dataplane at the point of creation.
 	dp, err := newSessionDataPlane(parent.getNLConn(), parent.getCfg().TunnelID, parent.getCfg().PeerTunnelID, cfg)
@@ -365,6 +413,7 @@ func newStaticSession(parent Tunnel, cfg *SessionConfig) (ss *staticSession, err
 	}
 
 	ss = &staticSession{
+		name:   name,
 		parent: parent,
 		cfg:    cfg,
 		dp:     dp,
@@ -373,8 +422,10 @@ func newStaticSession(parent Tunnel, cfg *SessionConfig) (ss *staticSession, err
 	return
 }
 
+// Close closes the static session, tearing down the data plane.
 func (ss *staticSession) Close() {
 	ss.dp.close(ss.parent.getNLConn())
+	ss.parent.unlinkSession(ss.name)
 }
 
 func newUDPTunnelAddress(address string) (unix.Sockaddr, error) {

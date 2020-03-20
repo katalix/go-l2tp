@@ -627,6 +627,7 @@ func (xport *transport) recv() (msg controlMessage, err error) {
 
 // close closes the transport.
 func (xport *transport) close() {
+	fmt.Printf("############### close channel %v\n", xport.sendChan)
 	close(xport.sendChan)
 	xport.cp.close()
 	xport.wg.Wait()
