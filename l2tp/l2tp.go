@@ -281,7 +281,7 @@ func NewStaticTunnel(nl *nll2tp.Conn, cfg *TunnelConfig) (tunl Tunnel, err error
 
 	// Sanity check  the configuration
 	if cfg.Version != ProtocolVersion3 {
-		return nil, fmt.Errorf("Static tunnels can be L2TPv3 only")
+		return nil, fmt.Errorf("static tunnels can be L2TPv3 only")
 	}
 	if cfg.TunnelID == 0 || cfg.PeerTunnelID == 0 {
 		return nil, fmt.Errorf("L2TPv3 tunnel IDs %v and %v must both be > 0",

@@ -205,7 +205,7 @@ func cpRead(xport *transport, wg *sync.WaitGroup) {
 	defer wg.Done()
 	for {
 		b := make([]byte, 4096)
-		n, sa, err := xport.cp.readFrom(b)
+		n, sa, err := xport.cp.recvFrom(b)
 		if err != nil {
 			close(xport.cpChan)
 			fmt.Printf("cpRead(%p): error reading from socket: %v\n", xport, err)
@@ -589,13 +589,6 @@ func newTransport(cp *l2tpControlPlane, cfg transportConfig) (xport *transport, 
 	go cpRead(xport, &xport.wg)
 
 	return xport, nil
-}
-
-// reconfigure allows transport parameters to be tweaked.
-// Out of range values are automatically reset to sane default values.
-func (xport *transport) reconfigure(cfg transportConfig) {
-	sanitiseConfig(&cfg)
-	xport.config = cfg
 }
 
 // getConfig allows transport parameters to be queried.

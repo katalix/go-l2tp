@@ -730,11 +730,6 @@ func (avp *avp) vendorID() avpVendorID {
 	return avp.header.VendorID
 }
 
-// dataLen returns the number of bytes in the AVP's payload.
-func (avp *avp) dataLen() int {
-	return avp.header.dataLen()
-}
-
 // totalLen returns the total number of bytes consumed by the AVP, inclusive
 // of the AVP header and data payload.
 func (avp *avp) totalLen() int {

@@ -16,16 +16,7 @@ type l2tpControlPlane struct {
 	connected     bool
 }
 
-func (cp *l2tpControlPlane) read(b []byte) (n int, err error) {
-	n, _, err = cp.readFrom(b)
-	return n, err
-}
-
-func (cp *l2tpControlPlane) readFrom(p []byte) (n int, sa unix.Sockaddr, err error) {
-	return cp.recvfrom(p)
-}
-
-func (cp *l2tpControlPlane) recvfrom(p []byte) (n int, addr unix.Sockaddr, err error) {
+func (cp *l2tpControlPlane) recvFrom(p []byte) (n int, addr unix.Sockaddr, err error) {
 	cerr := cp.rc.Read(func(fd uintptr) bool {
 		n, addr, err = unix.Recvfrom(int(fd), p, unix.MSG_NOSIGNAL)
 		return err != unix.EAGAIN && err != unix.EWOULDBLOCK
