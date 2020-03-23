@@ -277,6 +277,19 @@ func (qt *quiescentTunnel) unlinkSession(name string) {
 	delete(qt.sessions, name)
 }
 
+func (qt *quiescentTunnel) xportReader() {
+	// Although we're not running the control protocol we do need
+	// to drain messages from the transport to avoid the receive
+	// path blocking.  Do so here, treating any error as a signal
+	// to exit.
+	for {
+		msg, err := qt.xport.recv()
+		if err != nil {
+			return
+		}
+	}
+}
+
 func newQuiescentTunnel(name string, parent *Context, sal, sap unix.Sockaddr, cfg *TunnelConfig) (qt *quiescentTunnel, err error) {
 	qt = &quiescentTunnel{
 		name:     name,
@@ -324,6 +337,8 @@ func newQuiescentTunnel(name string, parent *Context, sal, sap unix.Sockaddr, cf
 		qt.Close()
 		return nil, err
 	}
+
+	go qt.xportReader()
 
 	return
 }
