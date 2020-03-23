@@ -283,7 +283,7 @@ func (qt *quiescentTunnel) xportReader() {
 	// path blocking.  Do so here, treating any error as a signal
 	// to exit.
 	for {
-		msg, err := qt.xport.recv()
+		_, err := qt.xport.recv()
 		if err != nil {
 			return
 		}
