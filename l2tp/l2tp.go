@@ -215,9 +215,7 @@ func (ctx *Context) Close() {
 }
 
 func (ctx *Context) unlinkTunnel(name string) {
-	if _, ok := ctx.tunnels[name]; ok {
-		delete(ctx.tunnels, name)
-	}
+	delete(ctx.tunnels, name)
 }
 
 // NewSession adds a session to a quiescent tunnel.
@@ -276,9 +274,7 @@ func (qt *quiescentTunnel) getNLConn() *nll2tp.Conn {
 }
 
 func (qt *quiescentTunnel) unlinkSession(name string) {
-	if _, ok := qt.sessions[name]; ok {
-		delete(qt.sessions, name)
-	}
+	delete(qt.sessions, name)
 }
 
 func newQuiescentTunnel(name string, parent *Context, sal, sap unix.Sockaddr, cfg *TunnelConfig) (qt *quiescentTunnel, err error) {
@@ -382,9 +378,7 @@ func (st *staticTunnel) getNLConn() *nll2tp.Conn {
 }
 
 func (st *staticTunnel) unlinkSession(name string) {
-	if _, ok := st.sessions[name]; ok {
-		delete(st.sessions, name)
-	}
+	delete(st.sessions, name)
 }
 
 func newStaticTunnel(name string, parent *Context, sal, sap unix.Sockaddr, cfg *TunnelConfig) (st *staticTunnel, err error) {
