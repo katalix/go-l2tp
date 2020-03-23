@@ -24,7 +24,7 @@ func TestGetTunnels(t *testing.T) {
 				 encap = "udp"
 				 version = "l2tpv2"
 				 peer = "[2001:0000:1234:0000:0000:C1C0:ABCD:0876]:6543"
-				 hello_timeout = 0
+				 hello_timeout = 250
 				 window_size = 10
 				 retry_timeout = 250
 				 max_retries = 2
@@ -43,7 +43,7 @@ func TestGetTunnels(t *testing.T) {
 					Version:      ProtocolVersion2,
 					Peer:         "[2001:0000:1234:0000:0000:C1C0:ABCD:0876]:6543",
 					Sessions:     make(map[string]*SessionConfig),
-					HelloTimeout: 0 * time.Millisecond,
+					HelloTimeout: 250 * time.Millisecond,
 					WindowSize:   10,
 					RetryTimeout: 250 * time.Millisecond,
 					MaxRetries:   2,
