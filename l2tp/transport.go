@@ -303,6 +303,7 @@ func runTransport(xport *transport, wg *sync.WaitGroup) {
 				xport.down(err)
 				return
 			}
+			xport.resetHelloTimer()
 
 		// Timer fired for sending an explicit ack
 		case <-xport.ackTimer.C:
@@ -513,7 +514,24 @@ func (xport *transport) resetHelloTimer() {
 }
 
 func (xport *transport) sendHelloMessage() error {
-	return errors.New("Transport.sendHelloMessage not implemented")
+	var msg controlMessage
+
+	a, err := newAvp(vendorIDIetf, avpTypeMessage, avpMsgTypeHello)
+	if err != nil {
+		return fmt.Errorf("failed to build hello message type AVP: %v", err)
+	}
+
+	if xport.config.Version == ProtocolVersion3Fallback || xport.config.Version == ProtocolVersion3 {
+		msg, err = newV3ControlMessage(xport.config.PeerControlConnID, []avp{*a})
+	} else {
+		msg, err = newV2ControlMessage(xport.config.PeerControlConnID, 0, []avp{*a})
+	}
+
+	if err != nil {
+		return fmt.Errorf("failed to build hello message: %v", err)
+	}
+
+	return xport.sendMessage1(msg, false)
 }
 
 func (xport *transport) sendExplicitAck() (err error) {
@@ -585,6 +603,7 @@ func newTransport(cp *l2tpControlPlane, cfg transportConfig) (xport *transport, 
 	}
 
 	xport.wg.Add(2)
+	xport.resetHelloTimer()
 	go runTransport(xport, &xport.wg)
 	go cpRead(xport, &xport.wg)
 
