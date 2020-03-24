@@ -6,6 +6,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"golang.org/x/sys/unix"
 )
 
@@ -71,6 +73,7 @@ type transportConfig struct {
 // transport represents the RFC2661/RFC3931
 // reliable transport algorithm state.
 type transport struct {
+	logger               log.Logger
 	slowStart            slowStartState
 	config               transportConfig
 	cp                   *l2tpControlPlane
@@ -143,7 +146,6 @@ func (s *slowStartState) onAck(maxTxWindow uint16) {
 		}
 		s.ntx--
 	}
-	fmt.Printf("onAck(): window %d, ntx %d, thresh %d\n", s.cwnd, s.ntx, s.thresh)
 }
 
 func (s *slowStartState) onRetransmit() {
@@ -169,13 +171,18 @@ func (s *slowStartState) msgIsStale(msg controlMessage) bool {
 	return seqCompare(msg.ns(), s.nr) == -1
 }
 
-func (m *ctlMsg) completeMessageSend(err error) {
+func (m *ctlMsg) completeMessageSend(logger log.Logger, err error) {
 	if !m.isComplete {
+
+		level.Debug(logger).Log(
+			"message", "send complete",
+			"message_type", m.msg.getType(),
+			"error", err)
+
 		m.isComplete = true
 		if m.retryTimer != nil {
 			m.retryTimer.Stop()
 		}
-		fmt.Printf("completeMessageSend(): %v complete\n", *m)
 		m.completeChan <- err
 	}
 }
@@ -208,10 +215,11 @@ func cpRead(xport *transport, wg *sync.WaitGroup) {
 		n, sa, err := xport.cp.recvFrom(b)
 		if err != nil {
 			close(xport.cpChan)
-			fmt.Printf("cpRead(%p): error reading from socket: %v\n", xport, err)
+			level.Error(xport.logger).Log(
+				"message", "socket read failed",
+				"error", err)
 			return
 		}
-		fmt.Printf("cpRead(%p): read %d bytes\n", xport, n)
 		xport.cpChan <- &rawMsg{b: b[:n], sa: sa}
 	}
 }
@@ -219,7 +227,6 @@ func cpRead(xport *transport, wg *sync.WaitGroup) {
 func runTransport(xport *transport, wg *sync.WaitGroup) {
 	defer wg.Done()
 	for {
-		fmt.Printf("runTransport(%p): enter select\n", xport)
 		select {
 		// Transmission request from user code
 		case ctlMsg, ok := <-xport.sendChan:
@@ -228,7 +235,9 @@ func runTransport(xport *transport, wg *sync.WaitGroup) {
 				return
 			}
 
-			fmt.Printf("runTransport(%p) send msg %v\n", xport, ctlMsg)
+			level.Debug(xport.logger).Log(
+				"message", "send",
+				"message_type", ctlMsg.msg.getType())
 
 			xport.txQueue = append(xport.txQueue, ctlMsg)
 			err := xport.processTxQueue()
@@ -245,13 +254,18 @@ func runTransport(xport *transport, wg *sync.WaitGroup) {
 				return
 			}
 
-			fmt.Printf("runTransport(%p) socket recv\n", xport)
+			level.Debug(xport.logger).Log(
+				"message", "socket recv",
+				"length", len(rawMsg.b))
+
 			messages, err := xport.recvFrame(rawMsg)
 			if err != nil {
 				// Early packet handling can fail if we fail to parse a message or
 				// the parsed message sequence number checks fail.  We ignore these
-				// errors.
-				// TODO: log the error here?
+				// errors, but log them for analysis.
+				level.Error(xport.logger).Log(
+					"message", "frame receive failed",
+					"error", err)
 				break
 			}
 
@@ -282,14 +296,17 @@ func runTransport(xport *transport, wg *sync.WaitGroup) {
 				return
 			}
 
-			fmt.Printf("runTransport(%p) retry timeout %v\n", xport, *ctlMsg)
+			level.Info(xport.logger).Log(
+				"message", "retransmit",
+				"message_type", ctlMsg.msg.getType())
+
 			// It's possible that a message ack could race with the retry timer.
 			// Hence we track completion state in the message struct to avoid
 			// a bogus retransmit.
 			if !ctlMsg.isComplete {
 				err := xport.retransmitMessage(ctlMsg)
 				if err != nil {
-					ctlMsg.completeMessageSend(err)
+					ctlMsg.completeMessageSend(xport.logger, err)
 					xport.down(err)
 					return
 				}
@@ -297,7 +314,6 @@ func runTransport(xport *transport, wg *sync.WaitGroup) {
 
 		// Timer fired for sending a hello message
 		case <-xport.helloTimer.C:
-			fmt.Printf("runTransport(%p) HELLO timeout\n", xport)
 			err := xport.sendHelloMessage()
 			if err != nil {
 				xport.down(err)
@@ -307,7 +323,6 @@ func runTransport(xport *transport, wg *sync.WaitGroup) {
 
 		// Timer fired for sending an explicit ack
 		case <-xport.ackTimer.C:
-			fmt.Printf("runTransport(%p) ACK timeout\n", xport)
 			err := xport.sendExplicitAck()
 			if err != nil {
 				xport.down(err)
@@ -336,6 +351,11 @@ func (xport *transport) recvFrame(rawMsg *rawMsg) (messages []controlMessage, er
 
 func (xport *transport) recvMessage(msg controlMessage) {
 	if xport.slowStart.msgIsInSequence(msg) {
+
+		level.Debug(xport.logger).Log(
+			"message", "recv",
+			"message_type", msg.getType())
+
 		xport.toggleAckTimer(true)
 		xport.resetHelloTimer()
 		xport.slowStart.incrementNr()
@@ -381,6 +401,12 @@ func (xport *transport) sendMessage1(msg controlMessage, isRetransmit bool) erro
 	} else {
 		msg.setTransportSeqNum(xport.slowStart.ns, xport.slowStart.nr)
 	}
+
+	level.Debug(xport.logger).Log(
+		"message", "send",
+		"message_type", msg.getType(),
+		"ns", msg.ns(),
+		"nr", msg.nr())
 
 	// Render as a byte slice and send.
 	b, err := msg.toBytes()
@@ -441,7 +467,7 @@ func (xport *transport) processTxQueue() error {
 			xport.ackQueue = append(xport.ackQueue, msg)
 			xport.slowStart.onSend()
 		} else {
-			msg.completeMessageSend(err)
+			msg.completeMessageSend(xport.logger, err)
 			return err
 		}
 	}
@@ -454,7 +480,7 @@ func (xport *transport) processAckQueue(recvd controlMessage) bool {
 		if seqCompare(recvd.nr(), msg.msg.ns()) > 0 {
 			xport.slowStart.onAck(xport.config.TxWindowSize)
 			xport.ackQueue = append(xport.ackQueue[:i], xport.ackQueue[i+1:]...)
-			msg.completeMessageSend(nil)
+			msg.completeMessageSend(xport.logger, nil)
 			found = true
 		}
 	}
@@ -462,8 +488,6 @@ func (xport *transport) processAckQueue(recvd controlMessage) bool {
 }
 
 func (xport *transport) down(err error) {
-
-	fmt.Printf("xport(%p) is down: %v\n", xport, err)
 
 	// Flush rx queue
 	for i := range xport.rxQueue {
@@ -474,12 +498,12 @@ func (xport *transport) down(err error) {
 	// callers pending on their completion.
 	for i, msg := range xport.txQueue {
 		xport.txQueue = append(xport.txQueue[:i], xport.txQueue[i+1:]...)
-		msg.completeMessageSend(err)
+		msg.completeMessageSend(xport.logger, err)
 	}
 
 	for i, msg := range xport.ackQueue {
 		xport.ackQueue = append(xport.ackQueue[:i], xport.ackQueue[i+1:]...)
-		msg.completeMessageSend(err)
+		msg.completeMessageSend(xport.logger, err)
 	}
 
 	// Stop timers: we don't care about the return value since
@@ -488,8 +512,9 @@ func (xport *transport) down(err error) {
 	xport.toggleAckTimer(false)
 	_ = xport.helloTimer.Stop()
 
-	// TODO: log error (probably)
-	_ = err
+	level.Error(xport.logger).Log(
+		"message", "transport down",
+		"error", err)
 
 	// Unblock recv path
 	close(xport.recvChan)
@@ -570,7 +595,7 @@ func defaulttransportConfig() transportConfig {
 // newTransport creates a new RFC2661/RFC3931 reliable transport.
 // The control plane passed in is owned by the transport and will
 // be closed by the transport when the transport is closed.
-func newTransport(cp *l2tpControlPlane, cfg transportConfig) (xport *transport, err error) {
+func newTransport(logger log.Logger, cp *l2tpControlPlane, cfg transportConfig) (xport *transport, err error) {
 
 	if cp == nil {
 		return nil, errors.New("illegal nil control plane argument")
@@ -588,6 +613,7 @@ func newTransport(cp *l2tpControlPlane, cfg transportConfig) (xport *transport, 
 	ackTimer := newTimer(cfg.AckTimeout)
 
 	xport = &transport{
+		logger:     log.With(logger, "function", "transport"),
 		slowStart:  slowStart,
 		config:     cfg,
 		cp:         cp,
@@ -646,7 +672,6 @@ func (xport *transport) recv() (msg controlMessage, err error) {
 
 // close closes the transport.
 func (xport *transport) close() {
-	fmt.Printf("############### close channel %v\n", xport.sendChan)
 	close(xport.sendChan)
 	xport.cp.close()
 	xport.wg.Wait()

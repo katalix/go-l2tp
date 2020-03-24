@@ -5,6 +5,8 @@ import (
 	"net"
 	"time"
 
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/katalix/sl2tpd/internal/nll2tp"
 	"golang.org/x/sys/unix"
 )
@@ -12,6 +14,7 @@ import (
 // Context is a container for a collection of L2TP tunnels and
 // their sessions, and associated configuration.
 type Context struct {
+	logger  log.Logger
 	nlconn  *nll2tp.Conn
 	tunnels map[string]Tunnel
 }
@@ -28,6 +31,7 @@ type Tunnel interface {
 	Close()
 	getCfg() *TunnelConfig
 	getNLConn() *nll2tp.Conn
+	getLogger() log.Logger
 	unlinkSession(name string)
 }
 
@@ -37,6 +41,7 @@ type Session interface {
 }
 
 type quiescentTunnel struct {
+	logger   log.Logger
 	name     string
 	parent   *Context
 	cfg      *TunnelConfig
@@ -47,6 +52,7 @@ type quiescentTunnel struct {
 }
 
 type staticTunnel struct {
+	logger   log.Logger
 	name     string
 	parent   *Context
 	cfg      *TunnelConfig
@@ -59,6 +65,7 @@ type staticTunnel struct {
 // kernel.  This is equivalent to the Linux 'ip l2tp'
 // commands(s).
 type staticSession struct {
+	logger log.Logger
 	name   string
 	parent Tunnel
 	cfg    *SessionConfig
@@ -69,7 +76,7 @@ type staticSession struct {
 // to instantiate tunnel and session instances.
 // If a nil configuration is passed, default configuration will
 // be used.
-func NewContext(cfg *ContextConfig) (*Context, error) {
+func NewContext(logger log.Logger, cfg *ContextConfig) (*Context, error) {
 
 	if cfg == nil {
 		// TODO: default configuration.
@@ -83,6 +90,7 @@ func NewContext(cfg *ContextConfig) (*Context, error) {
 	}
 
 	return &Context{
+		logger:  logger,
 		nlconn:  nlconn,
 		tunnels: make(map[string]Tunnel),
 	}, nil
@@ -146,6 +154,7 @@ func (ctx *Context) NewQuiescentTunnel(name string, cfg *TunnelConfig) (tunl Tun
 	}
 
 	ctx.tunnels[name] = tunl
+
 	return tunl, nil
 }
 
@@ -201,6 +210,7 @@ func (ctx *Context) NewStaticTunnel(name string, cfg *TunnelConfig) (tunl Tunnel
 	}
 
 	ctx.tunnels[name] = tunl
+
 	return tunl, nil
 }
 
@@ -246,8 +256,6 @@ func (qt *quiescentTunnel) NewSession(name string, cfg *SessionConfig) (Session,
 // Any sessions instantiated inside the tunnel are removed.
 func (qt *quiescentTunnel) Close() {
 	if qt != nil {
-		fmt.Printf("################## close tunnel %v\n", qt)
-
 		for name, session := range qt.sessions {
 			session.Close()
 			qt.unlinkSession(name)
@@ -262,6 +270,8 @@ func (qt *quiescentTunnel) Close() {
 		if qt.dp != nil {
 			qt.dp.close(qt.getNLConn())
 		}
+
+		level.Info(qt.logger).Log("message", "close")
 	}
 }
 
@@ -271,6 +281,10 @@ func (qt *quiescentTunnel) getCfg() *TunnelConfig {
 
 func (qt *quiescentTunnel) getNLConn() *nll2tp.Conn {
 	return qt.parent.nlconn
+}
+
+func (qt *quiescentTunnel) getLogger() log.Logger {
+	return qt.logger
 }
 
 func (qt *quiescentTunnel) unlinkSession(name string) {
@@ -292,6 +306,7 @@ func (qt *quiescentTunnel) xportReader() {
 
 func newQuiescentTunnel(name string, parent *Context, sal, sap unix.Sockaddr, cfg *TunnelConfig) (qt *quiescentTunnel, err error) {
 	qt = &quiescentTunnel{
+		logger:   log.With(parent.logger, "tunnel_name", name),
 		name:     name,
 		parent:   parent,
 		cfg:      cfg,
@@ -324,7 +339,7 @@ func newQuiescentTunnel(name string, parent *Context, sal, sap unix.Sockaddr, cf
 		return nil, err
 	}
 
-	qt.xport, err = newTransport(qt.cp, transportConfig{
+	qt.xport, err = newTransport(qt.logger, qt.cp, transportConfig{
 		HelloTimeout:      cfg.HelloTimeout,
 		TxWindowSize:      cfg.WindowSize,
 		MaxRetries:        cfg.MaxRetries,
@@ -339,6 +354,15 @@ func newQuiescentTunnel(name string, parent *Context, sal, sap unix.Sockaddr, cf
 	}
 
 	go qt.xportReader()
+
+	level.Info(qt.logger).Log(
+		"message", "new quiescent tunnel",
+		"version", cfg.Version,
+		"encap", cfg.Encap,
+		"local", cfg.Local,
+		"peer", cfg.Peer,
+		"tunnel_id", cfg.TunnelID,
+		"peer_tunnel_id", cfg.PeerTunnelID)
 
 	return
 }
@@ -381,6 +405,8 @@ func (st *staticTunnel) Close() {
 		if st.dp != nil {
 			st.dp.close(st.getNLConn())
 		}
+
+		level.Info(st.logger).Log("message", "close")
 	}
 }
 
@@ -392,12 +418,17 @@ func (st *staticTunnel) getNLConn() *nll2tp.Conn {
 	return st.parent.nlconn
 }
 
+func (st *staticTunnel) getLogger() log.Logger {
+	return st.logger
+}
+
 func (st *staticTunnel) unlinkSession(name string) {
 	delete(st.sessions, name)
 }
 
 func newStaticTunnel(name string, parent *Context, sal, sap unix.Sockaddr, cfg *TunnelConfig) (st *staticTunnel, err error) {
 	st = &staticTunnel{
+		logger:   log.With(parent.logger, "tunnel_name", name),
 		name:     name,
 		parent:   parent,
 		cfg:      cfg,
@@ -409,6 +440,15 @@ func newStaticTunnel(name string, parent *Context, sal, sap unix.Sockaddr, cfg *
 		st.Close()
 		return nil, err
 	}
+
+	level.Info(st.logger).Log(
+		"message", "new static tunnel",
+		"version", cfg.Version,
+		"encap", cfg.Encap,
+		"local", cfg.Local,
+		"peer", cfg.Peer,
+		"tunnel_id", cfg.TunnelID,
+		"peer_tunnel_id", cfg.PeerTunnelID)
 
 	return
 }
@@ -422,11 +462,18 @@ func newStaticSession(name string, parent Tunnel, cfg *SessionConfig) (ss *stati
 	}
 
 	ss = &staticSession{
+		logger: log.With(parent.getLogger(), "session_name", name),
 		name:   name,
 		parent: parent,
 		cfg:    cfg,
 		dp:     dp,
 	}
+
+	level.Info(ss.logger).Log(
+		"message", "new static session",
+		"session_id", cfg.SessionID,
+		"peer_session_id", cfg.PeerSessionID,
+		"pseudowire", cfg.Pseudowire)
 
 	return
 }
@@ -435,6 +482,7 @@ func newStaticSession(name string, parent Tunnel, cfg *SessionConfig) (ss *stati
 func (ss *staticSession) Close() {
 	ss.dp.close(ss.parent.getNLConn())
 	ss.parent.unlinkSession(ss.name)
+	level.Info(ss.logger).Log("message", "close")
 }
 
 func newUDPTunnelAddress(address string) (unix.Sockaddr, error) {

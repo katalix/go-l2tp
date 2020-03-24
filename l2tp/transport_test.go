@@ -2,14 +2,17 @@ package l2tp
 
 import (
 	"fmt"
+	"os"
 	"testing"
 	"time"
 
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"golang.org/x/sys/unix"
 )
 
 func TestNilControlPlane(t *testing.T) {
-	xport, err := newTransport(nil, defaulttransportConfig())
+	xport, err := newTransport(log.NewLogfmtLogger(os.Stderr), nil, defaulttransportConfig())
 	if xport != nil {
 		t.Fatalf("newTransport() with nil controlplane succeeded")
 	} else if err == nil {
@@ -205,7 +208,10 @@ func transportTestnewTransport(testCfg *transportSendRecvTestInfo) (xport *trans
 		return nil, fmt.Errorf("failed to connect control plane socket: %v", err)
 	}
 
-	return newTransport(cp, testCfg.xcfg)
+	return newTransport(
+		level.NewFilter(log.NewLogfmtLogger(os.Stderr),
+			level.AllowDebug(), level.AllowInfo()),
+		cp, testCfg.xcfg)
 }
 
 func testBasicSendRecvSenderNewHelloMsg(cfg *transportConfig) (msg controlMessage, err error) {

@@ -3,10 +3,14 @@ package l2tp
 import (
 	"bytes"
 	"fmt"
+	"os"
 	"os/exec"
 	"os/user"
 	"strings"
 	"testing"
+
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 )
 
 // Must be called with root permissions
@@ -121,7 +125,9 @@ func testQuiescentTunnels(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			ctx, err := NewContext(nil)
+			ctx, err := NewContext(
+				level.NewFilter(log.NewLogfmtLogger(os.Stderr),
+					level.AllowDebug(), level.AllowInfo()), nil)
 			if err != nil {
 				t.Fatalf("NewContext(): %v", err)
 			}
@@ -175,7 +181,9 @@ func testQuiescentSessions(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			ctx, err := NewContext(nil)
+			ctx, err := NewContext(
+				level.NewFilter(log.NewLogfmtLogger(os.Stderr),
+					level.AllowDebug(), level.AllowInfo()), nil)
 			if err != nil {
 				t.Fatalf("NewContext(): %v", err)
 			}
@@ -265,7 +273,9 @@ func testStaticTunnels(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			ctx, err := NewContext(nil)
+			ctx, err := NewContext(
+				level.NewFilter(log.NewLogfmtLogger(os.Stderr),
+					level.AllowDebug(), level.AllowInfo()), nil)
 			if err != nil {
 				t.Fatalf("NewContext(): %v", err)
 			}
@@ -319,7 +329,9 @@ func testStaticSessions(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			ctx, err := NewContext(nil)
+			ctx, err := NewContext(
+				level.NewFilter(log.NewLogfmtLogger(os.Stderr),
+					level.AllowDebug(), level.AllowInfo()), nil)
 			if err != nil {
 				t.Fatalf("NewContext(): %v", err)
 			}
