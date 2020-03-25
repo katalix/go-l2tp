@@ -7,8 +7,8 @@ import (
 	"github.com/pelletier/go-toml"
 )
 
-// Config represents L2TP configuration described by a TOML file.
-// Ref: https://github.com/toml-lang/toml
+// Config represents L2TP configuration for tunnel and session instances,
+// and uses the TOML format: https://github.com/toml-lang/toml.
 type Config struct {
 	// entire tree as a map
 	cm map[string]interface{}
