@@ -1,3 +1,17 @@
+/*
+The ql2tpd command is a daemon for instantiating quiescent L2TP tunnels and sessions.
+
+Quiescent tunnels run a minimal control plane alongside the L2TP data plane.  The
+control plane is limited to sending and acknowledging keep-alive (HELLO) messages
+in order to detect tunnel failure.  This is typically how Cisco products implement
+static L2TP tunnels.
+
+ql2tpd is driven by a configuration file which describes the tunnel and session
+instances to create.  For more information on the configuration file format please
+refer to package l2tp's documentation.
+
+Run with the -help argument for documentation of the command line arguments.
+*/
 package main
 
 import (
@@ -18,7 +32,7 @@ func main() {
 
 	signal.Notify(sigs, unix.SIGINT, unix.SIGTERM)
 
-	cfgPathPtr := flag.String("config", "/etc/sl2tpd/sl2tpd.toml", "specify configuration file path")
+	cfgPathPtr := flag.String("config", "/etc/ql2tpd/ql2tpd.toml", "specify configuration file path")
 	verbosePtr := flag.Bool("verbose", false, "toggle verbose log output")
 	flag.Parse()
 
