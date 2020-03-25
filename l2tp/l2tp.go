@@ -78,6 +78,10 @@ type staticSession struct {
 // be used.
 func NewContext(logger log.Logger, cfg *ContextConfig) (*Context, error) {
 
+	if logger == nil {
+		logger = log.NewNopLogger()
+	}
+
 	if cfg == nil {
 		// TODO: default configuration.
 		// Eventually we might set things like host name, router ID,
