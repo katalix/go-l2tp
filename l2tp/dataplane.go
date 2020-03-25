@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/katalix/l2tp/internal/nll2tp"
-	"github.com/tklauser/go-sysconf"
 	"golang.org/x/sys/unix"
 )
 
@@ -48,12 +47,11 @@ func sessionCfgToNl(tid, ptid ControlConnID, cfg *SessionConfig) (*nll2tp.Sessio
 	reorderTimeout := uint64(0)
 
 	if cfg.ReorderTimeout != 0 {
-		// TODO: we could ideally do this once since HZ isn't going to change
-		clktck, err := sysconf.Sysconf(sysconf.SC_CLK_TCK)
-		if err != nil {
-			return nil, fmt.Errorf("failed to determine system clock tick rate: %v", err)
-		}
-		reorderTimeout = uint64(cfg.ReorderTimeout.Seconds() * float64(clktck))
+		// TODO: I initially thought sysconf SC_CLK_TCK would allow us to perform
+		// translation from milliseconds to HZ.  But sadly that's not the case since
+		// SC_CLK_TCK reports USER_HZ.
+		// It may be necessary to add a netlink attribute to allow this to be addressed.
+		return nil, fmt.Errorf("currently cannot convert reorder timeout to HZ")
 	}
 
 	// TODO: facilitate kernel level debug
