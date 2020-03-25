@@ -1,7 +1,7 @@
 package l2tp
 
 import (
-	"github.com/katalix/sl2tpd/internal/nll2tp"
+	"github.com/katalix/l2tp/internal/nll2tp"
 )
 
 // ProtocolVersion is the version of the L2TP protocol to use

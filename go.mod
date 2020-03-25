@@ -1,4 +1,4 @@
-module github.com/katalix/sl2tpd
+module github.com/katalix/l2tp
 
 go 1.13
 
