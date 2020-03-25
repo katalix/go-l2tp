@@ -27,8 +27,16 @@ type ContextConfig struct {
 
 // Tunnel is an interface representing an L2TP tunnel.
 type Tunnel interface {
+	// NewSession adds a session to a tunnel instance.
+	//
+	// The name provided must be unique in the parent tunnel.
 	NewSession(name string, cfg *SessionConfig) (Session, error)
+
+	// Close closes the tunnel, releasing allocated resources.
+	//
+	// Any sessions instantiated inside the tunnel are removed.
 	Close()
+
 	getCfg() *TunnelConfig
 	getNLConn() *nll2tp.Conn
 	getLogger() log.Logger
@@ -37,6 +45,7 @@ type Tunnel interface {
 
 // Session is an interface representing an L2TP session.
 type Session interface {
+	// Close closes the session, releasing allocated resources.
 	Close()
 }
 
@@ -74,6 +83,17 @@ type staticSession struct {
 
 // NewContext creates a new L2TP context, which can then be used
 // to instantiate tunnel and session instances.
+//
+// Context creation will fail if it is not possible to connect to
+// the Linux kernel L2TP subsystem using netlink, so the Linux
+// kernel L2TP modules must be running.
+//
+// Logging is generated using go-kit levels: informational logging
+// uses the Info level, while verbose debugging logging uses the
+// Debug level.  Error conditions may be logged using the Error level
+// depending on the tunnel type.
+//
+// If a nil logger is passed, all logging is disabled.
 // If a nil configuration is passed, default configuration will
 // be used.
 func NewContext(logger log.Logger, cfg *ContextConfig) (*Context, error) {
@@ -101,12 +121,18 @@ func NewContext(logger log.Logger, cfg *ContextConfig) (*Context, error) {
 }
 
 // NewQuiescentTunnel creates a new "quiescent" L2TP tunnel.
+//
 // A quiescent tunnel creates a user space socket for the
 // L2TP control plane, but does not run the control protocol
 // beyond acknowledging messages and optionally sending HELLO
 // messages.
+//
 // The data plane is established on creation of the tunnel instance.
+//
 // The name provided must be unique in the Context.
+//
+// The tunnel configuration must include local and peer addresses
+// and local and peer tunnel IDs.
 func (ctx *Context) NewQuiescentTunnel(name string, cfg *TunnelConfig) (tunl Tunnel, err error) {
 
 	var sal, sap unix.Sockaddr
@@ -162,15 +188,21 @@ func (ctx *Context) NewQuiescentTunnel(name string, cfg *TunnelConfig) (tunl Tun
 	return tunl, nil
 }
 
-// NewStaticTunnel creates a new unmanaged L2TP tunnel.
+// NewStaticTunnel creates a new static (unmanaged) L2TP tunnel.
+//
 // A static tunnel does not run any control protocol
 // and instead merely instantiates the data plane in the
 // kernel.  This is equivalent to the Linux 'ip l2tp'
 // command(s).
+//
 // Static L2TPv2 tunnels are not practically useful,
 // so NewStaticTunnel only supports creation of L2TPv3
 // unmanaged tunnel instances.
+//
 // The name provided must be unique in the Context.
+//
+// The tunnel configuration must include local and peer addresses
+// and local and peer tunnel IDs.
 func (ctx *Context) NewStaticTunnel(name string, cfg *TunnelConfig) (tunl Tunnel, err error) {
 
 	var sal, sap unix.Sockaddr
@@ -232,12 +264,6 @@ func (ctx *Context) unlinkTunnel(name string) {
 	delete(ctx.tunnels, name)
 }
 
-// NewSession adds a session to a quiescent tunnel.
-// Since the tunnel is running a limited control protocol
-// the session data plane is instantiated on creation of
-// the session.  All configuration parameters must be provided
-// at point of instantiation, and must match up with the
-// peer's configuartion.
 func (qt *quiescentTunnel) NewSession(name string, cfg *SessionConfig) (Session, error) {
 
 	if _, ok := qt.sessions[name]; ok {
@@ -254,10 +280,6 @@ func (qt *quiescentTunnel) NewSession(name string, cfg *SessionConfig) (Session,
 	return s, nil
 }
 
-// Close closes the tunnel, releasing allocated resources.
-// The control plane socket is closed, and the data plane is
-// torn down.
-// Any sessions instantiated inside the tunnel are removed.
 func (qt *quiescentTunnel) Close() {
 	if qt != nil {
 		for name, session := range qt.sessions {
@@ -371,12 +393,6 @@ func newQuiescentTunnel(name string, parent *Context, sal, sap unix.Sockaddr, cf
 	return
 }
 
-// NewSession adds a session to a static tunnel.
-// Since the tunnel is running no control protocol
-// the session data plane is instantiated on the creation
-// of the session.  All configuration parameters must be
-// provided at the point of instantiation, and must match
-// up with the peer's configuration.
 func (st *staticTunnel) NewSession(name string, cfg *SessionConfig) (Session, error) {
 
 	if _, ok := st.sessions[name]; ok {
@@ -394,10 +410,6 @@ func (st *staticTunnel) NewSession(name string, cfg *SessionConfig) (Session, er
 	return s, nil
 }
 
-// Close closes the tunnel, releasing allocated resources.
-// The control plane socket is closed, and the data plane is
-// torn down.
-// Any sessions instantiated inside the tunnel are removed.
 func (st *staticTunnel) Close() {
 	if st != nil {
 
@@ -482,7 +494,6 @@ func newStaticSession(name string, parent Tunnel, cfg *SessionConfig) (ss *stati
 	return
 }
 
-// Close closes the static session, tearing down the data plane.
 func (ss *staticSession) Close() {
 	ss.dp.close(ss.parent.getNLConn())
 	ss.parent.unlinkSession(ss.name)
