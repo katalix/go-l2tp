@@ -98,7 +98,7 @@ func TestGetTunnels(t *testing.T) {
 		},
 	}
 	for _, c := range cases {
-		cfg, err := LoadString(c.in)
+		cfg, err := LoadConfigString(c.in)
 		if err != nil {
 			t.Fatalf("LoadString(%v): %v", c.in, err)
 		}
@@ -227,7 +227,7 @@ func TestBadConfig(t *testing.T) {
 
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := LoadString(tt.in)
+			_, err := LoadConfigString(tt.in)
 			if err == nil {
 				t.Fatalf("LoadString(%v) succeeded when we expected an error", tt.in)
 			}

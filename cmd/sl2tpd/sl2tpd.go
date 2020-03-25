@@ -22,7 +22,7 @@ func main() {
 	verbosePtr := flag.Bool("verbose", false, "toggle verbose log output")
 	flag.Parse()
 
-	config, err := l2tp.LoadFile(*cfgPathPtr)
+	config, err := l2tp.LoadConfigFile(*cfgPathPtr)
 	if err != nil {
 		stdlog.Fatalf("failed to load l2tp configuration: %v", err)
 	}

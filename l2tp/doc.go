@@ -20,7 +20,7 @@ Usage
 
 	# Read configuration.
 	# Ignore errors for the purposes of demonstration!
-	config, _ := l2tp.LoadFile("./my-l2tp-config.toml")
+	config, _ := l2tp.LoadConfigFile("./my-l2tp-config.toml")
 
 	# Creation of L2TP instances requires an L2TP context
 	# We're disabling logging and using default context config

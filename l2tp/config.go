@@ -331,8 +331,8 @@ func newConfig(tree *toml.Tree) (*Config, error) {
 	return cfg, nil
 }
 
-// LoadFile loads configuration from the specified file.
-func LoadFile(path string) (*Config, error) {
+// LoadConfigFile loads configuration from the specified file.
+func LoadConfigFile(path string) (*Config, error) {
 	tree, err := toml.LoadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load config file: %v", err)
@@ -340,8 +340,8 @@ func LoadFile(path string) (*Config, error) {
 	return newConfig(tree)
 }
 
-// LoadString loads configuration from the specified string.
-func LoadString(content string) (*Config, error) {
+// LoadConfigString loads configuration from the specified string.
+func LoadConfigString(content string) (*Config, error) {
 	tree, err := toml.Load(content)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load config string: %v", err)
