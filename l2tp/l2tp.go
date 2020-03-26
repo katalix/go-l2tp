@@ -3,6 +3,7 @@ package l2tp
 import (
 	"fmt"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -50,14 +51,16 @@ type Session interface {
 }
 
 type quiescentTunnel struct {
-	logger   log.Logger
-	name     string
-	parent   *Context
-	cfg      *TunnelConfig
-	cp       *l2tpControlPlane
-	xport    *transport
-	dp       dataPlane
-	sessions map[string]Session
+	logger    log.Logger
+	name      string
+	parent    *Context
+	cfg       *TunnelConfig
+	cp        *l2tpControlPlane
+	xport     *transport
+	dp        dataPlane
+	closeChan chan bool
+	wg        sync.WaitGroup
+	sessions  map[string]Session
 }
 
 type staticTunnel struct {
@@ -282,6 +285,14 @@ func (qt *quiescentTunnel) NewSession(name string, cfg *SessionConfig) (Session,
 
 func (qt *quiescentTunnel) Close() {
 	if qt != nil {
+		qt.closeChan <- true
+		qt.wg.Wait()
+		qt.close()
+	}
+}
+
+func (qt *quiescentTunnel) close() {
+	if qt != nil {
 		for name, session := range qt.sessions {
 			session.Close()
 			qt.unlinkSession(name)
@@ -296,6 +307,8 @@ func (qt *quiescentTunnel) Close() {
 		if qt.dp != nil {
 			qt.dp.close(qt.getNLConn())
 		}
+
+		qt.parent.unlinkTunnel(qt.name)
 
 		level.Info(qt.logger).Log("message", "close")
 	}
@@ -320,23 +333,29 @@ func (qt *quiescentTunnel) unlinkSession(name string) {
 func (qt *quiescentTunnel) xportReader() {
 	// Although we're not running the control protocol we do need
 	// to drain messages from the transport to avoid the receive
-	// path blocking.  Do so here, treating any error as a signal
-	// to exit.
+	// path blocking.
+	defer qt.wg.Done()
 	for {
-		_, err := qt.xport.recv()
-		if err != nil {
+		select {
+		case _, _ = <-qt.closeChan:
 			return
+		case _, ok := <-qt.xport.recvChan:
+			if !ok {
+				qt.close()
+				return
+			}
 		}
 	}
 }
 
 func newQuiescentTunnel(name string, parent *Context, sal, sap unix.Sockaddr, cfg *TunnelConfig) (qt *quiescentTunnel, err error) {
 	qt = &quiescentTunnel{
-		logger:   log.With(parent.logger, "tunnel_name", name),
-		name:     name,
-		parent:   parent,
-		cfg:      cfg,
-		sessions: make(map[string]Session),
+		logger:    log.With(parent.logger, "tunnel_name", name),
+		name:      name,
+		parent:    parent,
+		cfg:       cfg,
+		closeChan: make(chan bool),
+		sessions:  make(map[string]Session),
 	}
 
 	// Initialise the control plane.
@@ -379,6 +398,7 @@ func newQuiescentTunnel(name string, parent *Context, sal, sap unix.Sockaddr, cf
 		return nil, err
 	}
 
+	qt.wg.Add(1)
 	go qt.xportReader()
 
 	level.Info(qt.logger).Log(
@@ -421,6 +441,8 @@ func (st *staticTunnel) Close() {
 		if st.dp != nil {
 			st.dp.close(st.getNLConn())
 		}
+
+		st.parent.unlinkTunnel(st.name)
 
 		level.Info(st.logger).Log("message", "close")
 	}
