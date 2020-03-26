@@ -21,6 +21,7 @@ type slowStartState struct {
 // wrapping the basic controlMessage with transport-specific
 // metadata.
 type ctlMsg struct {
+	xport *transport
 	// The message for transmission
 	msg controlMessage
 	// The current retry count for the message.  This is bound by
@@ -35,6 +36,7 @@ type ctlMsg struct {
 	isComplete bool
 	// Timer for retransmission if the peer doesn't ack the message.
 	retryTimer *time.Timer
+	onComplete func(m *ctlMsg, err error)
 }
 
 // rawMsg represents a raw frame read from the transport socket.
@@ -78,6 +80,7 @@ type transport struct {
 	config               transportConfig
 	cp                   *l2tpControlPlane
 	helloTimer, ackTimer *time.Timer
+	helloInFlight        bool
 	sendChan             chan *ctlMsg
 	retryChan            chan *ctlMsg
 	recvChan             chan controlMessage
@@ -171,10 +174,10 @@ func (s *slowStartState) msgIsStale(msg controlMessage) bool {
 	return seqCompare(msg.ns(), s.nr) == -1
 }
 
-func (m *ctlMsg) completeMessageSend(logger log.Logger, err error) {
+func (m *ctlMsg) txComplete(err error) {
 	if !m.isComplete {
 
-		level.Debug(logger).Log(
+		level.Debug(m.xport.logger).Log(
 			"message", "send complete",
 			"message_type", m.msg.getType(),
 			"error", err)
@@ -183,7 +186,7 @@ func (m *ctlMsg) completeMessageSend(logger log.Logger, err error) {
 		if m.retryTimer != nil {
 			m.retryTimer.Stop()
 		}
-		m.completeChan <- err
+		m.onComplete(m, err)
 	}
 }
 
@@ -205,6 +208,9 @@ func sanitiseConfig(cfg *transportConfig) {
 	}
 	if cfg.AckTimeout == 0 {
 		cfg.AckTimeout = defaulttransportConfig().AckTimeout
+	}
+	if cfg.MaxRetries == 0 {
+		cfg.MaxRetries = defaulttransportConfig().MaxRetries
 	}
 }
 
@@ -306,7 +312,7 @@ func runTransport(xport *transport, wg *sync.WaitGroup) {
 			if !ctlMsg.isComplete {
 				err := xport.retransmitMessage(ctlMsg)
 				if err != nil {
-					ctlMsg.completeMessageSend(xport.logger, err)
+					ctlMsg.txComplete(err)
 					xport.down(err)
 					return
 				}
@@ -314,12 +320,14 @@ func runTransport(xport *transport, wg *sync.WaitGroup) {
 
 		// Timer fired for sending a hello message
 		case <-xport.helloTimer.C:
-			err := xport.sendHelloMessage()
-			if err != nil {
-				xport.down(err)
-				return
+			if !xport.helloInFlight {
+				err := xport.sendHelloMessage()
+				if err != nil {
+					xport.down(err)
+					return
+				}
+				xport.helloInFlight = true
 			}
-			xport.resetHelloTimer()
 
 		// Timer fired for sending an explicit ack
 		case <-xport.ackTimer.C:
@@ -406,7 +414,8 @@ func (xport *transport) sendMessage1(msg controlMessage, isRetransmit bool) erro
 		"message", "send",
 		"message_type", msg.getType(),
 		"ns", msg.ns(),
-		"nr", msg.nr())
+		"nr", msg.nr(),
+		"isRetransmit", isRetransmit)
 
 	// Render as a byte slice and send.
 	b, err := msg.toBytes()
@@ -467,7 +476,7 @@ func (xport *transport) processTxQueue() error {
 			xport.ackQueue = append(xport.ackQueue, msg)
 			xport.slowStart.onSend()
 		} else {
-			msg.completeMessageSend(xport.logger, err)
+			msg.txComplete(err)
 			return err
 		}
 	}
@@ -480,7 +489,7 @@ func (xport *transport) processAckQueue(recvd controlMessage) bool {
 		if seqCompare(recvd.nr(), msg.msg.ns()) > 0 {
 			xport.slowStart.onAck(xport.config.TxWindowSize)
 			xport.ackQueue = append(xport.ackQueue[:i], xport.ackQueue[i+1:]...)
-			msg.completeMessageSend(xport.logger, nil)
+			msg.txComplete(nil)
 			found = true
 		}
 	}
@@ -498,12 +507,12 @@ func (xport *transport) down(err error) {
 	// callers pending on their completion.
 	for i, msg := range xport.txQueue {
 		xport.txQueue = append(xport.txQueue[:i], xport.txQueue[i+1:]...)
-		msg.completeMessageSend(xport.logger, err)
+		msg.txComplete(err)
 	}
 
 	for i, msg := range xport.ackQueue {
 		xport.ackQueue = append(xport.ackQueue[:i], xport.ackQueue[i+1:]...)
-		msg.completeMessageSend(xport.logger, err)
+		msg.txComplete(err)
 	}
 
 	// Stop timers: we don't care about the return value since
@@ -556,7 +565,15 @@ func (xport *transport) sendHelloMessage() error {
 		return fmt.Errorf("failed to build hello message: %v", err)
 	}
 
-	return xport.sendMessage1(msg, false)
+	return xport.sendMessage(&ctlMsg{
+		xport:      xport,
+		msg:        msg,
+		onComplete: helloSendComplete,
+	})
+}
+
+func helloSendComplete(m *ctlMsg, err error) {
+	m.xport.helloInFlight = false
 }
 
 func (xport *transport) sendExplicitAck() (err error) {
@@ -647,15 +664,18 @@ func (xport *transport) getConfig() transportConfig {
 // should be torn down.
 func (xport *transport) send(msg controlMessage) error {
 	cm := ctlMsg{
+		xport:        xport,
 		msg:          msg,
-		nretries:     0,
 		completeChan: make(chan error),
-		isComplete:   false,
-		retryTimer:   nil,
+		onComplete:   sendComplete,
 	}
 	xport.sendChan <- &cm
 	err := <-cm.completeChan
 	return err
+}
+
+func sendComplete(m *ctlMsg, err error) {
+	m.completeChan <- err
 }
 
 // recv receives a control message using the reliable transport.
@@ -673,6 +693,5 @@ func (xport *transport) recv() (msg controlMessage, err error) {
 // close closes the transport.
 func (xport *transport) close() {
 	close(xport.sendChan)
-	xport.cp.close()
 	xport.wg.Wait()
 }
