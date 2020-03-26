@@ -3,8 +3,12 @@ The ql2tpd command is a daemon for instantiating quiescent L2TP tunnels and sess
 
 Quiescent tunnels run a minimal control plane alongside the L2TP data plane.  The
 control plane is limited to sending and acknowledging keep-alive (HELLO) messages
-in order to detect tunnel failure.  This is typically how Cisco products implement
-static L2TP tunnels.
+in order to detect tunnel failure.
+
+Tunnels may also be configured with HELLO messages disabled, in which case they
+behave as static instances.  When running in this mode ql2tpd provides a more convenient
+way to create static tunnels and sessions than the iproute2 l2tp commands, and exposes
+all the options the Linux data plane offers.
 
 ql2tpd is driven by a configuration file which describes the tunnel and session
 instances to create.  For more information on the configuration file format please
