@@ -66,7 +66,8 @@ a more convenient way to bring up static sessions than **ip l2tp** commands.
 If a tunnel has a ***hello_timeout*** set, the tunnel will send a periodic keep-alive
 packet over a minimal implementation of the RFC3931 reliable control message transport.
 This allows for the detection of tunnel failure, which will then tear down the sessions
-running in that tunnel.
+running in that tunnel.  ***hello_timeout*** should only be enabled if the peer is also
+running **ql2tpd**.
 
 ## Documentation
 
