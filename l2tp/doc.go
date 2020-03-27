@@ -1,6 +1,13 @@
 /*
-Package l2tp implements the Layer 2 Tunneling Protocol as per
-RFC2661 (L2TPv2) and RFC3931 (L2TPv3).
+Package l2tp is a library for Layer 2 Tunneling Protocol applications
+running on Linux systems.
+
+Currently the L2TPv3 data plane is implemented using the Linux kernel's
+L2TP subsystem.
+
+In the future we plan to add support for the L2TPv2 and L2TPv3 control plane.
+
+L2TP is specified by RFC2661 (L2TPv2) and RFC3931 (L2TPv3).
 
 L2TPv2 applies only to PPP tunneling, and is widely used in home
 broadband installations to convey consumer PPPoE frames to the ISP
