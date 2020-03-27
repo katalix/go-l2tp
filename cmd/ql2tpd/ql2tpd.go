@@ -11,9 +11,7 @@ Two tunnel modes are supported.
 
 By default tunnels are created in static mode, which means that the kernel-space
 L2TP data plane is created, but no control messages are sent.  When running in this
-mode ql2tpd provides functionality equivalent to the iproute2 l2tp commands,
-while exposing data plane configuration options which iproute2 doesn't currently
-support (e.g. L2TPv3 cookies).
+mode ql2tpd provides functionality equivalent to the iproute2 l2tp commands.
 
 Alternatively, tunnels may be created with a hello_timeout configured, in which case
 a minimal control plane transport is set up to send and acknowledge keep-alive

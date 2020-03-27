@@ -61,9 +61,7 @@ This tool requires root permissions to run, and is driven by a configuration fil
 details the tunnel and session instances to create.
 
 Each tunnel may run as a purely static instance.  In this mode **ql2tpd** represents
-a more convenient way to bring up static sessions than **ip l2tp** commands, and exposes
-more session data plane configuration options than **ip l2tp** supports (e.g. the setting
-of local and peer cookies).
+a more convenient way to bring up static sessions than **ip l2tp** commands.
 
 If a tunnel has a ***hello_timeout*** set, the tunnel will send a periodic keep-alive
 packet over a minimal implementation of the RFC3931 reliable control message transport.
