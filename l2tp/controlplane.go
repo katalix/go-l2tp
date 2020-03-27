@@ -8,7 +8,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-type l2tpControlPlane struct {
+type controlPlane struct {
 	local, remote unix.Sockaddr
 	fd            int
 	file          *os.File
@@ -16,7 +16,7 @@ type l2tpControlPlane struct {
 	connected     bool
 }
 
-func (cp *l2tpControlPlane) recvFrom(p []byte) (n int, addr unix.Sockaddr, err error) {
+func (cp *controlPlane) recvFrom(p []byte) (n int, addr unix.Sockaddr, err error) {
 	cerr := cp.rc.Read(func(fd uintptr) bool {
 		n, addr, err = unix.Recvfrom(int(fd), p, unix.MSG_NOSIGNAL)
 		return err != unix.EAGAIN && err != unix.EWOULDBLOCK
@@ -27,18 +27,18 @@ func (cp *l2tpControlPlane) recvFrom(p []byte) (n int, addr unix.Sockaddr, err e
 	return n, addr, cerr
 }
 
-func (cp *l2tpControlPlane) write(b []byte) (n int, err error) {
+func (cp *controlPlane) write(b []byte) (n int, err error) {
 	if cp.connected {
 		return cp.file.Write(b)
 	}
 	return cp.writeTo(b, cp.remote)
 }
 
-func (cp *l2tpControlPlane) writeTo(p []byte, addr unix.Sockaddr) (n int, err error) {
+func (cp *controlPlane) writeTo(p []byte, addr unix.Sockaddr) (n int, err error) {
 	return len(p), cp.sendto(p, addr)
 }
 
-func (cp *l2tpControlPlane) sendto(p []byte, to unix.Sockaddr) (err error) {
+func (cp *controlPlane) sendto(p []byte, to unix.Sockaddr) (err error) {
 	cerr := cp.rc.Write(func(fd uintptr) bool {
 		err = unix.Sendto(int(fd), p, unix.MSG_NOSIGNAL, to)
 		return err != unix.EAGAIN && err != unix.EWOULDBLOCK
@@ -49,7 +49,7 @@ func (cp *l2tpControlPlane) sendto(p []byte, to unix.Sockaddr) (err error) {
 	return cerr
 }
 
-func (cp *l2tpControlPlane) close() (err error) {
+func (cp *controlPlane) close() (err error) {
 	if cp.file != nil {
 		err = cp.file.Close()
 		cp.file = nil
@@ -57,7 +57,7 @@ func (cp *l2tpControlPlane) close() (err error) {
 	return
 }
 
-func (cp *l2tpControlPlane) connect() error {
+func (cp *controlPlane) connect() error {
 	err := tunnelSocketConnect(cp.fd, cp.remote)
 	if err == nil {
 		cp.connected = true
@@ -65,7 +65,7 @@ func (cp *l2tpControlPlane) connect() error {
 	return err
 }
 
-func (cp *l2tpControlPlane) bind() error {
+func (cp *controlPlane) bind() error {
 	return tunnelSocketBind(cp.fd, cp.local)
 }
 
@@ -104,7 +104,7 @@ func tunnelSocketConnect(fd int, remote unix.Sockaddr) error {
 	return unix.Connect(fd, remote)
 }
 
-func newL2tpControlPlane(localAddr, remoteAddr unix.Sockaddr) (*l2tpControlPlane, error) {
+func newL2tpControlPlane(localAddr, remoteAddr unix.Sockaddr) (*controlPlane, error) {
 
 	var family, protocol int
 
@@ -137,7 +137,7 @@ func newL2tpControlPlane(localAddr, remoteAddr unix.Sockaddr) (*l2tpControlPlane
 		return nil, err
 	}
 
-	return &l2tpControlPlane{
+	return &controlPlane{
 		local:     localAddr,
 		remote:    remoteAddr,
 		fd:        fd,

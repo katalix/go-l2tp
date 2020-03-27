@@ -16,7 +16,7 @@ type quiescentTunnel struct {
 	name      string
 	parent    *Context
 	cfg       *TunnelConfig
-	cp        *l2tpControlPlane
+	cp        *controlPlane
 	xport     *transport
 	dp        dataPlane
 	closeChan chan bool

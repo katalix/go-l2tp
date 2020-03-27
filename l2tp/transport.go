@@ -78,7 +78,7 @@ type transport struct {
 	logger               log.Logger
 	slowStart            slowStartState
 	config               transportConfig
-	cp                   *l2tpControlPlane
+	cp                   *controlPlane
 	helloTimer, ackTimer *time.Timer
 	helloInFlight        bool
 	sendChan             chan *ctlMsg
@@ -612,7 +612,7 @@ func defaulttransportConfig() transportConfig {
 // newTransport creates a new RFC2661/RFC3931 reliable transport.
 // The control plane passed in is owned by the transport and will
 // be closed by the transport when the transport is closed.
-func newTransport(logger log.Logger, cp *l2tpControlPlane, cfg transportConfig) (xport *transport, err error) {
+func newTransport(logger log.Logger, cp *controlPlane, cfg transportConfig) (xport *transport, err error) {
 
 	if cp == nil {
 		return nil, errors.New("illegal nil control plane argument")

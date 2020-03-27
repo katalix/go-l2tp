@@ -179,7 +179,7 @@ func flipTestInfo(info *transportSendRecvTestInfo) *transportSendRecvTestInfo {
 func transportTestnewTransport(testCfg *transportSendRecvTestInfo) (xport *transport, err error) {
 
 	var sal, sap unix.Sockaddr
-	var cp *l2tpControlPlane
+	var cp *controlPlane
 
 	switch testCfg.encap {
 	case EncapTypeUDP:
