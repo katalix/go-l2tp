@@ -94,3 +94,33 @@ by removing ***github.com/katalix*** from the full module path:
     go doc go-l2tp/l2tp
     go doc go-l2tp/l2tp.Context
     go doc go-l2tp/cmd/ql2tpd
+
+## Testing
+
+go-l2tp has unit tests which can be run using go test:
+
+    go test ./...
+
+Some tests instantiate tunnels and sessions in the Linux kernel's L2TP subsystem,
+and hence require root permissions to run.  By default these tests are skipped if
+run as a normal user.
+
+The tests requiring root can be run as follows:
+
+    go test -exec sudo -run TestRequiresRoot ./...
+
+The tests are run using ***sudo***, which will need to be set up for your user,
+and require the Linux kernel L2TP modules to be loaded:
+
+    modprobe l2tp_core l2tp_netlink l2tp_eth l2tp_ip l2tp_ip6
+
+Depending on your Linux distribution it may be necessary to install an extra package to
+get the L2TP subsystem modules.  For example on Ubuntu:
+
+    sudo apt-get install linux-modules-extra-$(uname -r)
+
+A convenience wrapper script ***l2tp/runtests.sh*** runs all the l2tp tests and
+produces a coverage html report:
+
+    ( cd l2tp && ./runtests.sh )
+    firefox l2tp/coverage.html
