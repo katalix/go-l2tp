@@ -74,25 +74,18 @@ running **ql2tpd**.
 The go-l2tp library and tools are documented using Go's documentation tool.  A top-level
 description of the library can be viewed as follows:
 
-    go doc github.com/katalix/go-l2tp/l2tp
+    go doc l2tp
 
 This top level document includes details of the configuration file format used by the
 library, as well as the main APIs the library exposes.
 
 You can view documentation of a particular API or type like this:
 
-    go doc github.com/katalix/go-l2tp/l2tp.Context
+    go doc l2tp.Context
 
 Finally, documentation of the **ql2tpd** command can be viewed like this:
 
-    go doc github.com/katalix/go-l2tp/cmd/ql2tpd
-
-If you have installed the library you can access the documentation more efficiently
-by removing ***github.com/katalix*** from the full module path: 
-
-    go doc go-l2tp/l2tp
-    go doc go-l2tp/l2tp.Context
-    go doc go-l2tp/cmd/ql2tpd
+    go doc cmd/ql2tpd
 
 ## Testing
 
