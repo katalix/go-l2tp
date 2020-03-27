@@ -1,20 +1,25 @@
 /*
-The ql2tpd command is a daemon for instantiating quiescent L2TP tunnels and sessions.
-
-Quiescent tunnels run a minimal control plane alongside the L2TP data plane.  The
-control plane is limited to sending and acknowledging keep-alive (HELLO) messages
-in order to detect tunnel failure.
-
-Tunnels may also be configured with HELLO messages disabled, in which case they
-behave as static instances.  When running in this mode ql2tpd provides a more convenient
-way to create static tunnels and sessions than the iproute2 l2tp commands, and exposes
-all the options the Linux data plane offers.
+The ql2tpd command is a daemon for creating static L2TPv3 tunnels and sessions.
 
 ql2tpd is driven by a configuration file which describes the tunnel and session
 instances to create.  For more information on the configuration file format please
 refer to package l2tp's documentation.
 
 Run with the -help argument for documentation of the command line arguments.
+
+Two tunnel modes are supported.
+
+By default tunnels are created in static mode, which means that the kernel-space
+L2TP data plane is created, but no control messages are sent.  When running in this
+mode ql2tpd provides functionality equivalent to the iproute2 l2tp commands,
+while exposing data plane configuration options which iproute2 doesn't currently
+support (e.g. L2TPv3 cookies).
+
+Alternatively, tunnels may be created with a hello_timeout configured, in which case
+a minimal control plane transport is set up to send and acknowledge keep-alive
+(HELLO) messages.  This mode of operation extends static mode by allowing tunnel
+failure to be detected.  If a given tunnel is determined to have failed (HELLO message
+transmission fails) then the sessions in that tunnel are automatically torn down.
 */
 package main
 
