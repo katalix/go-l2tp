@@ -3,7 +3,7 @@ package l2tp
 import (
 	"fmt"
 
-	"github.com/katalix/l2tp/internal/nll2tp"
+	"github.com/katalix/go-l2tp/internal/nll2tp"
 	"golang.org/x/sys/unix"
 )
 

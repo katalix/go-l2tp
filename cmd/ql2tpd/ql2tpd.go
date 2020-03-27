@@ -26,7 +26,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/katalix/l2tp/l2tp"
+	"github.com/katalix/go-l2tp/l2tp"
 	"golang.org/x/sys/unix"
 )
 

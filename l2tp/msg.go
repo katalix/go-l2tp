@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/katalix/l2tp/internal/nll2tp"
+	"github.com/katalix/go-l2tp/internal/nll2tp"
 )
 
 // L2TPv2 and L2TPv3 headers have these fields in common

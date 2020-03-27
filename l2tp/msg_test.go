@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/katalix/l2tp/internal/nll2tp"
+	"github.com/katalix/go-l2tp/internal/nll2tp"
 )
 
 type msgInfo struct {

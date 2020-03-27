@@ -7,7 +7,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/katalix/l2tp/internal/nll2tp"
+	"github.com/katalix/go-l2tp/internal/nll2tp"
 	"golang.org/x/sys/unix"
 )
 
