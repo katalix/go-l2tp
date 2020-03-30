@@ -801,16 +801,28 @@ func parseAVPBuffer(b []byte) (avps []avp, err error) {
 	return avps, nil
 }
 
-// newAvp builds an AVP containing the specified data
-func newAvp(vendorID avpVendorID, avpType avpType, value interface{}) (a *avp, err error) {
-	var info *avpInfo
+func encodeResultCode(rc *resultCode) ([]byte, error) {
 	encBuf := new(bytes.Buffer)
-
-	if info, err = getAVPInfo(avpType, vendorID); err != nil {
+	err := binary.Write(encBuf, binary.BigEndian, rc.result)
+	if err != nil {
 		return nil, err
 	}
+	err = binary.Write(encBuf, binary.BigEndian, rc.errCode)
+	if err != nil {
+		return nil, err
+	}
+	if rc.errMsg != "" {
+		err = binary.Write(encBuf, binary.BigEndian, []byte(rc.errMsg))
+		if err != nil {
+			return nil, err
+		}
+	}
+	return encBuf.Bytes(), nil
+}
 
+func encodePayload(info *avpInfo, value interface{}) ([]byte, error) {
 	var ok bool
+
 	switch info.dataType {
 	case avpDataTypeEmpty:
 	case avpDataTypeUint8:
@@ -822,31 +834,59 @@ func newAvp(vendorID avpVendorID, avpType avpType, value interface{}) (a *avp, e
 	case avpDataTypeUint64:
 		_, ok = value.(uint64)
 	case avpDataTypeString:
-		_, ok = value.(string)
+		var s string
+		s, ok = value.(string)
+		value = []byte(s)
 	case avpDataTypeBytes:
 		_, ok = value.([]byte)
 	case avpDataTypeMsgID:
 		_, ok = value.(avpMsgType)
 	case avpDataTypeResultCode:
-		_, ok = value.(resultCode)
+		var rc resultCode
+		rc, ok = value.(resultCode)
+		if ok {
+			return encodeResultCode(&rc)
+		} else {
+			var rcp *resultCode
+			rcp, ok = value.(*resultCode)
+			if ok {
+				return encodeResultCode(rcp)
+			}
+		}
 	case avpDataTypeUnimplemented, avpDataTypeIllegal:
-		return nil, fmt.Errorf("AVP %v is not currently supported", avpType)
+		return nil, fmt.Errorf("AVP %v is not currently supported", info.avpType)
 	}
 
 	if !ok {
-		return nil, fmt.Errorf("wrong data type %T passed for %v (expect %v)",
-			value, avpType, info.dataType)
+		return nil, fmt.Errorf("wrong data type %T passed for %v", value, info.avpType)
 	}
 
-	if err = binary.Write(encBuf, binary.BigEndian, value); err != nil {
+	encBuf := new(bytes.Buffer)
+	err := binary.Write(encBuf, binary.BigEndian, value)
+	if err != nil {
+		return nil, err
+	}
+	return encBuf.Bytes(), nil
+}
+
+// newAvp builds an AVP containing the specified data
+func newAvp(vendorID avpVendorID, avpType avpType, value interface{}) (a *avp, err error) {
+
+	info, err := getAVPInfo(avpType, vendorID)
+	if err != nil {
+		return nil, err
+	}
+
+	buf, err := encodePayload(info, value)
+	if err != nil {
 		return nil, err
 	}
 
 	return &avp{
-		header: *newAvpHeader(info.isMandatory, false, uint(encBuf.Len()), vendorID, avpType),
+		header: *newAvpHeader(info.isMandatory, false, uint(len(buf)), vendorID, avpType),
 		payload: avpPayload{
 			dataType: info.dataType,
-			data:     encBuf.Bytes(),
+			data:     buf,
 		},
 	}, nil
 }
