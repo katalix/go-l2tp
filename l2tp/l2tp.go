@@ -86,6 +86,68 @@ func NewContext(logger log.Logger, cfg *ContextConfig) (*Context, error) {
 	}, nil
 }
 
+// NewDynamicTunnel creates a new dynamic L2TP.
+//
+// A dynamic L2TP tunnel runs a full RFC2661 (L2TPv2) or
+// RFC3931 (L2TPv3) tunnel instance using the control protocol
+// for tunnel instantiation and management.
+//
+// The name provided must be unique in the Context.
+//
+func (ctx *Context) NewDynamicTunnel(name string, cfg *TunnelConfig) (tunl Tunnel, err error) {
+
+	var sal, sap unix.Sockaddr
+
+	// Must have configuration
+	if cfg == nil {
+		return nil, fmt.Errorf("invalid nil config")
+	}
+
+	// Must not have name clashes
+	if _, ok := ctx.tunnels[name]; ok {
+		return nil, fmt.Errorf("already have tunnel %q", name)
+	}
+
+	// Sanity check the configuration
+	if cfg.Version != ProtocolVersion3 && cfg.Encap == EncapTypeIP {
+		return nil, fmt.Errorf("IP encapsulation only supported for L2TPv3 tunnels")
+	}
+	if cfg.Version == ProtocolVersion2 {
+		if cfg.TunnelID > 65535 {
+			return nil, fmt.Errorf("L2TPv2 connection ID %v out of range", cfg.TunnelID)
+		}
+	}
+	if cfg.PeerTunnelID != 0 {
+		return nil, fmt.Errorf("L2TPv2 peer connection ID cannot be specified for dynamic tunnels")
+	}
+	if cfg.Peer == "" {
+		return nil, fmt.Errorf("must specify peer address for dynamic tunnel")
+	}
+
+	// Initialise tunnel address structures
+	switch cfg.Encap {
+	case EncapTypeUDP:
+		sal, sap, err = newUDPAddressPair(cfg.Local, cfg.Peer)
+	case EncapTypeIP:
+		sal, sap, err = newIPAddressPair(cfg.Local, cfg.TunnelID,
+			cfg.Peer, cfg.PeerTunnelID)
+	default:
+		err = fmt.Errorf("unrecognised encapsulation type %v", cfg.Encap)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialise tunnel addresses: %v", err)
+	}
+
+	tunl, err = newDynamicTunnel(name, ctx, sal, sap, cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	ctx.tunnels[name] = tunl
+
+	return tunl, nil
+}
+
 // NewQuiescentTunnel creates a new "quiescent" L2TP tunnel.
 //
 // A quiescent tunnel creates a user space socket for the
