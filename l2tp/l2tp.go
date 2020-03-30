@@ -129,6 +129,12 @@ func (ctx *Context) NewQuiescentTunnel(name string, cfg *TunnelConfig) (tunl Tun
 				cfg.TunnelID, cfg.PeerTunnelID)
 		}
 	}
+	if cfg.Local == "" {
+		return nil, fmt.Errorf("must specify local address for quiescent tunnel")
+	}
+	if cfg.Peer == "" {
+		return nil, fmt.Errorf("must specify peer address for quiescent tunnel")
+	}
 
 	// Initialise tunnel address structures
 	switch cfg.Encap {
@@ -190,6 +196,12 @@ func (ctx *Context) NewStaticTunnel(name string, cfg *TunnelConfig) (tunl Tunnel
 	if cfg.TunnelID == 0 || cfg.PeerTunnelID == 0 {
 		return nil, fmt.Errorf("L2TPv3 tunnel IDs %v and %v must both be > 0",
 			cfg.TunnelID, cfg.PeerTunnelID)
+	}
+	if cfg.Local == "" {
+		return nil, fmt.Errorf("must specify local address for static tunnel")
+	}
+	if cfg.Peer == "" {
+		return nil, fmt.Errorf("must specify peer address for static tunnel")
 	}
 
 	// Initialise tunnel address structures
