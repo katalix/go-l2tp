@@ -273,15 +273,32 @@ func newUDPTunnelAddress(address string) (unix.Sockaddr, error) {
 }
 
 func newUDPAddressPair(local, remote string) (sal, sap unix.Sockaddr, err error) {
-	sal, err = newUDPTunnelAddress(local)
-	if err != nil {
-		return nil, nil, err
-	}
+
+	// We expect the peer address to always be set
 	sap, err = newUDPTunnelAddress(remote)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("remote address %q: %v", remote, err)
 	}
-	return sal, sap, nil
+
+	// The local address may not be set: in this case return
+	// a zero-value sockaddr appropriate to the peer address type
+	if local != "" {
+		sal, err = newUDPTunnelAddress(local)
+		if err != nil {
+			return nil, nil, fmt.Errorf("local address %q: %v", local, err)
+		}
+	} else {
+		switch sap.(type) {
+		case *unix.SockaddrInet4:
+			sal = &unix.SockaddrInet4{}
+		case *unix.SockaddrInet6:
+			sal = &unix.SockaddrInet6{}
+		default:
+			// should not occur, c.f. newUDPTunnelAddress
+			return nil, nil, fmt.Errorf("unhanded address family")
+		}
+	}
+	return
 }
 
 func newIPTunnelAddress(address string, ccid ControlConnID) (unix.Sockaddr, error) {
@@ -315,13 +332,29 @@ func newIPTunnelAddress(address string, ccid ControlConnID) (unix.Sockaddr, erro
 }
 
 func newIPAddressPair(local string, ccid ControlConnID, remote string, pccid ControlConnID) (sal, sap unix.Sockaddr, err error) {
-	sal, err = newIPTunnelAddress(local, ccid)
-	if err != nil {
-		return nil, nil, err
-	}
+	// We expect the peer address to always be set
 	sap, err = newIPTunnelAddress(remote, pccid)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("remote address %q: %v", remote, err)
 	}
-	return sal, sap, nil
+
+	// The local address may not be set: in this case return
+	// a zero-value sockaddr appropriate to the peer address type
+	if local != "" {
+		sal, err = newIPTunnelAddress(local, ccid)
+		if err != nil {
+			return nil, nil, fmt.Errorf("local address %q: %v", local, err)
+		}
+	} else {
+		switch sap.(type) {
+		case *unix.SockaddrL2TPIP:
+			sal = &unix.SockaddrL2TPIP{}
+		case *unix.SockaddrL2TPIP6:
+			sal = &unix.SockaddrL2TPIP6{}
+		default:
+			// should not occur, c.f. newIPTunnelAddress
+			return nil, nil, fmt.Errorf("unhanded address family")
+		}
+	}
+	return
 }
