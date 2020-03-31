@@ -17,10 +17,10 @@ type slowStartState struct {
 	ns, nr, cwnd, thresh, nacks, ntx uint16
 }
 
-// ctlMsg encapsulates state for control message transmission,
+// xmitMsg encapsulates state for control message transmission,
 // wrapping the basic controlMessage with transport-specific
 // metadata.
-type ctlMsg struct {
+type xmitMsg struct {
 	xport *transport
 	// The message for transmission
 	msg controlMessage
@@ -36,7 +36,7 @@ type ctlMsg struct {
 	isComplete bool
 	// Timer for retransmission if the peer doesn't ack the message.
 	retryTimer *time.Timer
-	onComplete func(m *ctlMsg, err error)
+	onComplete func(m *xmitMsg, err error)
 }
 
 // rawMsg represents a raw frame read from the transport socket.
@@ -87,12 +87,12 @@ type transport struct {
 	cp                   *controlPlane
 	helloTimer, ackTimer *time.Timer
 	helloInFlight        bool
-	sendChan             chan *ctlMsg
-	retryChan            chan *ctlMsg
+	sendChan             chan *xmitMsg
+	retryChan            chan *xmitMsg
 	recvChan             chan *recvMsg
 	cpChan               chan *rawMsg
 	rxQueue              []*recvMsg
-	txQueue, ackQueue    []*ctlMsg
+	txQueue, ackQueue    []*xmitMsg
 	wg                   sync.WaitGroup
 }
 
@@ -180,7 +180,7 @@ func (s *slowStartState) msgIsStale(msg controlMessage) bool {
 	return seqCompare(msg.ns(), s.nr) == -1
 }
 
-func (m *ctlMsg) txComplete(err error) {
+func (m *xmitMsg) txComplete(err error) {
 	if !m.isComplete {
 
 		level.Debug(m.xport.logger).Log(
@@ -241,7 +241,7 @@ func runTransport(xport *transport, wg *sync.WaitGroup) {
 	for {
 		select {
 		// Transmission request from user code
-		case ctlMsg, ok := <-xport.sendChan:
+		case xmitMsg, ok := <-xport.sendChan:
 			if !ok {
 				xport.down(errors.New("transport shut down by user"))
 				return
@@ -249,9 +249,9 @@ func runTransport(xport *transport, wg *sync.WaitGroup) {
 
 			level.Debug(xport.logger).Log(
 				"message", "send",
-				"message_type", ctlMsg.msg.getType())
+				"message_type", xmitMsg.msg.getType())
 
-			xport.txQueue = append(xport.txQueue, ctlMsg)
+			xport.txQueue = append(xport.txQueue, xmitMsg)
 			err := xport.processTxQueue()
 			if err != nil {
 				xport.down(err)
@@ -303,22 +303,22 @@ func runTransport(xport *transport, wg *sync.WaitGroup) {
 			xport.processRxQueue()
 
 		// Message retry request due to timeout waiting for an ack
-		case ctlMsg, ok := <-xport.retryChan:
+		case xmitMsg, ok := <-xport.retryChan:
 			if !ok {
 				return
 			}
 
 			level.Info(xport.logger).Log(
 				"message", "retransmit",
-				"message_type", ctlMsg.msg.getType())
+				"message_type", xmitMsg.msg.getType())
 
 			// It's possible that a message ack could race with the retry timer.
 			// Hence we track completion state in the message struct to avoid
 			// a bogus retransmit.
-			if !ctlMsg.isComplete {
-				err := xport.retransmitMessage(ctlMsg)
+			if !xmitMsg.isComplete {
+				err := xport.retransmitMessage(xmitMsg)
 				if err != nil {
-					ctlMsg.txComplete(err)
+					xmitMsg.txComplete(err)
 					xport.down(err)
 					return
 				}
@@ -432,11 +432,11 @@ func (xport *transport) sendMessage1(msg controlMessage, isRetransmit bool) erro
 }
 
 // Exponential retry timeout scaling as per RFC2661/RFC3931
-func (xport *transport) scaleRetryTimeout(msg *ctlMsg) time.Duration {
+func (xport *transport) scaleRetryTimeout(msg *xmitMsg) time.Duration {
 	return xport.config.RetryTimeout * (1 << msg.nretries)
 }
 
-func (xport *transport) sendMessage(msg *ctlMsg) error {
+func (xport *transport) sendMessage(msg *xmitMsg) error {
 
 	err := xport.sendMessage1(msg.msg, msg.nretries > 0)
 	if err == nil {
@@ -452,7 +452,7 @@ func (xport *transport) sendMessage(msg *ctlMsg) error {
 	return err
 }
 
-func (xport *transport) retransmitMessage(msg *ctlMsg) error {
+func (xport *transport) retransmitMessage(msg *xmitMsg) error {
 	msg.nretries++
 	if msg.nretries >= xport.config.MaxRetries {
 		return fmt.Errorf("transmit of %s failed after %d retry attempts",
@@ -571,14 +571,14 @@ func (xport *transport) sendHelloMessage() error {
 		return fmt.Errorf("failed to build hello message: %v", err)
 	}
 
-	return xport.sendMessage(&ctlMsg{
+	return xport.sendMessage(&xmitMsg{
 		xport:      xport,
 		msg:        msg,
 		onComplete: helloSendComplete,
 	})
 }
 
-func helloSendComplete(m *ctlMsg, err error) {
+func helloSendComplete(m *xmitMsg, err error) {
 	m.xport.helloInFlight = false
 }
 
@@ -642,13 +642,13 @@ func newTransport(logger log.Logger, cp *controlPlane, cfg transportConfig) (xpo
 		cp:         cp,
 		helloTimer: helloTimer,
 		ackTimer:   ackTimer,
-		sendChan:   make(chan *ctlMsg),
-		retryChan:  make(chan *ctlMsg),
+		sendChan:   make(chan *xmitMsg),
+		retryChan:  make(chan *xmitMsg),
 		recvChan:   make(chan *recvMsg),
 		cpChan:     make(chan *rawMsg),
 		rxQueue:    []*recvMsg{},
-		txQueue:    []*ctlMsg{},
-		ackQueue:   []*ctlMsg{},
+		txQueue:    []*xmitMsg{},
+		ackQueue:   []*xmitMsg{},
 	}
 
 	xport.wg.Add(2)
@@ -669,7 +669,7 @@ func (xport *transport) getConfig() transportConfig {
 // Failure indicates that the transport has failed and the parent tunnel
 // should be torn down.
 func (xport *transport) send(msg controlMessage) error {
-	cm := ctlMsg{
+	cm := xmitMsg{
 		xport:        xport,
 		msg:          msg,
 		completeChan: make(chan error),
@@ -680,7 +680,7 @@ func (xport *transport) send(msg controlMessage) error {
 	return err
 }
 
-func sendComplete(m *ctlMsg, err error) {
+func sendComplete(m *xmitMsg, err error) {
 	m.completeChan <- err
 }
 
