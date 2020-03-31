@@ -58,15 +58,20 @@ func (cp *controlPlane) close() (err error) {
 }
 
 func (cp *controlPlane) connect() error {
-	err := tunnelSocketConnect(cp.fd, cp.remote)
+	err := unix.Connect(cp.fd, cp.remote)
 	if err == nil {
 		cp.connected = true
 	}
 	return err
 }
 
+func (cp *controlPlane) connectTo(sa unix.Sockaddr) error {
+	cp.remote = sa
+	return cp.connect()
+}
+
 func (cp *controlPlane) bind() error {
-	return tunnelSocketBind(cp.fd, cp.local)
+	return unix.Bind(cp.fd, cp.local)
 }
 
 func tunnelSocket(family, protocol int) (fd int, err error) {
@@ -94,14 +99,6 @@ func tunnelSocket(family, protocol int) (fd int, err error) {
 	}
 
 	return fd, nil
-}
-
-func tunnelSocketBind(fd int, local unix.Sockaddr) error {
-	return unix.Bind(fd, local)
-}
-
-func tunnelSocketConnect(fd int, remote unix.Sockaddr) error {
-	return unix.Connect(fd, remote)
 }
 
 func newL2tpControlPlane(localAddr, remoteAddr unix.Sockaddr) (*controlPlane, error) {
