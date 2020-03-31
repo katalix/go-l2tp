@@ -256,7 +256,7 @@ func testBasicSendRecvHelloSender(xport *transport) error {
 
 func testBasicSendRecvHelloReceiver(xport *transport) error {
 	for i := uint16(0); i < 3*xport.getConfig().TxWindowSize; i++ {
-		msg, err := xport.recv()
+		msg, _, err := xport.recv()
 		if err != nil {
 			return fmt.Errorf("failed to receive message: %v", err)
 		}

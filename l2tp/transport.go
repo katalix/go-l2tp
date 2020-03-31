@@ -45,6 +45,12 @@ type rawMsg struct {
 	sa unix.Sockaddr
 }
 
+// recvMsg represents a received control message.
+type recvMsg struct {
+	msg  controlMessage
+	from unix.Sockaddr
+}
+
 // transportConfig represents the tunable parameters governing
 // the behaviour of the reliable transport algorithm.
 type transportConfig struct {
@@ -83,9 +89,9 @@ type transport struct {
 	helloInFlight        bool
 	sendChan             chan *ctlMsg
 	retryChan            chan *ctlMsg
-	recvChan             chan controlMessage
+	recvChan             chan *recvMsg
 	cpChan               chan *rawMsg
-	rxQueue              []controlMessage
+	rxQueue              []*recvMsg
 	txQueue, ackQueue    []*ctlMsg
 	wg                   sync.WaitGroup
 }
@@ -276,7 +282,7 @@ func runTransport(xport *transport, wg *sync.WaitGroup) {
 			}
 
 			for _, msg := range messages {
-				xport.rxQueue = append(xport.rxQueue, msg)
+				xport.rxQueue = append(xport.rxQueue, &recvMsg{msg: msg, from: rawMsg.sa})
 
 				// Process the ack queue using sequence numbers from the newly received
 				// message.  If we manage to dequeue a message it may result in opening
@@ -357,32 +363,32 @@ func (xport *transport) recvFrame(rawMsg *rawMsg) (messages []controlMessage, er
 	return messages, nil
 }
 
-func (xport *transport) recvMessage(msg controlMessage) {
-	if xport.slowStart.msgIsInSequence(msg) {
+func (xport *transport) recvMessage(m *recvMsg) {
+	if xport.slowStart.msgIsInSequence(m.msg) {
 
 		level.Debug(xport.logger).Log(
 			"message", "recv",
-			"message_type", msg.getType())
+			"message_type", m.msg.getType())
 
 		xport.toggleAckTimer(true)
 		xport.resetHelloTimer()
 		xport.slowStart.incrementNr()
-		xport.recvChan <- msg
-	} else if xport.slowStart.msgIsStale(msg) {
+		xport.recvChan <- m
+	} else if xport.slowStart.msgIsStale(m.msg) {
 		_ = xport.sendExplicitAck()
 	}
 }
 
 func (xport *transport) dequeueRxMessage() bool {
-	for i, msg := range xport.rxQueue {
-		if xport.slowStart.msgIsInSequence(msg) || xport.slowStart.msgIsStale(msg) {
+	for i, m := range xport.rxQueue {
+		if xport.slowStart.msgIsInSequence(m.msg) || xport.slowStart.msgIsStale(m.msg) {
 			// Remove the message from the rx queue, and bubble it up for
 			// processing.
 			// In general we don't need to do anything more with an ack message
 			// since they're just for the transport's purposes, so just drop them
 			xport.rxQueue = append(xport.rxQueue[:i], xport.rxQueue[i+1:]...)
-			if msg.getType() != avpMsgTypeAck {
-				xport.recvMessage(msg)
+			if m.msg.getType() != avpMsgTypeAck {
+				xport.recvMessage(m)
 			}
 			return true
 		}
@@ -638,9 +644,9 @@ func newTransport(logger log.Logger, cp *controlPlane, cfg transportConfig) (xpo
 		ackTimer:   ackTimer,
 		sendChan:   make(chan *ctlMsg),
 		retryChan:  make(chan *ctlMsg),
-		recvChan:   make(chan controlMessage),
+		recvChan:   make(chan *recvMsg),
 		cpChan:     make(chan *rawMsg),
-		rxQueue:    []controlMessage{},
+		rxQueue:    []*recvMsg{},
 		txQueue:    []*ctlMsg{},
 		ackQueue:   []*ctlMsg{},
 	}
@@ -682,12 +688,12 @@ func sendComplete(m *ctlMsg, err error) {
 // The caller will block until a message has been received from the peer.
 // Failure indicates that the transport has failed and the parent tunnel
 // should be torn down.
-func (xport *transport) recv() (msg controlMessage, err error) {
-	msg, ok := <-xport.recvChan
+func (xport *transport) recv() (msg controlMessage, from unix.Sockaddr, err error) {
+	m, ok := <-xport.recvChan
 	if !ok {
-		return nil, errors.New("transport is down")
+		return nil, nil, errors.New("transport is down")
 	}
-	return msg, nil
+	return m.msg, m.from, nil
 }
 
 // close closes the transport.
