@@ -3,12 +3,10 @@ package l2tp
 import (
 	"bytes"
 	"testing"
-
-	"github.com/katalix/go-l2tp/internal/nll2tp"
 )
 
 type msgInfo struct {
-	version          nll2tp.L2tpProtocolVersion
+	version          ProtocolVersion
 	ns, nr, tid, sid uint16
 	ccid             uint32
 	navps            int
@@ -27,7 +25,7 @@ func TestParseMessageBuffer(t *testing.T) {
 				0x00, 0x00, 0x00, 0x06,
 			},
 			want: []msgInfo{
-				{version: nll2tp.ProtocolVersion2, ns: 1, nr: 1, tid: 1, sid: 0, navps: 1, msgType: avpMsgTypeHello},
+				{version: ProtocolVersion2, ns: 1, nr: 1, tid: 1, sid: 0, navps: 1, msgType: avpMsgTypeHello},
 			},
 		},
 		{
@@ -36,7 +34,7 @@ func TestParseMessageBuffer(t *testing.T) {
 				0x00, 0x01, 0x00, 0x01,
 			},
 			want: []msgInfo{
-				{version: nll2tp.ProtocolVersion2, tid: 1, sid: 0, ns: 1, nr: 1, navps: 0, msgType: avpMsgTypeAck},
+				{version: ProtocolVersion2, tid: 1, sid: 0, ns: 1, nr: 1, navps: 0, msgType: avpMsgTypeAck},
 			},
 		},
 		{
@@ -59,7 +57,7 @@ func TestParseMessageBuffer(t *testing.T) {
 				0x00, 0x05, 0x00, 0x04,
 			},
 			want: []msgInfo{
-				{version: nll2tp.ProtocolVersion3, ns: 0, nr: 0, ccid: 0, navps: 7, msgType: avpMsgTypeSccrq},
+				{version: ProtocolVersion3, ns: 0, nr: 0, ccid: 0, navps: 7, msgType: avpMsgTypeSccrq},
 			},
 		},
 	}
@@ -88,7 +86,7 @@ func TestParseMessageBuffer(t *testing.T) {
 				}
 				// version specifics
 				switch c.want[i].version {
-				case nll2tp.ProtocolVersion2:
+				case ProtocolVersion2:
 					v2msg, ok := g.(*v2ControlMessage)
 					if ok {
 						if v2msg.Tid() != c.want[i].tid {
@@ -100,7 +98,7 @@ func TestParseMessageBuffer(t *testing.T) {
 					} else {
 						t.Errorf("Expected V2ControlMessage, but didn't receive one")
 					}
-				case nll2tp.ProtocolVersion3:
+				case ProtocolVersion3:
 					v3msg, ok := g.(*v3ControlMessage)
 					if ok {
 						if v3msg.ControlConnectionID() != c.want[i].ccid {

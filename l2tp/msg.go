@@ -6,8 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-
-	"github.com/katalix/go-l2tp/internal/nll2tp"
 )
 
 // L2TPv2 and L2TPv3 headers have these fields in common
@@ -41,12 +39,12 @@ const (
 	v3HeaderLen          = 12
 )
 
-func (h *l2tpCommonHeader) protocolVersion() (version nll2tp.L2tpProtocolVersion, err error) {
+func (h *l2tpCommonHeader) protocolVersion() (version ProtocolVersion, err error) {
 	switch h.FlagsVer & 0xf {
 	case 2:
-		return nll2tp.ProtocolVersion2, nil
+		return ProtocolVersion2, nil
 	case 3:
-		return nll2tp.ProtocolVersion3, nil
+		return ProtocolVersion3, nil
 	}
 	return 0, errors.New("illegal protocol version")
 }
@@ -134,7 +132,7 @@ func bytesToV3CtlMsg(b []byte) (msg *v3ControlMessage, err error) {
 // control message, providing access to the fields that are common
 // to both v2 and v3 versions of the protocol.
 type controlMessage interface {
-	protocolVersion() nll2tp.L2tpProtocolVersion
+	protocolVersion() ProtocolVersion
 	getLen() int
 	ns() uint16
 	nr() uint16
@@ -159,8 +157,8 @@ type v3ControlMessage struct {
 
 // protocolVersion returns the protocol version for the control message.
 // Implements the ControlMessage interface.
-func (m *v2ControlMessage) protocolVersion() nll2tp.L2tpProtocolVersion {
-	return nll2tp.ProtocolVersion2
+func (m *v2ControlMessage) protocolVersion() ProtocolVersion {
+	return ProtocolVersion2
 }
 
 // getLen returns the total control message length, including the header, in octets.
@@ -257,8 +255,8 @@ func (m *v2ControlMessage) toBytes() ([]byte, error) {
 
 // protocolVersion returns the protocol version for the control message.
 // Implements the ControlMessage interface.
-func (m *v3ControlMessage) protocolVersion() nll2tp.L2tpProtocolVersion {
-	return nll2tp.ProtocolVersion3
+func (m *v3ControlMessage) protocolVersion() ProtocolVersion {
+	return ProtocolVersion3
 }
 
 // getLen returns the total control message length, including the header, in octets.
@@ -346,7 +344,7 @@ func (m *v3ControlMessage) toBytes() ([]byte, error) {
 func parseMessageBuffer(b []byte) (messages []controlMessage, err error) {
 	r := bytes.NewReader(b)
 	for r.Len() >= controlMessageMinLen {
-		var ver nll2tp.L2tpProtocolVersion
+		var ver ProtocolVersion
 		var h l2tpCommonHeader
 		var cursor int64
 
@@ -370,13 +368,13 @@ func parseMessageBuffer(b []byte) (messages []controlMessage, err error) {
 			return nil, err
 		}
 
-		if ver == nll2tp.ProtocolVersion2 {
+		if ver == ProtocolVersion2 {
 			var msg *v2ControlMessage
 			if msg, err = bytesToV2CtlMsg(b[cursor : cursor+int64(h.Len)]); err != nil {
 				return nil, err
 			}
 			messages = append(messages, msg)
-		} else if ver == nll2tp.ProtocolVersion3 {
+		} else if ver == ProtocolVersion3 {
 			var msg *v3ControlMessage
 			if msg, err = bytesToV3CtlMsg(b[cursor : cursor+int64(+h.Len)]); err != nil {
 				return nil, err
