@@ -763,7 +763,7 @@ func parseAVPBuffer(b []byte) (avps []avp, err error) {
 		info, err := getAVPInfo(h.AvpType, h.VendorID)
 		if err != nil {
 			if h.isMandatory() {
-				return nil, err
+				return nil, fmt.Errorf("failed to parse mandatory AVP: %v", err)
 			}
 			// RFC2661 section 4.1 says unrecognised AVPs without the
 			// mandatory bit set MUST be ignored

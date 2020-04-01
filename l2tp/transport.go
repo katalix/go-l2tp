@@ -3,6 +3,7 @@ package l2tp
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -272,13 +273,17 @@ func runTransport(xport *transport, wg *sync.WaitGroup) {
 
 			messages, err := xport.recvFrame(rawMsg)
 			if err != nil {
-				// Early packet handling can fail if we fail to parse a message or
-				// the parsed message sequence number checks fail.  We ignore these
-				// errors, but log them for analysis.
+				// Early packet handling can fail for a variety of reasons.
+				// The most important of these is if a peer sends a mandatory
+				// AVP that we don't recognise: this MUST cause the tunnel to fail
+				// per the RFCs.  Anything else we just log for information.
 				level.Error(xport.logger).Log(
 					"message", "frame receive failed",
 					"error", err)
-				break
+				if strings.Contains("failed to parse mandatory AVP", err.Error()) {
+					xport.down(err)
+					return
+				}
 			}
 
 			for _, msg := range messages {
