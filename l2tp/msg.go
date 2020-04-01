@@ -132,15 +132,25 @@ func bytesToV3CtlMsg(b []byte) (msg *v3ControlMessage, err error) {
 // control message, providing access to the fields that are common
 // to both v2 and v3 versions of the protocol.
 type controlMessage interface {
+	// protocolVersion returns the protocol version for the control message.
 	protocolVersion() ProtocolVersion
+	// getLen returns the total control message length, including the header, in octets.
 	getLen() int
+	// ns returns the L2TP transport Ns value for the message.
 	ns() uint16
+	// nr returns the L2TP transport NR value for the message.
 	nr() uint16
+	// getAvps returns the slice of Attribute Value Pair (AVP) values held by the control message.
 	getAvps() []avp
+	// getType returns the value of the Message Type AVP.
 	getType() avpMsgType
+	// appendAvp appends an AVP to the message.
 	appendAvp(avp *avp)
+	// setTransportSeqNum sets the header sequence numbers.
 	setTransportSeqNum(ns, nr uint16)
+	// toBytes encodes the message as bytes for transmission.
 	toBytes() ([]byte, error)
+	// getAvp looks up an AVP in the message.
 	getAvp(vendorID avpVendorID, typ avpType) (avp *avp, err error)
 }
 
@@ -166,38 +176,26 @@ func findAvp(avps []avp, vendorID avpVendorID, typ avpType) (*avp, error) {
 	return nil, fmt.Errorf("AVP %v %v not found", vendorID, typ)
 }
 
-// protocolVersion returns the protocol version for the control message.
-// Implements the ControlMessage interface.
 func (m *v2ControlMessage) protocolVersion() ProtocolVersion {
 	return ProtocolVersion2
 }
 
-// getLen returns the total control message length, including the header, in octets.
-// Implements the ControlMessage interface.
 func (m *v2ControlMessage) getLen() int {
 	return int(m.header.Common.Len)
 }
 
-// ns returns the L2TP transport Ns value for the message.
-// Implements the ControlMessage interface.
 func (m *v2ControlMessage) ns() uint16 {
 	return m.header.Ns
 }
 
-// nr returns the L2TP transport NR value for the message.
-// Implements the ControlMessage interface.
 func (m *v2ControlMessage) nr() uint16 {
 	return m.header.Nr
 }
 
-// getAvps returns the slice of Attribute Value Pair (AVP) values held by the control message.
-// Implements the ControlMessage interface.
 func (m *v2ControlMessage) getAvps() []avp {
 	return m.avps
 }
 
-// getType returns the value of the Message Type AVP.
-// Implements the ControlMessage interface.
 func (m v2ControlMessage) getType() avpMsgType {
 	// Messages with no AVP payload are treated as ZLB (zero-length-body)
 	// ack messages in RFC2661.  Strictly speaking ZLBs have no message type,
@@ -222,29 +220,24 @@ func (m v2ControlMessage) getType() avpMsgType {
 	return mt
 }
 
-// Tid returns the L2TPv2 tunnel ID held by the control message header.
 func (m *v2ControlMessage) Tid() uint16 {
 	return m.header.Tid
 }
 
-// Sid returns the L2TPv2 session ID held by the control message header.
 func (m *v2ControlMessage) Sid() uint16 {
 	return m.header.Sid
 }
 
-// appendAvp appends an AVP to the message.
 func (m *v2ControlMessage) appendAvp(avp *avp) {
 	m.avps = append(m.avps, *avp)
 	m.header.Common.Len += uint16(avp.totalLen())
 }
 
-// setTransportSeqNum sets the header sequence numbers.
 func (m *v2ControlMessage) setTransportSeqNum(ns, nr uint16) {
 	m.header.Ns = ns
 	m.header.Nr = nr
 }
 
-// toBytes encodes the message as bytes for transmission
 func (m *v2ControlMessage) toBytes() ([]byte, error) {
 	buf := new(bytes.Buffer)
 
@@ -268,38 +261,26 @@ func (m *v2ControlMessage) getAvp(vendorID avpVendorID, typ avpType) (avp *avp, 
 	return findAvp(m.avps, vendorID, typ)
 }
 
-// protocolVersion returns the protocol version for the control message.
-// Implements the ControlMessage interface.
 func (m *v3ControlMessage) protocolVersion() ProtocolVersion {
 	return ProtocolVersion3
 }
 
-// getLen returns the total control message length, including the header, in octets.
-// Implements the ControlMessage interface.
 func (m *v3ControlMessage) getLen() int {
 	return int(m.header.Common.Len)
 }
 
-// ns returns the L2TP transport Ns value for the message.
-// Implements the ControlMessage interface.
 func (m *v3ControlMessage) ns() uint16 {
 	return m.header.Ns
 }
 
-// nr returns the L2TP transport Nr value for the message.
-// Implements the ControlMessage interface.
 func (m *v3ControlMessage) nr() uint16 {
 	return m.header.Nr
 }
 
-// getAvps returns the slice of Attribute Value Pair (AVP) values held by the control message.
-// Implements the ControlMessage interface.
 func (m *v3ControlMessage) getAvps() []avp {
 	return m.avps
 }
 
-// getType returns the value of the Message Type AVP.
-// Implements the ControlMessage interface.
 func (m v3ControlMessage) getType() avpMsgType {
 	avp := m.getAvps()[0]
 
@@ -317,24 +298,20 @@ func (m v3ControlMessage) getType() avpMsgType {
 	return mt
 }
 
-// ControlConnectionID returns the control connection ID held by the control message header.
 func (m *v3ControlMessage) ControlConnectionID() uint32 {
 	return m.header.Ccid
 }
 
-// appendAvp appends an AVP to the message.
 func (m *v3ControlMessage) appendAvp(avp *avp) {
 	m.avps = append(m.avps, *avp)
 	m.header.Common.Len += uint16(avp.totalLen())
 }
 
-// setTransportSeqNum sets the header sequence numbers.
 func (m *v3ControlMessage) setTransportSeqNum(ns, nr uint16) {
 	m.header.Ns = ns
 	m.header.Nr = nr
 }
 
-// toBytes encodes the message as bytes for transmission
 func (m *v3ControlMessage) toBytes() ([]byte, error) {
 	buf := new(bytes.Buffer)
 
