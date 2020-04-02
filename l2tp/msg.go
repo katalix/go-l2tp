@@ -150,8 +150,6 @@ type controlMessage interface {
 	setTransportSeqNum(ns, nr uint16)
 	// toBytes encodes the message as bytes for transmission.
 	toBytes() ([]byte, error)
-	// getAvp looks up an AVP in the message.
-	getAvp(vendorID avpVendorID, typ avpType) (avp *avp, err error)
 }
 
 // v2ControlMessage represents an RFC2661 control message
@@ -164,16 +162,6 @@ type v2ControlMessage struct {
 type v3ControlMessage struct {
 	header l2tpV3Header
 	avps   []avp
-}
-
-// Look up a specific AVP in the array
-func findAvp(avps []avp, vendorID avpVendorID, typ avpType) (*avp, error) {
-	for _, a := range avps {
-		if a.vendorID() == vendorID && a.getType() == typ {
-			return &a, nil
-		}
-	}
-	return nil, fmt.Errorf("AVP %v %v not found", vendorID, typ)
 }
 
 func (m *v2ControlMessage) protocolVersion() ProtocolVersion {
@@ -257,10 +245,6 @@ func (m *v2ControlMessage) toBytes() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func (m *v2ControlMessage) getAvp(vendorID avpVendorID, typ avpType) (avp *avp, err error) {
-	return findAvp(m.avps, vendorID, typ)
-}
-
 func (m *v3ControlMessage) protocolVersion() ProtocolVersion {
 	return ProtocolVersion3
 }
@@ -329,10 +313,6 @@ func (m *v3ControlMessage) toBytes() ([]byte, error) {
 	}
 
 	return buf.Bytes(), nil
-}
-
-func (m *v3ControlMessage) getAvp(vendorID avpVendorID, typ avpType) (avp *avp, err error) {
-	return findAvp(m.avps, vendorID, typ)
 }
 
 // parseMessageBuffer takes a byte slice of L2TP control message data and

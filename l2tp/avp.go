@@ -1027,3 +1027,93 @@ func avpsLengthBytes(avps []avp) int {
 	}
 	return nb
 }
+
+// findAvp looks up a specific AVP in a slice of AVPs
+// An error will be returned if the requested AVP isn't present in the slice.
+func findAvp(avps []avp, vendorID avpVendorID, typ avpType) (*avp, error) {
+	for _, a := range avps {
+		if a.vendorID() == vendorID && a.getType() == typ {
+			return &a, nil
+		}
+	}
+	return nil, fmt.Errorf("AVP %v %v not found", vendorID, typ)
+}
+
+// findUint8Avp looks up a specific AVP in a slice of AVPs and decodes as uint8.
+// An error will be returned if the AVP isn't present or is of the wrong type.
+func findUint8Avp(avps []avp, vendorID avpVendorID, typ avpType) (uint8, error) {
+	avp, err := findAvp(avps, vendorID, typ)
+	if err != nil {
+		return 0, err
+	}
+	if len(avp.payload.data) != 1 {
+		return 0, fmt.Errorf("failed to decode %v: expected 1 byte, got %v", typ, len(avp.payload.data))
+	}
+	return avp.payload.data[0], nil
+}
+
+// findUint16Avp looks up a specific AVP in a slice of AVPs and decodes as uint16.
+// An error will be returned if the AVP isn't present or is of the wrong type.
+func findUint16Avp(avps []avp, vendorID avpVendorID, typ avpType) (uint16, error) {
+	avp, err := findAvp(avps, vendorID, typ)
+	if err != nil {
+		return 0, err
+	}
+	val, err := avp.decodeUint16Data()
+	if err != nil {
+		return 0, fmt.Errorf("failed to decode %v: %v", typ, err)
+	}
+	return val, nil
+}
+
+// findUint32Avp looks up a specific AVP in a slice of AVPs and decodes as uint32.
+// An error will be returned if the AVP isn't present or is of the wrong type.
+func findUint32Avp(avps []avp, vendorID avpVendorID, typ avpType) (uint32, error) {
+	avp, err := findAvp(avps, vendorID, typ)
+	if err != nil {
+		return 0, err
+	}
+	val, err := avp.decodeUint32Data()
+	if err != nil {
+		return 0, fmt.Errorf("failed to decode %v: %v", typ, err)
+	}
+	return val, nil
+}
+
+// findUint64Avp looks up a specific AVP in a slice of AVPs and decodes as uint64.
+// An error will be returned if the AVP isn't present or is of the wrong type.
+func findUint64Avp(avps []avp, vendorID avpVendorID, typ avpType) (uint64, error) {
+	avp, err := findAvp(avps, vendorID, typ)
+	if err != nil {
+		return 0, err
+	}
+	val, err := avp.decodeUint64Data()
+	if err != nil {
+		return 0, fmt.Errorf("failed to decode %v: %v", typ, err)
+	}
+	return val, nil
+}
+
+// findBytesAvp looks up a specific AVP in a slice of AVPs and decodes as a byte slice.
+// An error will be returned if the AVP isn't present or is of the wrong type.
+func findBytesAvp(avps []avp, vendorID avpVendorID, typ avpType) ([]byte, error) {
+	avp, err := findAvp(avps, vendorID, typ)
+	if err != nil {
+		return nil, err
+	}
+	return avp.payload.data, nil
+}
+
+// findStringAvp looks up a specific AVP in a slice of AVPs and decodes as a string.
+// An error will be returned if the AVP isn't present or is of the wrong type.
+func findStringAvp(avps []avp, vendorID avpVendorID, typ avpType) (string, error) {
+	avp, err := findAvp(avps, vendorID, typ)
+	if err != nil {
+		return "", err
+	}
+	val, err := avp.decodeStringData()
+	if err != nil {
+		return "", fmt.Errorf("failed to decode %v: %v", typ, err)
+	}
+	return val, nil
+}
