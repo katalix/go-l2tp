@@ -39,6 +39,111 @@ const (
 	v3HeaderLen          = 12
 )
 
+// Message AVP specification as per RFCx
+type avpSpec int
+type msgSpec struct {
+	m map[avpType]avpSpec
+}
+
+const (
+	mustExist avpSpec = 1
+	mayExist  avpSpec = 2
+)
+
+func (spec *msgSpec) hasAvp(t avpType) (avpSpec, bool) {
+	as, ok := spec.m[t]
+	return as, ok
+}
+
+func (spec *msgSpec) must() []avpType {
+	mst := []avpType{}
+	for at, as := range spec.m {
+		if as == mustExist {
+			mst = append(mst, at)
+		}
+	}
+	return mst
+}
+
+func v2SccrqMsgSpec() *msgSpec {
+	/* Ref: RFC2661 section 6.1 */
+	spec := msgSpec{make(map[avpType]avpSpec)}
+
+	spec.m[avpTypeMessage] = mustExist
+	spec.m[avpTypeProtocolVersion] = mustExist
+	spec.m[avpTypeHostName] = mustExist
+	spec.m[avpTypeFramingCap] = mustExist
+	spec.m[avpTypeTunnelID] = mustExist
+
+	spec.m[avpTypeBearerCap] = mayExist
+	spec.m[avpTypeRxWindowSize] = mayExist
+	spec.m[avpTypeChallenge] = mayExist
+	spec.m[avpTypeTiebreaker] = mayExist
+	spec.m[avpTypeFirmwareRevision] = mayExist
+	spec.m[avpTypeVendorName] = mayExist
+	return &spec
+}
+
+func v2SccrpMsgSpec() *msgSpec {
+	/* Ref: RFC2661 section 6.2 */
+	spec := msgSpec{make(map[avpType]avpSpec)}
+
+	spec.m[avpTypeMessage] = mustExist
+	spec.m[avpTypeProtocolVersion] = mustExist
+	spec.m[avpTypeFramingCap] = mustExist
+	spec.m[avpTypeHostName] = mustExist
+	spec.m[avpTypeTunnelID] = mustExist
+
+	spec.m[avpTypeBearerCap] = mayExist
+	spec.m[avpTypeRxWindowSize] = mayExist
+	spec.m[avpTypeChallenge] = mayExist
+	spec.m[avpTypeChallengeResponse] = mayExist
+	spec.m[avpTypeTiebreaker] = mayExist
+	spec.m[avpTypeFirmwareRevision] = mayExist
+	spec.m[avpTypeVendorName] = mayExist
+	return &spec
+}
+
+func v2ScccnMsgSpec() *msgSpec {
+	/* Ref: RFC2661 section 6.3 */
+	spec := msgSpec{make(map[avpType]avpSpec)}
+	spec.m[avpTypeMessage] = mustExist
+	spec.m[avpTypeChallengeResponse] = mayExist
+	return &spec
+}
+
+func v2StopccnMsgSpec() *msgSpec {
+	/* Ref: RFC2661 section 6.4 */
+	spec := msgSpec{make(map[avpType]avpSpec)}
+	spec.m[avpTypeMessage] = mustExist
+	spec.m[avpTypeTunnelID] = mustExist
+	spec.m[avpTypeResultCode] = mustExist
+	return &spec
+}
+
+func v2HelloMsgSpec() *msgSpec {
+	/* Ref: RFC2661 section 6.5 */
+	spec := msgSpec{make(map[avpType]avpSpec)}
+	spec.m[avpTypeMessage] = mustExist
+	return &spec
+}
+
+func getV2MsgSpec(t avpMsgType) (*msgSpec, error) {
+	switch t {
+	case avpMsgTypeSccrq:
+		return v2SccrqMsgSpec(), nil
+	case avpMsgTypeSccrp:
+		return v2SccrpMsgSpec(), nil
+	case avpMsgTypeScccn:
+		return v2ScccnMsgSpec(), nil
+	case avpMsgTypeStopccn:
+		return v2StopccnMsgSpec(), nil
+	case avpMsgTypeHello:
+		return v2HelloMsgSpec(), nil
+	}
+	return nil, fmt.Errorf("no specification for v2 message %v", t)
+}
+
 func (h *l2tpCommonHeader) protocolVersion() (version ProtocolVersion, err error) {
 	switch h.FlagsVer & 0xf {
 	case 2:
@@ -90,8 +195,7 @@ func bytesToV2CtlMsg(b []byte) (msg *v2ControlMessage, err error) {
 			return nil, err
 		}
 		// RFC2661 says the first AVP in the message MUST be the Message Type AVP,
-		// so let's validate that now
-		// TODO: we need to do real actual validation
+		// so let's validate that now.
 		if avps[0].getType() != avpTypeMessage {
 			return nil, errors.New("invalid L2TPv2 message: first AVP is not Message Type AVP")
 		}
@@ -150,6 +254,9 @@ type controlMessage interface {
 	setTransportSeqNum(ns, nr uint16)
 	// toBytes encodes the message as bytes for transmission.
 	toBytes() ([]byte, error)
+	// validate the message AVPs, checking that the mandatory AVPs are
+	// present and contain the expected data.
+	validate() error
 }
 
 // v2ControlMessage represents an RFC2661 control message
@@ -245,6 +352,95 @@ func (m *v2ControlMessage) toBytes() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+func (m *v2ControlMessage) validate() error {
+	seen := make(map[avpType]bool)
+
+	spec, err := getV2MsgSpec(m.getType())
+	if err != nil {
+		return err
+	}
+
+	for at, as := range spec.m {
+		if as == mustExist {
+			seen[at] = false
+		}
+	}
+
+	for _, avp := range m.avps {
+		as, ok := spec.hasAvp(avp.getType())
+		if !ok {
+			// TODO only fail if avp is mandatory?
+			return fmt.Errorf("unexpected AVP %v in message %v", avp.getType(), m.getType())
+		}
+		if as == mustExist {
+			seen[avp.getType()] = true
+		}
+		_, err = avp.decode()
+		if err != nil {
+			return fmt.Errorf("failed to decode AVP %v in message %v: %v", avp.getType(), m.getType(), err)
+		}
+	}
+
+	// ensure we saw all the AVPs we must have
+	for at, ok := range seen {
+		if !ok {
+			return fmt.Errorf("missing mandatory AVP %v in message %v", at, m.getType())
+		}
+	}
+
+	return nil
+}
+
+func (m *v2ControlMessage) validateSccrp() error {
+	/* RFC2661 says SCCRP MUST contain:
+
+	- Message Type
+	- Protocol Version
+	- Framing Capabilites
+	- Host Name
+	- Assigned Tunnel ID
+
+	The Message Type AVP has been validated during early parsing.
+	*/
+
+	pv, err := findBytesAvp(m.avps, vendorIDIetf, avpTypeProtocolVersion)
+	if err != nil {
+		return err
+	}
+	if len(pv) != 2 {
+		return fmt.Errorf("%v length %v (expect 2)", avpTypeProtocolVersion, len(pv))
+	}
+
+	_, err = findUint32Avp(m.avps, vendorIDIetf, avpTypeFramingCap)
+	if err != nil {
+		return err
+	}
+
+	_, err = findStringAvp(m.avps, vendorIDIetf, avpTypeHostName)
+	if err != nil {
+		return err
+	}
+
+	_, err = findUint16Avp(m.avps, vendorIDIetf, avpTypeTunnelID)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (m *v2ControlMessage) validateScccn() error {
+	return fmt.Errorf("v2ControlMessage validateScccn() not implemented")
+}
+
+func (m *v2ControlMessage) validateStopccn() error {
+	return fmt.Errorf("v2ControlMessage validateStopccn() not implemented")
+}
+
+func (m *v2ControlMessage) validateHello() error {
+	return fmt.Errorf("v2ControlMessage validateHello() not implemented")
+}
+
 func (m *v3ControlMessage) protocolVersion() ProtocolVersion {
 	return ProtocolVersion3
 }
@@ -313,6 +509,10 @@ func (m *v3ControlMessage) toBytes() ([]byte, error) {
 	}
 
 	return buf.Bytes(), nil
+}
+
+func (m *v3ControlMessage) validate() error {
+	return fmt.Errorf("v3ControlMessage validate() not implemented")
 }
 
 // parseMessageBuffer takes a byte slice of L2TP control message data and
