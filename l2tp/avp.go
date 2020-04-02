@@ -903,10 +903,16 @@ func (avp *avp) isDataType(dt avpDataType) bool {
 }
 
 func (p *avpPayload) toUint8() (out uint8, err error) {
+	if len(p.data) > 1 {
+		return 0, fmt.Errorf("AVP payload length %v exceeds expected length 1", len(p.data))
+	}
 	return p.data[0], nil
 }
 
 func (p *avpPayload) toUint16() (out uint16, err error) {
+	if len(p.data) > 2 {
+		return 0, fmt.Errorf("AVP payload length %v exceeds expected length 2", len(p.data))
+	}
 	r := bytes.NewReader(p.data)
 	if err = binary.Read(r, binary.BigEndian, &out); err != nil {
 		return 0, err
@@ -915,6 +921,9 @@ func (p *avpPayload) toUint16() (out uint16, err error) {
 }
 
 func (p *avpPayload) toUint32() (out uint32, err error) {
+	if len(p.data) > 4 {
+		return 0, fmt.Errorf("AVP payload length %v exceeds expected length 4", len(p.data))
+	}
 	r := bytes.NewReader(p.data)
 	if err = binary.Read(r, binary.BigEndian, &out); err != nil {
 		return 0, err
@@ -923,6 +932,9 @@ func (p *avpPayload) toUint32() (out uint32, err error) {
 }
 
 func (p *avpPayload) toUint64() (out uint64, err error) {
+	if len(p.data) > 8 {
+		return 0, fmt.Errorf("AVP payload length %v exceeds expected length 8", len(p.data))
+	}
 	r := bytes.NewReader(p.data)
 	if err = binary.Read(r, binary.BigEndian, &out); err != nil {
 		return 0, err
