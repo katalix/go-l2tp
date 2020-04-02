@@ -970,6 +970,36 @@ func (p *avpPayload) toResultCode() (out resultCode, err error) {
 	}, nil
 }
 
+// decode decodes an AVP based on its data type.
+// An error is returned if the AVP cannot be decoded successfully.
+func (avp *avp) decode() (interface{}, error) {
+	switch avp.payload.dataType {
+	case avpDataTypeEmpty:
+		return nil, nil
+	case avpDataTypeUint8:
+		return avp.payload.toUint8()
+	case avpDataTypeUint16:
+		return avp.payload.toUint16()
+	case avpDataTypeUint32:
+		return avp.payload.toUint32()
+	case avpDataTypeUint64:
+		return avp.payload.toUint64()
+	case avpDataTypeString:
+		return avp.payload.toString()
+	case avpDataTypeBytes:
+		return avp.payload.data, nil
+	case avpDataTypeResultCode:
+		return avp.payload.toResultCode()
+	case avpDataTypeMsgID:
+		v, err := avp.payload.toUint16()
+		if err != nil {
+			return nil, err
+		}
+		return avpMsgType(v), nil
+	}
+	return nil, fmt.Errorf("unhandled AVP data type")
+}
+
 // decodeUint16Data decodes an AVP holding a uint16 value.
 // It is an error to call this function on an AVP which doesn't
 // contain a uint16 payload.
