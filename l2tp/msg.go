@@ -55,16 +55,6 @@ func (spec *msgSpec) hasAvp(t avpType) (avpSpec, bool) {
 	return as, ok
 }
 
-func (spec *msgSpec) must() []avpType {
-	mst := []avpType{}
-	for at, as := range spec.m {
-		if as == mustExist {
-			mst = append(mst, at)
-		}
-	}
-	return mst
-}
-
 func v2SccrqMsgSpec() *msgSpec {
 	/* Ref: RFC2661 section 6.1 */
 	spec := msgSpec{make(map[avpType]avpSpec)}
@@ -389,56 +379,6 @@ func (m *v2ControlMessage) validate() error {
 	}
 
 	return nil
-}
-
-func (m *v2ControlMessage) validateSccrp() error {
-	/* RFC2661 says SCCRP MUST contain:
-
-	- Message Type
-	- Protocol Version
-	- Framing Capabilites
-	- Host Name
-	- Assigned Tunnel ID
-
-	The Message Type AVP has been validated during early parsing.
-	*/
-
-	pv, err := findBytesAvp(m.avps, vendorIDIetf, avpTypeProtocolVersion)
-	if err != nil {
-		return err
-	}
-	if len(pv) != 2 {
-		return fmt.Errorf("%v length %v (expect 2)", avpTypeProtocolVersion, len(pv))
-	}
-
-	_, err = findUint32Avp(m.avps, vendorIDIetf, avpTypeFramingCap)
-	if err != nil {
-		return err
-	}
-
-	_, err = findStringAvp(m.avps, vendorIDIetf, avpTypeHostName)
-	if err != nil {
-		return err
-	}
-
-	_, err = findUint16Avp(m.avps, vendorIDIetf, avpTypeTunnelID)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (m *v2ControlMessage) validateScccn() error {
-	return fmt.Errorf("v2ControlMessage validateScccn() not implemented")
-}
-
-func (m *v2ControlMessage) validateStopccn() error {
-	return fmt.Errorf("v2ControlMessage validateStopccn() not implemented")
-}
-
-func (m *v2ControlMessage) validateHello() error {
-	return fmt.Errorf("v2ControlMessage validateHello() not implemented")
 }
 
 func (m *v3ControlMessage) protocolVersion() ProtocolVersion {
