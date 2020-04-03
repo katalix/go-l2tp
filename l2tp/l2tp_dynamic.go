@@ -45,7 +45,7 @@ func (dt *dynamicTunnel) NewSession(name string, cfg *SessionConfig) (Session, e
 
 func (dt *dynamicTunnel) Close() {
 	if dt != nil {
-		dt.closeChan <- true
+		close(dt.closeChan)
 		dt.wg.Wait()
 	}
 }
