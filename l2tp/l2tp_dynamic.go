@@ -81,9 +81,7 @@ func (dt *dynamicTunnel) runTunnel() {
 			dt.handleEvent(evt)
 		case m, ok := <-dt.xport.recvChan:
 			if !ok {
-				if !dt.isClosing {
-					dt.fsmActClose(nil)
-				}
+				dt.fsmActClose(nil)
 				return
 			}
 			dt.handleMsg(m)
@@ -328,6 +326,11 @@ func (dt *dynamicTunnel) sendStopccn(rc *resultCode) error {
 // because the transport recv channel will have been closed.
 func (dt *dynamicTunnel) fsmActClose(args []interface{}) {
 	if dt != nil {
+
+		if dt.isClosing {
+			return
+		}
+
 		dt.isClosing = true
 
 		for name, session := range dt.sessions {
