@@ -1,6 +1,7 @@
 package l2tp
 
 import (
+	"bytes"
 	"fmt"
 	"reflect"
 	"testing"
@@ -420,6 +421,238 @@ func TestEncodeUint16(t *testing.T) {
 			}
 		} else {
 			t.Errorf("newAvp(%v, %v, %v) failed: %q", c.vendorID, c.avpType, c.value, err)
+		}
+	}
+}
+
+func TestEncodeUint32(t *testing.T) {
+	cases := []struct {
+		vendorID avpVendorID
+		avpType  avpType
+		value    interface{}
+	}{
+		{vendorID: vendorIDIetf, avpType: avpTypeFramingCap, value: uint32(3)},
+		{vendorID: vendorIDIetf, avpType: avpTypePhysicalChannelID, value: uint32(12398713)},
+	}
+	for _, c := range cases {
+		if avp, err := newAvp(c.vendorID, c.avpType, c.value); err == nil {
+			if !avp.isDataType(avpDataTypeUint32) {
+				t.Errorf("Data type check failed")
+			}
+			if val, err := avp.decodeUint32Data(); err == nil {
+				if val != c.value {
+					t.Errorf("encode/decode failed: expected %q, got %q", c.value, val)
+				}
+			} else {
+				t.Errorf("DecodeUint32Data() failed: %q", err)
+			}
+		} else {
+			t.Errorf("newAvp(%v, %v, %v) failed: %q", c.vendorID, c.avpType, c.value, err)
+		}
+	}
+}
+
+func TestEncodeUint64(t *testing.T) {
+	cases := []struct {
+		vendorID avpVendorID
+		avpType  avpType
+		value    interface{}
+	}{
+		{vendorID: vendorIDIetf, avpType: avpTypeTxConnectSpeedBps, value: uint64(10 * 1024 * 1024 * 1024)},
+		{vendorID: vendorIDIetf, avpType: avpTypeRxConnectSpeedBps, value: uint64(1 * 1024 * 1024 * 0124)},
+	}
+	for _, c := range cases {
+		if avp, err := newAvp(c.vendorID, c.avpType, c.value); err == nil {
+			if !avp.isDataType(avpDataTypeUint64) {
+				t.Errorf("Data type check failed")
+			}
+			if val, err := avp.decodeUint64Data(); err == nil {
+				if val != c.value {
+					t.Errorf("encode/decode failed: expected %q, got %q", c.value, val)
+				}
+			} else {
+				t.Errorf("DecodeUint64Data() failed: %q", err)
+			}
+		} else {
+			t.Errorf("newAvp(%v, %v, %v) failed: %q", c.vendorID, c.avpType, c.value, err)
+		}
+	}
+}
+
+func TestEncodeString(t *testing.T) {
+	cases := []struct {
+		vendorID avpVendorID
+		avpType  avpType
+		value    interface{}
+	}{
+		{vendorID: vendorIDIetf, avpType: avpTypeHostName, value: string("blackhole.local")},
+		{vendorID: vendorIDIetf, avpType: avpTypeVendorName, value: string("Katalix Systems Ltd.")},
+	}
+	for _, c := range cases {
+		if avp, err := newAvp(c.vendorID, c.avpType, c.value); err == nil {
+			if !avp.isDataType(avpDataTypeString) {
+				t.Errorf("Data type check failed")
+			}
+			if val, err := avp.decodeStringData(); err == nil {
+				if val != c.value {
+					t.Errorf("encode/decode failed: expected %q, got %q", c.value, val)
+				}
+			} else {
+				t.Errorf("DecodeStringData() failed: %q", err)
+			}
+		} else {
+			t.Errorf("newAvp(%v, %v, %v) failed: %q", c.vendorID, c.avpType, c.value, err)
+		}
+	}
+}
+
+func TestEncodeBytes(t *testing.T) {
+	cases := []struct {
+		vendorID avpVendorID
+		avpType  avpType
+		value    []byte
+	}{
+		{vendorID: vendorIDIetf, avpType: avpTypeTiebreaker, value: []byte{0xef, 0x10, 0x34, 0x73, 0xb2, 0x8b, 0x91, 0xdd}},
+	}
+	for _, c := range cases {
+		if avp, err := newAvp(c.vendorID, c.avpType, c.value); err == nil {
+			if !avp.isDataType(avpDataTypeBytes) {
+				t.Errorf("Data type check failed")
+			}
+			val := avp.payload.data
+			if !bytes.Equal(val, c.value) {
+				t.Errorf("encode/decode failed: expected %q, got %q", c.value, val)
+			}
+		} else {
+			t.Errorf("newAvp(%v, %v, %v) failed: %q", c.vendorID, c.avpType, c.value, err)
+		}
+	}
+}
+
+func TestEncodeResultCode(t *testing.T) {
+	cases := []struct {
+		vendorID avpVendorID
+		avpType  avpType
+		value    resultCode
+	}{
+		{
+			vendorID: vendorIDIetf,
+			avpType:  avpTypeResultCode,
+			value: resultCode{
+				result:  avpStopCCNResultCodeClearConnection,
+				errCode: avpErrorCodeNoError,
+				errMsg:  "",
+			},
+		},
+		{
+			vendorID: vendorIDIetf,
+			avpType:  avpTypeResultCode,
+			value: resultCode{
+				result:  avpStopCCNResultCodeGeneralError,
+				errCode: avpErrorCodeTryAnother,
+				errMsg:  "",
+			},
+		},
+		{
+			vendorID: vendorIDIetf,
+			avpType:  avpTypeResultCode,
+			value: resultCode{
+				result:  avpStopCCNResultCodeGeneralError,
+				errCode: avpErrorCodeVendorSpecificError,
+				errMsg:  "Out of cheese error",
+			},
+		},
+	}
+	for _, c := range cases {
+		if avp, err := newAvp(c.vendorID, c.avpType, c.value); err == nil {
+			if !avp.isDataType(avpDataTypeResultCode) {
+				t.Errorf("Data type check failed")
+			}
+			if val, err := avp.decodeResultCode(); err == nil {
+				if !reflect.DeepEqual(val, c.value) {
+					t.Errorf("encode/decode failed: expected %q, got %q", c.value, val)
+				}
+			} else {
+				t.Errorf("DecodeResultCodeData() failed: %q", err)
+			}
+		} else {
+			t.Errorf("newAvp(%v, %v, %v) failed: %q", c.vendorID, c.avpType, c.value, err)
+		}
+	}
+}
+
+func TestFind(t *testing.T) {
+	cases := []struct {
+		in      []byte
+		find    []func([]avp) error
+		notFind []func([]avp) error
+	}{
+		{
+			in: []byte{
+				0x80, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, // message type
+				0x00, 0x08, 0x00, 0x00, 0x00, 0x02, 0x01, 0x00, // protocol version
+				0x80, 0x0a, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x03, // framing cap
+				0x00, 0x34, 0x00, 0x00, 0x00, 0x08, 0x70, 0x72, 0x6f, 0x6c, 0x32, 0x74, 0x70, 0x20, 0x31, 0x2e,
+				0x37, 0x2e, 0x33, 0x20, 0x4c, 0x69, 0x6e, 0x75, 0x78, 0x2d, 0x33, 0x2e, 0x31, 0x33, 0x2e, 0x30,
+				0x2d, 0x37, 0x31, 0x2d, 0x67, 0x65, 0x6e, 0x65, 0x72, 0x69, 0x63, 0x20, 0x28, 0x78, 0x38, 0x36,
+				0x5f, 0x36, 0x34, 0x29, /* vendor-name AVP */
+			},
+			find: []func([]avp) error{
+				func(avps []avp) (err error) {
+					// Don't have a specific finder/converter for Message Type
+					// so just validate we can find the AVP without trying to decode
+					_, err = findAvp(avps, vendorIDIetf, avpTypeMessage)
+					return
+				},
+				func(avps []avp) (err error) {
+					_, err = findBytesAvp(avps, vendorIDIetf, avpTypeProtocolVersion)
+					return
+				},
+				func(avps []avp) (err error) {
+					_, err = findUint32Avp(avps, vendorIDIetf, avpTypeFramingCap)
+					return
+				},
+				func(avps []avp) (err error) {
+					_, err = findStringAvp(avps, vendorIDIetf, avpTypeVendorName)
+					return
+				},
+			},
+			notFind: []func([]avp) error{
+				func(avps []avp) (err error) {
+					_, err = findUint16Avp(avps, vendorIDIetf, avpTypeFirmwareRevision)
+					return
+				},
+				func(avps []avp) (err error) {
+					_, err = findUint32Avp(avps, vendorIDIetf, avpTypeMinimumBps)
+					return
+				},
+				func(avps []avp) (err error) {
+					_, err = findBytesAvp(avps, vendorIDIetf, avpTypeTiebreaker)
+					return
+				},
+				func(avps []avp) (err error) {
+					_, err = findStringAvp(avps, vendorIDIetf, avpTypeHostName)
+					return
+				},
+			},
+		},
+	}
+	for _, c := range cases {
+		avps, err := parseAVPBuffer(c.in)
+		if err != nil {
+			t.Fatalf("parseAVPBuffer(%q): %v", c.in, err)
+		}
+		for i, chk := range c.find {
+			err = chk(avps)
+			if err != nil {
+				t.Errorf("find check %v failed: %v", i, err)
+			}
+		}
+		for i, chk := range c.notFind {
+			err = chk(avps)
+			if err == nil {
+				t.Errorf("notFind check %v succeeded", i)
+			}
 		}
 	}
 }
