@@ -583,6 +583,26 @@ func newV2ControlMessage(tid ControlConnID, sid ControlConnID, avps []avp) (msg 
 	}, nil
 }
 
+type avpIn struct {
+	typ  avpType
+	data interface{}
+}
+
+func buildV2TunnelMsg(ptid ControlConnID, in []avpIn) (msg *v2ControlMessage, err error) {
+	msg, err = newV2ControlMessage(ptid, 0, []avp{})
+	if err != nil {
+		return
+	}
+	for _, i := range in {
+		avp, err := newAvp(vendorIDIetf, i.typ, i.data)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create AVP %v: %v", i.typ, err)
+		}
+		msg.appendAvp(avp)
+	}
+	return
+}
+
 // newV2Sccrq builds a new SCCRQ message
 func newV2Sccrq(cfg *TunnelConfig) (msg *v2ControlMessage, err error) {
 	/* RFC2661 says we MUST include:
@@ -602,32 +622,14 @@ func newV2Sccrq(cfg *TunnelConfig) (msg *v2ControlMessage, err error) {
 	- Firmware Revision
 	- Vendor Name
 	*/
-
-	avp_in := []struct {
-		typ  avpType
-		data interface{}
-	}{
+	in := []avpIn{
 		{avpTypeMessage, avpMsgTypeSccrq},
 		{avpTypeProtocolVersion, []byte{1, 0}},
 		{avpTypeHostName, "rincewind"},          // FIXME
 		{avpTypeFramingCap, uint32(0x3)},        // FIXME
 		{avpTypeTunnelID, uint16(cfg.TunnelID)}, // FIXME
 	}
-
-	msg, err = newV2ControlMessage(0, 0, []avp{})
-	if err != nil {
-		return nil, err
-	}
-
-	for _, i := range avp_in {
-		avp, err := newAvp(vendorIDIetf, i.typ, i.data)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create AVP %v: %v", i.typ, err)
-		}
-		msg.appendAvp(avp)
-	}
-
-	return msg, nil
+	return buildV2TunnelMsg(0, in)
 }
 
 // newV2Scccn builds a new SCCCN message
@@ -641,27 +643,10 @@ func newV2Scccn(cfg *TunnelConfig) (msg *v2ControlMessage, err error) {
 	- Challenge response
 
 	*/
-	avp_in := []struct {
-		typ  avpType
-		data interface{}
-	}{
+	in := []avpIn{
 		{avpTypeMessage, avpMsgTypeScccn},
 	}
-
-	msg, err = newV2ControlMessage(cfg.PeerTunnelID, 0, []avp{})
-	if err != nil {
-		return nil, err
-	}
-
-	for _, i := range avp_in {
-		avp, err := newAvp(vendorIDIetf, i.typ, i.data)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create AVP %v: %v", i.typ, err)
-		}
-		msg.appendAvp(avp)
-	}
-
-	return msg, nil
+	return buildV2TunnelMsg(cfg.PeerTunnelID, in)
 }
 
 // newV2Stopccn builds a new StopCCN message
@@ -673,30 +658,12 @@ func newV2Stopccn(rc *resultCode, cfg *TunnelConfig) (msg *v2ControlMessage, err
 	- Result Code
 
 	*/
-
-	avp_in := []struct {
-		typ  avpType
-		data interface{}
-	}{
+	in := []avpIn{
 		{avpTypeMessage, avpMsgTypeStopccn},
 		{avpTypeTunnelID, uint16(cfg.TunnelID)},
 		{avpTypeResultCode, rc},
 	}
-
-	msg, err = newV2ControlMessage(cfg.PeerTunnelID, 0, []avp{})
-	if err != nil {
-		return
-	}
-
-	for _, i := range avp_in {
-		avp, err := newAvp(vendorIDIetf, i.typ, i.data)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create AVP %v: %v", i.typ, err)
-		}
-		msg.appendAvp(avp)
-	}
-
-	return msg, nil
+	return buildV2TunnelMsg(cfg.PeerTunnelID, in)
 }
 
 // newV3ControlMessage builds a new control message
