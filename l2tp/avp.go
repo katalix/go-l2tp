@@ -103,7 +103,7 @@ var avpInfoTable = [...]avpInfo{
 	{avpType: avpTypeProtocolVersion, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeBytes},
 	{avpType: avpTypeFramingCap, VendorID: vendorIDIetf, isMandatory: true, dataType: avpDataTypeUint32},
 	{avpType: avpTypeBearerCap, VendorID: vendorIDIetf, isMandatory: true, dataType: avpDataTypeUint32},
-	{avpType: avpTypeTiebreaker, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeUnimplemented}, // TODO
+	{avpType: avpTypeTiebreaker, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeBytes},
 	{avpType: avpTypeFirmwareRevision, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeUint16},
 	{avpType: avpTypeHostName, VendorID: vendorIDIetf, isMandatory: true, dataType: avpDataTypeString},
 	{avpType: avpTypeVendorName, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeString},
