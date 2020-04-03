@@ -283,6 +283,8 @@ func (dt *dynamicTunnel) fsmActOnSccrp(args []interface{}) {
 		return
 	}
 
+	level.Info(dt.logger).Log("message", "control plane established")
+
 	// establish the data plane
 	dt.dp, err = newManagedTunnelDataPlane(dt.getNLConn(), dt.cp.fd, dt.cfg)
 	if err != nil {
@@ -295,6 +297,8 @@ func (dt *dynamicTunnel) fsmActOnSccrp(args []interface{}) {
 			fmt.Sprintf("failed to instantiate tunnel data plane: %v", err))
 		return
 	}
+
+	level.Info(dt.logger).Log("message", "data plane established")
 }
 
 func (dt *dynamicTunnel) sendScccn() error {
