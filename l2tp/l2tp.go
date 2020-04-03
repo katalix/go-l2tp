@@ -3,6 +3,7 @@ package l2tp
 import (
 	"fmt"
 	"net"
+	"sync"
 
 	"github.com/go-kit/kit/log"
 	"github.com/katalix/go-l2tp/internal/nll2tp"
@@ -15,6 +16,7 @@ type Context struct {
 	logger  log.Logger
 	nlconn  *nll2tp.Conn
 	tunnels map[string]Tunnel
+	tlock   sync.RWMutex
 }
 
 // ContextConfig encodes top-level configuration for an L2TP
@@ -104,7 +106,7 @@ func (ctx *Context) NewDynamicTunnel(name string, cfg *TunnelConfig) (tunl Tunne
 	}
 
 	// Must not have name clashes
-	if _, ok := ctx.tunnels[name]; ok {
+	if _, ok := ctx.findTunnel(name); ok {
 		return nil, fmt.Errorf("already have tunnel %q", name)
 	}
 
@@ -143,7 +145,7 @@ func (ctx *Context) NewDynamicTunnel(name string, cfg *TunnelConfig) (tunl Tunne
 		return nil, err
 	}
 
-	ctx.tunnels[name] = tunl
+	ctx.linkTunnel(name, tunl)
 
 	return tunl, nil
 }
@@ -171,7 +173,7 @@ func (ctx *Context) NewQuiescentTunnel(name string, cfg *TunnelConfig) (tunl Tun
 	}
 
 	// Must not have name clashes
-	if _, ok := ctx.tunnels[name]; ok {
+	if _, ok := ctx.findTunnel(name); ok {
 		return nil, fmt.Errorf("already have tunnel %q", name)
 	}
 
@@ -217,7 +219,7 @@ func (ctx *Context) NewQuiescentTunnel(name string, cfg *TunnelConfig) (tunl Tun
 		return nil, err
 	}
 
-	ctx.tunnels[name] = tunl
+	ctx.linkTunnel(name, tunl)
 
 	return tunl, nil
 }
@@ -247,7 +249,7 @@ func (ctx *Context) NewStaticTunnel(name string, cfg *TunnelConfig) (tunl Tunnel
 	}
 
 	// Must not have name clashes
-	if _, ok := ctx.tunnels[name]; ok {
+	if _, ok := ctx.findTunnel(name); ok {
 		return nil, fmt.Errorf("already have tunnel %q", name)
 	}
 
@@ -285,7 +287,7 @@ func (ctx *Context) NewStaticTunnel(name string, cfg *TunnelConfig) (tunl Tunnel
 		return nil, err
 	}
 
-	ctx.tunnels[name] = tunl
+	ctx.linkTunnel(name, tunl)
 
 	return tunl, nil
 }
@@ -293,15 +295,39 @@ func (ctx *Context) NewStaticTunnel(name string, cfg *TunnelConfig) (tunl Tunnel
 // Close tears down the context, including all the L2TP tunnels and sessions
 // running inside it.
 func (ctx *Context) Close() {
+	tunnels := []Tunnel{}
+
+	ctx.tlock.Lock()
 	for name, tunl := range ctx.tunnels {
-		tunl.Close()
-		ctx.unlinkTunnel(name)
+		tunnels = append(tunnels, tunl)
+		delete(ctx.tunnels, name)
 	}
+	ctx.tlock.Unlock()
+
+	for _, tunl := range tunnels {
+		tunl.Close()
+	}
+
 	ctx.nlconn.Close()
 }
 
+func (ctx *Context) linkTunnel(name string, tunl Tunnel) {
+	ctx.tlock.Lock()
+	defer ctx.tlock.Unlock()
+	ctx.tunnels[name] = tunl
+}
+
 func (ctx *Context) unlinkTunnel(name string) {
+	ctx.tlock.Lock()
+	defer ctx.tlock.Unlock()
 	delete(ctx.tunnels, name)
+}
+
+func (ctx *Context) findTunnel(name string) (tunl Tunnel, ok bool) {
+	ctx.tlock.RLock()
+	defer ctx.tlock.RUnlock()
+	tunl, ok = ctx.tunnels[name]
+	return
 }
 
 func newUDPTunnelAddress(address string) (unix.Sockaddr, error) {
