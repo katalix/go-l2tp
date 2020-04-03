@@ -73,8 +73,6 @@ const (
 const (
 	// avpDataTypeEmpty represents an AVP with no value
 	avpDataTypeEmpty avpDataType = iota
-	// avpDataTypeUint8 represents an AVP carrying a single uint8 value
-	avpDataTypeUint8 avpDataType = iota
 	// avpDataTypeUint16 represents an AVP carrying a single uint16 value
 	avpDataTypeUint16 avpDataType = iota
 	// avpDataTypeUint32 represents an AVP carrying a single uint32 value
@@ -593,8 +591,6 @@ func (t avpDataType) String() string {
 	switch t {
 	case avpDataTypeEmpty:
 		return "no data"
-	case avpDataTypeUint8:
-		return "uint8"
 	case avpDataTypeUint16:
 		return "uint16"
 	case avpDataTypeUint32:
@@ -645,9 +641,6 @@ func (p avpPayload) String() string {
 	str.WriteString(fmt.Sprintf("(%s) ", p.dataType))
 
 	switch p.dataType {
-	case avpDataTypeUint8:
-		v, _ := p.toUint8()
-		str.WriteString(fmt.Sprintf("%d", v))
 	case avpDataTypeUint16:
 		v, _ := p.toUint16()
 		str.WriteString(fmt.Sprintf("%d", v))
@@ -825,8 +818,6 @@ func encodePayload(info *avpInfo, value interface{}) ([]byte, error) {
 
 	switch info.dataType {
 	case avpDataTypeEmpty:
-	case avpDataTypeUint8:
-		_, ok = value.(uint8)
 	case avpDataTypeUint16:
 		_, ok = value.(uint16)
 	case avpDataTypeUint32:
@@ -902,13 +893,6 @@ func (avp *avp) isDataType(dt avpDataType) bool {
 	return avp.payload.dataType == dt
 }
 
-func (p *avpPayload) toUint8() (out uint8, err error) {
-	if len(p.data) > 1 {
-		return 0, fmt.Errorf("AVP payload length %v exceeds expected length 1", len(p.data))
-	}
-	return p.data[0], nil
-}
-
 func (p *avpPayload) toUint16() (out uint16, err error) {
 	if len(p.data) > 2 {
 		return 0, fmt.Errorf("AVP payload length %v exceeds expected length 2", len(p.data))
@@ -976,8 +960,6 @@ func (avp *avp) decode() (interface{}, error) {
 	switch avp.payload.dataType {
 	case avpDataTypeEmpty:
 		return nil, nil
-	case avpDataTypeUint8:
-		return avp.payload.toUint8()
 	case avpDataTypeUint16:
 		return avp.payload.toUint16()
 	case avpDataTypeUint32:
@@ -1079,19 +1061,6 @@ func findAvp(avps []avp, vendorID avpVendorID, typ avpType) (*avp, error) {
 		}
 	}
 	return nil, fmt.Errorf("AVP %v %v not found", vendorID, typ)
-}
-
-// findUint8Avp looks up a specific AVP in a slice of AVPs and decodes as uint8.
-// An error will be returned if the AVP isn't present or is of the wrong type.
-func findUint8Avp(avps []avp, vendorID avpVendorID, typ avpType) (uint8, error) {
-	avp, err := findAvp(avps, vendorID, typ)
-	if err != nil {
-		return 0, err
-	}
-	if len(avp.payload.data) != 1 {
-		return 0, fmt.Errorf("failed to decode %v: expected 1 byte, got %v", typ, len(avp.payload.data))
-	}
-	return avp.payload.data[0], nil
 }
 
 // findUint16Avp looks up a specific AVP in a slice of AVPs and decodes as uint16.
