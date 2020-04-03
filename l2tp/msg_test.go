@@ -216,3 +216,42 @@ func TestParseEncode(t *testing.T) {
 		}
 	}
 }
+
+func TestV2TunnelBuildValidate(t *testing.T) {
+	cases := []struct {
+		tcfg         TunnelConfig
+		rc           resultCode
+		buildersGood []func(*TunnelConfig, *resultCode) (*v2ControlMessage, error)
+	}{
+		{
+			// Currently the builders don't check data ranges, so
+			// all we're really doing is exercising the builder/validation
+			// code.
+			tcfg: TunnelConfig{},
+			rc:   resultCode{},
+			buildersGood: []func(*TunnelConfig, *resultCode) (*v2ControlMessage, error){
+				func(tcfg *TunnelConfig, rc *resultCode) (*v2ControlMessage, error) {
+					return newV2Sccrq(tcfg)
+				},
+				func(tcfg *TunnelConfig, rc *resultCode) (*v2ControlMessage, error) {
+					return newV2Scccn(tcfg)
+				},
+				func(tcfg *TunnelConfig, rc *resultCode) (*v2ControlMessage, error) {
+					return newV2Stopccn(rc, tcfg)
+				},
+			},
+		},
+	}
+	for _, c := range cases {
+		for i, builder := range c.buildersGood {
+			msg, err := builder(&c.tcfg, &c.rc)
+			if err != nil {
+				t.Fatalf("good builder %v: %v %v: %v", i, c.tcfg, c.rc, err)
+			}
+			err = msg.validate()
+			if err != nil {
+				t.Fatalf("good builder validation %v: %v %v: %v", i, c.tcfg, c.rc, err)
+			}
+		}
+	}
+}
