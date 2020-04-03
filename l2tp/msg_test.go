@@ -234,10 +234,16 @@ func TestV2TunnelBuildValidate(t *testing.T) {
 					return newV2Sccrq(tcfg)
 				},
 				func(tcfg *TunnelConfig, rc *resultCode) (*v2ControlMessage, error) {
+					return newV2Sccrp(tcfg)
+				},
+				func(tcfg *TunnelConfig, rc *resultCode) (*v2ControlMessage, error) {
 					return newV2Scccn(tcfg)
 				},
 				func(tcfg *TunnelConfig, rc *resultCode) (*v2ControlMessage, error) {
 					return newV2Stopccn(rc, tcfg)
+				},
+				func(tcfg *TunnelConfig, rc *resultCode) (*v2ControlMessage, error) {
+					return newV2Hello(tcfg)
 				},
 			},
 		},

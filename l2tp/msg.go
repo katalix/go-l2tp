@@ -632,6 +632,35 @@ func newV2Sccrq(cfg *TunnelConfig) (msg *v2ControlMessage, err error) {
 	return buildV2TunnelMsg(0, in)
 }
 
+// newV2Sccrp builds a new SCCRP message
+func newV2Sccrp(cfg *TunnelConfig) (msg *v2ControlMessage, err error) {
+	/* RFC2661 says we MUST include:
+
+	- Message Type
+	- Protocol Version
+	- Framing Capabilities
+	- Host Name
+	- Assigned Tunnel ID
+
+	and we MAY include:
+
+	- Bearer Capabilities
+	- Firmware Revision
+	- Vendor Name
+	- Receive Window Size
+	- Challenge
+	- Challenge Response
+	*/
+	in := []avpIn{
+		{avpTypeMessage, avpMsgTypeSccrp},
+		{avpTypeProtocolVersion, []byte{1, 0}},
+		{avpTypeFramingCap, uint32(0x3)},        // FIXME
+		{avpTypeHostName, "rincewind"},          // FIXME
+		{avpTypeTunnelID, uint16(cfg.TunnelID)}, // FIXME
+	}
+	return buildV2TunnelMsg(cfg.PeerTunnelID, in)
+}
+
 // newV2Scccn builds a new SCCCN message
 func newV2Scccn(cfg *TunnelConfig) (msg *v2ControlMessage, err error) {
 	/* RFC2661 says we MUST include:
@@ -662,6 +691,19 @@ func newV2Stopccn(rc *resultCode, cfg *TunnelConfig) (msg *v2ControlMessage, err
 		{avpTypeMessage, avpMsgTypeStopccn},
 		{avpTypeTunnelID, uint16(cfg.TunnelID)},
 		{avpTypeResultCode, rc},
+	}
+	return buildV2TunnelMsg(cfg.PeerTunnelID, in)
+}
+
+// newV2Hello builds a new HELLO message
+func newV2Hello(cfg *TunnelConfig) (msg *v2ControlMessage, err error) {
+	/* RFC2661 says we MUST include:
+
+	- Message Type
+
+	*/
+	in := []avpIn{
+		{avpTypeMessage, avpMsgTypeHello},
 	}
 	return buildV2TunnelMsg(cfg.PeerTunnelID, in)
 }
