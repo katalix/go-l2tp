@@ -9,9 +9,6 @@ using named TOML tables.  Each tunnel or session instance table contains
 configuration parameters for that instance as key:value pairs.
 
 	# This is a tunnel instance named "t1"
-	# Note that not all configuration parameters apply to all tunnel types.
-	# Refer to the documentation for the specific tunnel creation
-	# functions for more information.
 	[tunnel.t1]
 
 	# local specifies the local address that the tunnel should
