@@ -146,6 +146,10 @@ configuration parameters for that instance as key:value pairs.
 	# The default is 3 retries.
 	max_retries 5
 
+	# host_name sets the host name the tunnel will advertise in the
+	# Host Name AVP per RFC2661.
+	host_name "basilbrush.local"
+
 	# framing_caps sets the framing capabilites the tunnel will advertise
 	# in the Framing Capabilites AVP per RFC2661.
 	# The default is to advertise both sync and async framing.
