@@ -594,7 +594,7 @@ func newV2Sccrq(cfg *TunnelConfig) (msg *v2ControlMessage, err error) {
 	in := []avpIn{
 		{avpTypeMessage, avpMsgTypeSccrq},
 		{avpTypeProtocolVersion, []byte{1, 0}},
-		{avpTypeHostName, "rincewind"}, // FIXME
+		{avpTypeHostName, cfg.HostName},
 		{avpTypeFramingCap, uint32(cfg.FramingCaps)},
 		{avpTypeTunnelID, uint16(cfg.TunnelID)}, // FIXME
 	}
@@ -624,7 +624,7 @@ func newV2Sccrp(cfg *TunnelConfig) (msg *v2ControlMessage, err error) {
 		{avpTypeMessage, avpMsgTypeSccrp},
 		{avpTypeProtocolVersion, []byte{1, 0}},
 		{avpTypeFramingCap, uint32(cfg.FramingCaps)},
-		{avpTypeHostName, "rincewind"},          // FIXME
+		{avpTypeHostName, cfg.HostName},
 		{avpTypeTunnelID, uint16(cfg.TunnelID)}, // FIXME
 	}
 	return buildV2TunnelMsg(cfg.PeerTunnelID, in)
