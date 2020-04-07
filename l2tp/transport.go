@@ -674,6 +674,10 @@ func (xport *transport) getConfig() transportConfig {
 // Failure indicates that the transport has failed and the parent tunnel
 // should be torn down.
 func (xport *transport) send(msg controlMessage) error {
+	err := msg.validate()
+	if err != nil {
+		return fmt.Errorf("failed to validate message: %v", err)
+	}
 	cm := xmitMsg{
 		xport:        xport,
 		msg:          msg,
@@ -681,7 +685,7 @@ func (xport *transport) send(msg controlMessage) error {
 		onComplete:   sendComplete,
 	}
 	xport.sendChan <- &cm
-	err := <-cm.completeChan
+	err = <-cm.completeChan
 	return err
 }
 

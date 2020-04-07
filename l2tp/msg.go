@@ -546,7 +546,6 @@ func newV2ControlMessage(tid ControlConnID, sid ControlConnID, avps []avp) (msg 
 	if sid > v2TidSidMax {
 		return nil, fmt.Errorf("v2 session ID %v out of range", sid)
 	}
-	// TODO: validate AVPs
 	return &v2ControlMessage{
 		header: *newL2tpV2MessageHeader(uint16(tid), uint16(sid), 0, 0, avpsLengthBytes(avps)),
 		avps:   avps,
@@ -680,7 +679,6 @@ func newV2Hello(cfg *TunnelConfig) (msg *v2ControlMessage, err error) {
 
 // newV3ControlMessage builds a new control message
 func newV3ControlMessage(ccid ControlConnID, avps []avp) (msg *v3ControlMessage, err error) {
-	// TODO: validate AVPs
 	return &v3ControlMessage{
 		header: *newL2tpV3MessageHeader(uint32(ccid), 0, 0, avpsLengthBytes(avps)),
 		avps:   avps,
