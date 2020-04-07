@@ -12,18 +12,12 @@ import (
 )
 
 // Context is a container for a collection of L2TP tunnels and
-// their sessions, and associated configuration.
+// their sessions.
 type Context struct {
 	logger  log.Logger
 	nlconn  *nll2tp.Conn
 	tunnels map[string]Tunnel
 	tlock   sync.RWMutex
-}
-
-// ContextConfig encodes top-level configuration for an L2TP
-// context.
-type ContextConfig struct {
-	// TODO
 }
 
 // Tunnel is an interface representing an L2TP tunnel.
@@ -65,16 +59,10 @@ type Session interface {
 // If a nil logger is passed, all logging is disabled.
 // If a nil configuration is passed, default configuration will
 // be used.
-func NewContext(logger log.Logger, cfg *ContextConfig) (*Context, error) {
+func NewContext(logger log.Logger) (*Context, error) {
 
 	if logger == nil {
 		logger = log.NewNopLogger()
-	}
-
-	if cfg == nil {
-		// TODO: default configuration.
-		// Eventually we might set things like host name, router ID,
-		// etc, etc.
 	}
 
 	nlconn, err := nll2tp.Dial()

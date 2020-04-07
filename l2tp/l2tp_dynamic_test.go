@@ -109,7 +109,7 @@ func TestDynamicClient(t *testing.T) {
 			// permissions issues, and sending a stopccn to the dummy LNS which will cause its
 			// goroutine to exit.
 			// It would be better to be able to control this more directly.
-			ctx, err := NewContext(testLog, nil)
+			ctx, err := NewContext(testLog)
 			if err != nil {
 				t.Fatalf("NewContext(): %v", err)
 			}

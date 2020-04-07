@@ -127,7 +127,7 @@ func testQuiescentTunnels(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			ctx, err := NewContext(
 				level.NewFilter(log.NewLogfmtLogger(os.Stderr),
-					level.AllowDebug(), level.AllowInfo()), nil)
+					level.AllowDebug(), level.AllowInfo()))
 			if err != nil {
 				t.Fatalf("NewContext(): %v", err)
 			}
@@ -183,7 +183,7 @@ func testQuiescentSessions(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			ctx, err := NewContext(
 				level.NewFilter(log.NewLogfmtLogger(os.Stderr),
-					level.AllowDebug(), level.AllowInfo()), nil)
+					level.AllowDebug(), level.AllowInfo()))
 			if err != nil {
 				t.Fatalf("NewContext(): %v", err)
 			}
@@ -275,7 +275,7 @@ func testStaticTunnels(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			ctx, err := NewContext(
 				level.NewFilter(log.NewLogfmtLogger(os.Stderr),
-					level.AllowDebug(), level.AllowInfo()), nil)
+					level.AllowDebug(), level.AllowInfo()))
 			if err != nil {
 				t.Fatalf("NewContext(): %v", err)
 			}
@@ -331,7 +331,7 @@ func testStaticSessions(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			ctx, err := NewContext(
 				level.NewFilter(log.NewLogfmtLogger(os.Stderr),
-					level.AllowDebug(), level.AllowInfo()), nil)
+					level.AllowDebug(), level.AllowInfo()))
 			if err != nil {
 				t.Fatalf("NewContext(): %v", err)
 			}
