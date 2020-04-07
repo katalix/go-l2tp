@@ -105,6 +105,11 @@ func (ctx *Context) NewDynamicTunnel(name string, cfg *TunnelConfig) (tunl Tunne
 		return nil, fmt.Errorf("invalid nil config")
 	}
 
+	// TODO:
+	// If the tunnel ID in the config is unset we must generate one.
+	// If the tunnel ID is set, we must check for collisions.
+	// If the tunnel host name is unset, we must generate one.
+
 	// Must not have name clashes
 	if _, ok := ctx.findTunnel(name); ok {
 		return nil, fmt.Errorf("already have tunnel %q", name)

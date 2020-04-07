@@ -596,7 +596,7 @@ func newV2Sccrq(cfg *TunnelConfig) (msg *v2ControlMessage, err error) {
 		{avpTypeProtocolVersion, []byte{1, 0}},
 		{avpTypeHostName, cfg.HostName},
 		{avpTypeFramingCap, uint32(cfg.FramingCaps)},
-		{avpTypeTunnelID, uint16(cfg.TunnelID)}, // FIXME
+		{avpTypeTunnelID, uint16(cfg.TunnelID)},
 	}
 	return buildV2TunnelMsg(0, in)
 }
@@ -625,7 +625,7 @@ func newV2Sccrp(cfg *TunnelConfig) (msg *v2ControlMessage, err error) {
 		{avpTypeProtocolVersion, []byte{1, 0}},
 		{avpTypeFramingCap, uint32(cfg.FramingCaps)},
 		{avpTypeHostName, cfg.HostName},
-		{avpTypeTunnelID, uint16(cfg.TunnelID)}, // FIXME
+		{avpTypeTunnelID, uint16(cfg.TunnelID)},
 	}
 	return buildV2TunnelMsg(cfg.PeerTunnelID, in)
 }
