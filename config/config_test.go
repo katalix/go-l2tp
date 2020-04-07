@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -12,7 +13,7 @@ import (
 func TestGetTunnels(t *testing.T) {
 	cases := []struct {
 		in   string
-		want map[string]*l2tp.TunnelConfig
+		want []NamedTunnel
 	}{
 		{
 			in: `[tunnel.t1]
@@ -34,27 +35,31 @@ func TestGetTunnels(t *testing.T) {
 				 max_retries = 2
 				 framing_caps = ["sync","async"]
 				 `,
-			want: map[string]*l2tp.TunnelConfig{
-				"t1": &l2tp.TunnelConfig{
-					Encap:        l2tp.EncapTypeIP,
-					Version:      l2tp.ProtocolVersion3,
-					Peer:         "82.9.90.101:1701",
-					TunnelID:     412,
-					PeerTunnelID: 8192,
-					FramingCaps:  l2tp.FramingCapSync,
-					HostName:     "blackhole.local",
-					Sessions:     make(map[string]*l2tp.SessionConfig),
+			want: []NamedTunnel{
+				{
+					Name: "t1",
+					Config: &l2tp.TunnelConfig{
+						Encap:        l2tp.EncapTypeIP,
+						Version:      l2tp.ProtocolVersion3,
+						Peer:         "82.9.90.101:1701",
+						TunnelID:     412,
+						PeerTunnelID: 8192,
+						FramingCaps:  l2tp.FramingCapSync,
+						HostName:     "blackhole.local",
+					},
 				},
-				"t2": &l2tp.TunnelConfig{
-					Encap:        l2tp.EncapTypeUDP,
-					Version:      l2tp.ProtocolVersion2,
-					Peer:         "[2001:0000:1234:0000:0000:C1C0:ABCD:0876]:6543",
-					Sessions:     make(map[string]*l2tp.SessionConfig),
-					HelloTimeout: 250 * time.Millisecond,
-					WindowSize:   10,
-					RetryTimeout: 250 * time.Millisecond,
-					MaxRetries:   2,
-					FramingCaps:  l2tp.FramingCapSync | l2tp.FramingCapAsync,
+				{
+					Name: "t2",
+					Config: &l2tp.TunnelConfig{
+						Encap:        l2tp.EncapTypeUDP,
+						Version:      l2tp.ProtocolVersion2,
+						Peer:         "[2001:0000:1234:0000:0000:C1C0:ABCD:0876]:6543",
+						HelloTimeout: 250 * time.Millisecond,
+						WindowSize:   10,
+						RetryTimeout: 250 * time.Millisecond,
+						MaxRetries:   2,
+						FramingCaps:  l2tp.FramingCapSync | l2tp.FramingCapAsync,
+					},
 				},
 			},
 		},
@@ -79,27 +84,36 @@ func TestGetTunnels(t *testing.T) {
 				 interface_name = "becky"
 				 l2spec_type = "default"
 				`,
-			want: map[string]*l2tp.TunnelConfig{
-				"t1": &l2tp.TunnelConfig{
-					Encap:       l2tp.EncapTypeIP,
-					Version:     l2tp.ProtocolVersion3,
-					Peer:        "127.0.0.1:5001",
-					FramingCaps: l2tp.FramingCapSync | l2tp.FramingCapAsync,
-					Sessions: map[string]*l2tp.SessionConfig{
-						"s1": &l2tp.SessionConfig{
-							Pseudowire:     l2tp.PseudowireTypeEth,
-							Cookie:         []byte{0x34, 0x04, 0xa9, 0xbe},
-							PeerCookie:     []byte{0x80, 0x12, 0xff, 0x5b},
-							SeqNum:         true,
-							ReorderTimeout: time.Millisecond * 1500,
-							L2SpecType:     l2tp.L2SpecTypeNone,
+			want: []NamedTunnel{
+				{
+					Name: "t1",
+					Config: &l2tp.TunnelConfig{
+						Encap:       l2tp.EncapTypeIP,
+						Version:     l2tp.ProtocolVersion3,
+						Peer:        "127.0.0.1:5001",
+						FramingCaps: l2tp.FramingCapSync | l2tp.FramingCapAsync,
+					},
+					Sessions: []NamedSession{
+						{
+							Name: "s1",
+							Config: &l2tp.SessionConfig{
+								Pseudowire:     l2tp.PseudowireTypeEth,
+								Cookie:         []byte{0x34, 0x04, 0xa9, 0xbe},
+								PeerCookie:     []byte{0x80, 0x12, 0xff, 0x5b},
+								SeqNum:         true,
+								ReorderTimeout: time.Millisecond * 1500,
+								L2SpecType:     l2tp.L2SpecTypeNone,
+							},
 						},
-						"s2": &l2tp.SessionConfig{
-							Pseudowire:    l2tp.PseudowireTypePPP,
-							SessionID:     90210,
-							PeerSessionID: 1237812,
-							InterfaceName: "becky",
-							L2SpecType:    l2tp.L2SpecTypeDefault,
+						{
+							Name: "s2",
+							Config: &l2tp.SessionConfig{
+								Pseudowire:    l2tp.PseudowireTypePPP,
+								SessionID:     90210,
+								PeerSessionID: 1237812,
+								InterfaceName: "becky",
+								L2SpecType:    l2tp.L2SpecTypeDefault,
+							},
 						},
 					},
 				},
@@ -107,15 +121,29 @@ func TestGetTunnels(t *testing.T) {
 		},
 	}
 	for _, c := range cases {
-		cfg, err := LoadConfigString(c.in)
+		cfg, err := LoadString(c.in)
 		if err != nil {
 			t.Fatalf("LoadString(%v): %v", c.in, err)
 		}
-		tunnels := cfg.GetTunnels()
-		if !reflect.DeepEqual(tunnels, c.want) {
-			t.Fatalf("GetTunnels(): got %v, want %v", tunnels, c.want)
+		for _, want := range c.want {
+			got, err := cfg.findTunnelByName(want.Name)
+			if err != nil {
+				t.Fatalf("missing tunnel: %v", err)
+			}
+			if !reflect.DeepEqual(got, &want) {
+				t.Fatalf("got %v, want %v", got, want)
+			}
 		}
 	}
+}
+
+func (c *Config) findTunnelByName(name string) (*NamedTunnel, error) {
+	for _, t := range c.Tunnels {
+		if t.Name == name {
+			return &t, nil
+		}
+	}
+	return nil, fmt.Errorf("no tunnel of name %s", name)
 }
 
 func TestBadConfig(t *testing.T) {
@@ -242,7 +270,7 @@ func TestBadConfig(t *testing.T) {
 
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := LoadConfigString(tt.in)
+			_, err := LoadString(tt.in)
 			if err == nil {
 				t.Fatalf("LoadString(%v) succeeded when we expected an error", tt.in)
 			}

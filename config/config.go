@@ -1,3 +1,147 @@
+/*
+Package config implements a parser for L2TP configuration represented in
+the TOML format: https://github.com/toml-lang/toml.
+
+Please refer to the TOML repos for an in-depth description of the syntax.
+
+Tunnel and session instances are called out in the configuration file
+using named TOML tables.  Each tunnel or session instance table contains
+configuration parameters for that instance as key:value pairs.
+
+	# This is a tunnel instance named "t1"
+	# Note that not all configuration parameters apply to all tunnel types.
+	# Refer to the documentation for the specific tunnel creation
+	# functions for more information.
+	[tunnel.t1]
+
+	# local specifies the local address that the tunnel should
+	# bind its socket to
+	local = "127.0.0.1:5000"
+
+	# peer specifies the address of the peer that the tunnel should
+	# connect its socket to
+	peer = "127.0.0.1:5001"
+
+	# version specifies the version of the L2TP specification the
+	# tunnel should use.
+	# Currently supported values are "l2tpv2" and "l2tpv3"
+	version = "l2tpv3"
+
+	# encap specifies the encapsulation to be used for the tunnel.
+	# Currently supported values are "udp" and "ip".
+	# L2TPv2 tunnels are UDP only.
+	encap = "udp"
+
+	# tid specifies the local tunnel ID of the tunnel.
+	# Tunnel IDs must be unique for the host.
+	# L2TPv2 tunnel IDs are 16 bit, and may be in the range 1 - 65535.
+	# L2TPv3 tunnel IDs are 32 bit, and may be in the range 1 - 4294967295.
+	tid = 62719
+
+	# ptid specifies the peer's tunnel ID for the tunnel.
+	# The peer's tunnel ID must be unique for the peer, and are unrelated
+	# to the local tunnel ID.
+	# The rules for tunnel ID range apply to the peer tunnel ID too.
+	ptid = 72819
+
+	# window_size specifies the initial window size to use for the L2TP
+	# reliable transport algorithm which is used for control protocol
+	# messages.  The window size dictates how many control messages the
+	# tunnel may have "in flight" (i.e. pending an ACK from the peer) at
+	# any one time.  Tuning the window size can allow high-volume L2TP servers
+	# to improve performance.  Generally it won't be necessary to change
+	# this from the default value of 4.
+	window_size = 10 # control messages
+
+	# hello_timeout if set enables L2TP keep-alive (HELLO) messages.
+	# A hello message is sent N milliseconds after the last control
+	# message was sent or received.  It allows for early detection of
+	# tunnel failure on quiet connections.
+	# By default no keep-alive messages are sent.
+	hello_timeout = 7500 # milliseconds
+
+	# retry_timeout if set tweaks the starting retry timeout for the
+	# reliable transport algorithm used for L2TP control messages.
+	# The algorithm uses an exponential backoff when retrying messages.
+	# By default a starting retry timeout of 1000ms is used.
+	retry_timeout = 1500 # milliseconds
+
+	# max_retries sets how many times a given control message may be
+	# retried before the transport considers the message transmission to
+	# have failed.
+	# It may be useful to tune this value on unreliable network connections
+	# to avoid suprious tunnel failure, or conversely to allow for quicker
+	# tunnel failure detection on reliable links.
+	# The default is 3 retries.
+	max_retries 5
+
+	# host_name sets the host name the tunnel will advertise in the
+	# Host Name AVP per RFC2661.
+	# If unset the host's name will be queried and the returned value used.
+	host_name "basilbrush.local"
+
+	# framing_caps sets the framing capabilites the tunnel will advertise
+	# in the Framing Capabilites AVP per RFC2661.
+	# The default is to advertise both sync and async framing.
+	framing_caps = ["sync","async"]
+
+	# This is a session instance called "s1" within parent tunnel "t1".
+	# Session instances are always created inside a parent tunnel.
+	[tunnel.t1.session.s1]
+
+	# sid specifies the local session ID of the session.
+	# Session IDs must be unique to the tunnel for L2TPv2, or unique to
+	# the peer for L2TPv3.
+	# L2TPv2 session IDs are 16 bit, and may be in the range 1 - 65535.
+	# L2TPv3 session IDs are 32 bit, and may be in the range 1 - 4294967295.
+	sid = 12389
+
+	# psid specifies the peer's session ID for the session.
+	# The peer's session ID is unrelated to the local session ID.
+	# The rules for the session ID range apply to the peer session ID too.
+	psid = 1234
+
+	# pseudowire specifies the type of layer 2 frames carried by the session.
+	# Currently supported values are "ppp" and "eth".
+	# L2TPv2 tunnels support PPP pseudowires only.
+	pseudowire = "eth"
+
+	# seqnum, if set, enables the transmission of sequence numbers with
+	# L2TP data messages.  Use of sequence numbers enables the data plane
+	# to reorder data packets to ensure they are delivered in sequence.
+	# By default sequence numbers are not used.
+	seqnum = false
+
+	# cookie, if set, specifies the local L2TPv3 cookie for the session.
+	# Cookies are a data verification mechanism intended to allow misdirected
+	# data packets to be detected and rejected.
+	# Transmitted data packets will include the local cookie in their header.
+	# Cookies may be either 4 or 8 bytes long, and contain aribrary data.
+	# By default no local cookie is set.
+	cookie = [ 0x12, 0xe9, 0x54, 0x0f, 0xe2, 0x68, 0x72, 0xbc ]
+
+	# peer_cookie, if set, specifies the L2TPv3 cookie the peer will send in
+	# the header of its data messages.
+	# Messages received without the peer's cookie (or with the wrong cookie)
+	# will be rejected.
+	# By default no peer cookie is set.
+	peer_cookie = [ 0x74, 0x2e, 0x28, 0xa8 ]
+
+	# interface_name, if set, specifies the network interface name to be
+	# used for the session instance.
+	# By default the Linux kernel autogenerates an interface name specific to
+	# the pseudowire type, e.g. "l2tpeth0", "ppp0".
+	# Setting the interface name can be useful when you need to be certain
+	# of the interface name a given session will use.
+	# By default the kernel autogenerates an interface name.
+	interface_name = "l2tpeth42"
+
+	# l2spec_type specifies the L2TPv3 Layer 2 specific sublayer field to
+	# be used in data packet headers as per RFC3931 section 3.2.2.
+	# Currently supported values are "none" and "default".
+	# By default no Layer 2 specific sublayer is used.
+	l2spec_type = "default"
+*/
 package config
 
 import (
@@ -8,13 +152,32 @@ import (
 	"github.com/pelletier/go-toml"
 )
 
-// Config represents L2TP configuration for tunnel and session instances,
-// and uses the TOML format: https://github.com/toml-lang/toml.
+// Config contains L2TP configuration for tunnel and session instances.
 type Config struct {
-	// entire tree as a map
-	cm map[string]interface{}
-	// map of tunnels mapping tunnel name to config
-	tunnels map[string]*l2tp.TunnelConfig
+	// The entire tree as a map as parsed from the TOML representation.
+	// Apps may access this tree to handle their own config tables.
+	Map map[string]interface{}
+	// All the tunnels defined in the configuration.
+	Tunnels []NamedTunnel
+}
+
+// NamedTunnel contains L2TP configuration for a tunnel instance,
+// and the sessions that tunnel contains.
+type NamedTunnel struct {
+	// The tunnel's name as specified in the config file.
+	Name string
+	// The tunnel L2TP configuration.
+	Config *l2tp.TunnelConfig
+	// The sessions defined within this tunnel in the config file.
+	Sessions []NamedSession
+}
+
+// NamedSession contains L2TP configuration for a session instance.
+type NamedSession struct {
+	// The session's name as specified in the config file.
+	Name string
+	// The session L2TP configuration.
+	Config *l2tp.SessionConfig
 }
 
 func toBool(v interface{}) (bool, error) {
@@ -228,8 +391,8 @@ func newSessionConfig(scfg map[string]interface{}) (*l2tp.SessionConfig, error) 
 	return &sc, nil
 }
 
-func loadSessions(v interface{}) (map[string]*l2tp.SessionConfig, error) {
-	out := make(map[string]*l2tp.SessionConfig)
+func loadSessions(v interface{}) ([]NamedSession, error) {
+	var out []NamedSession
 	sessions, ok := v.(map[string]interface{})
 	if !ok {
 		return nil, fmt.Errorf("session instances must be named, e.g. '[tunnel.mytunnel.session.mysession]'")
@@ -243,47 +406,52 @@ func loadSessions(v interface{}) (map[string]*l2tp.SessionConfig, error) {
 		if err != nil {
 			return nil, fmt.Errorf("session %v: %v", name, err)
 		}
-		out[name] = scfg
+		out = append(out, NamedSession{
+			Name:   name,
+			Config: scfg,
+		})
 	}
 	return out, nil
 }
 
-func newTunnelConfig(tcfg map[string]interface{}) (*l2tp.TunnelConfig, error) {
-	tc := l2tp.TunnelConfig{
-		FramingCaps: l2tp.FramingCapSync | l2tp.FramingCapAsync,
-		Sessions:    make(map[string]*l2tp.SessionConfig),
+func newTunnelConfig(name string, tcfg map[string]interface{}) (*NamedTunnel, error) {
+	nt := &NamedTunnel{
+		Name: name,
+		Config: &l2tp.TunnelConfig{
+			FramingCaps: l2tp.FramingCapSync | l2tp.FramingCapAsync,
+		},
 	}
 	for k, v := range tcfg {
 		var err error
 		switch k {
 		case "local":
-			tc.Local, err = toString(v)
+			nt.Config.Local, err = toString(v)
 		case "peer":
-			tc.Peer, err = toString(v)
+			nt.Config.Peer, err = toString(v)
 		case "encap":
-			tc.Encap, err = toEncapType(v)
+			nt.Config.Encap, err = toEncapType(v)
 		case "version":
-			tc.Version, err = toVersion(v)
+			nt.Config.Version, err = toVersion(v)
 		case "tid":
-			tc.TunnelID, err = toCCID(v)
+			nt.Config.TunnelID, err = toCCID(v)
 		case "ptid":
-			tc.PeerTunnelID, err = toCCID(v)
+			nt.Config.PeerTunnelID, err = toCCID(v)
 		case "window_size":
-			tc.WindowSize, err = toUint16(v)
+			nt.Config.WindowSize, err = toUint16(v)
 		case "hello_timeout":
-			tc.HelloTimeout, err = toDurationMs(v)
+			nt.Config.HelloTimeout, err = toDurationMs(v)
 		case "retry_timeout":
-			tc.RetryTimeout, err = toDurationMs(v)
+			nt.Config.RetryTimeout, err = toDurationMs(v)
 		case "max_retries":
 			if u, err := toUint16(v); err == nil {
-				tc.MaxRetries = uint(u)
+				nt.Config.MaxRetries = uint(u)
 			}
 		case "host_name":
-			tc.HostName, err = toString(v)
+			nt.Config.HostName, err = toString(v)
 		case "framing_caps":
-			tc.FramingCaps, err = toFramingCaps(v)
+			nt.Config.FramingCaps, err = toFramingCaps(v)
 		case "session":
-			tc.Sessions, err = loadSessions(v)
+			nt.Sessions, err = loadSessions(v)
 		default:
 			return nil, fmt.Errorf("unrecognised parameter '%v'", k)
 		}
@@ -291,14 +459,14 @@ func newTunnelConfig(tcfg map[string]interface{}) (*l2tp.TunnelConfig, error) {
 			return nil, fmt.Errorf("failed to process %v: %v", k, err)
 		}
 	}
-	return &tc, nil
+	return nt, nil
 }
 
 func (cfg *Config) loadTunnels() error {
 	var tunnels map[string]interface{}
 
 	// Extract the tunnel map from the configuration tree
-	if got, ok := cfg.cm["tunnel"]; ok {
+	if got, ok := cfg.Map["tunnel"]; ok {
 		tunnels, ok = got.(map[string]interface{})
 		if !ok {
 			return fmt.Errorf("tunnel instances must be named, e.g. '[tunnel.mytunnel]'")
@@ -313,20 +481,18 @@ func (cfg *Config) loadTunnels() error {
 		if !ok {
 			return fmt.Errorf("tunnel instances must be named, e.g. '[tunnel.mytunnel]'")
 		}
-		tcfg, err := newTunnelConfig(tmap)
+		tcfg, err := newTunnelConfig(name, tmap)
 		if err != nil {
 			return fmt.Errorf("tunnel %v: %v", name, err)
 		}
-		cfg.tunnels[name] = tcfg
+		fmt.Printf("loadTunnels: %s\n", name)
+		cfg.Tunnels = append(cfg.Tunnels, *tcfg)
 	}
 	return nil
 }
 
 func newConfig(tree *toml.Tree) (*Config, error) {
-	cfg := &Config{
-		cm:      tree.ToMap(),
-		tunnels: make(map[string]*l2tp.TunnelConfig),
-	}
+	cfg := &Config{Map: tree.ToMap()}
 	err := cfg.loadTunnels()
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse tunnels: %v", err)
@@ -334,8 +500,8 @@ func newConfig(tree *toml.Tree) (*Config, error) {
 	return cfg, nil
 }
 
-// LoadConfigFile loads configuration from the specified file.
-func LoadConfigFile(path string) (*Config, error) {
+// LoadFile loads configuration from the specified file.
+func LoadFile(path string) (*Config, error) {
 	tree, err := toml.LoadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load config file: %v", err)
@@ -343,23 +509,11 @@ func LoadConfigFile(path string) (*Config, error) {
 	return newConfig(tree)
 }
 
-// LoadConfigString loads configuration from the specified string.
-func LoadConfigString(content string) (*Config, error) {
+// LoadString loads configuration from the specified string.
+func LoadString(content string) (*Config, error) {
 	tree, err := toml.Load(content)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load config string: %v", err)
 	}
 	return newConfig(tree)
-}
-
-// GetTunnels returns a map of tunnel name to tunnel config for
-// all the tunnels described by the configuration.
-func (cfg *Config) GetTunnels() map[string]*l2tp.TunnelConfig {
-	return cfg.tunnels
-}
-
-// ToMap provides access to the configuration for application-specific
-// information to be handled.
-func (cfg *Config) ToMap() map[string]interface{} {
-	return cfg.cm
 }

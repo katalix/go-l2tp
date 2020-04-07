@@ -44,7 +44,7 @@ func main() {
 	verbosePtr := flag.Bool("verbose", false, "toggle verbose log output")
 	flag.Parse()
 
-	config, err := config.LoadConfigFile(*cfgPathPtr)
+	config, err := config.LoadFile(*cfgPathPtr)
 	if err != nil {
 		stdlog.Fatalf("failed to load l2tp configuration: %v", err)
 	}
@@ -62,15 +62,15 @@ func main() {
 	}
 	defer l2tpCtx.Close()
 
-	for tnam, tcfg := range config.GetTunnels() {
-		tunl, err := l2tpCtx.NewQuiescentTunnel(tnam, tcfg)
+	for _, tcfg := range config.Tunnels {
+		tunl, err := l2tpCtx.NewQuiescentTunnel(tcfg.Name, tcfg.Config)
 		if err != nil {
-			stdlog.Fatalf("failed to instantiate tunnel %v: %v", tnam, err)
+			stdlog.Fatalf("failed to instantiate tunnel %v: %v", tcfg.Name, err)
 		}
-		for snam, scfg := range tcfg.Sessions {
-			_, err := tunl.NewSession(snam, scfg)
+		for _, scfg := range tcfg.Sessions {
+			_, err := tunl.NewSession(scfg.Name, scfg.Config)
 			if err != nil {
-				stdlog.Fatalf("failed to instantiate session %v in tunnel %v: %v", snam, tnam, err)
+				stdlog.Fatalf("failed to instantiate session %v in tunnel %v: %v", scfg.Name, tcfg.Name, err)
 			}
 		}
 	}

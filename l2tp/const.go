@@ -123,8 +123,6 @@ type TunnelConfig struct {
 	MaxRetries   uint
 	HostName     string
 	FramingCaps  FramingCapability
-	// map of sessions within the tunnel
-	Sessions map[string]*SessionConfig
 }
 
 // SessionConfig encapsulates session configuration for a pseudowire
