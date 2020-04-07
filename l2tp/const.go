@@ -44,6 +44,17 @@ func (e EncapType) String() string {
 	panic("unhandled encap type")
 }
 
+// FramingCapability describes the type of framing which a peer supports.
+// It should be specified as a bitwise OR of FramingCap* values.
+type FramingCapability uint32
+
+const (
+	// FramingCapSync indicates synchronous framing is supported
+	FramingCapSync = 0x1
+	// FramingCapAsync indicates asynchronous framing is supported
+	FramingCapAsync = 0x2
+)
+
 // PseudowireType is the session type for a given session.
 // RFC2661 is PPP-only; whereas RFC3931 supports multiple types.
 type PseudowireType int

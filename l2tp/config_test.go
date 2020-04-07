@@ -19,6 +19,7 @@ func TestGetTunnels(t *testing.T) {
 				 peer = "82.9.90.101:1701"
 				 tid = 412
 				 ptid = 8192
+				 framing_caps = ["sync"]
 
 				 [tunnel.t2]
 				 encap = "udp"
@@ -28,6 +29,7 @@ func TestGetTunnels(t *testing.T) {
 				 window_size = 10
 				 retry_timeout = 250
 				 max_retries = 2
+				 framing_caps = ["sync","async"]
 				 `,
 			want: map[string]*TunnelConfig{
 				"t1": &TunnelConfig{
@@ -36,6 +38,7 @@ func TestGetTunnels(t *testing.T) {
 					Peer:         "82.9.90.101:1701",
 					TunnelID:     412,
 					PeerTunnelID: 8192,
+					FramingCaps:  FramingCapSync,
 					Sessions:     make(map[string]*SessionConfig),
 				},
 				"t2": &TunnelConfig{
@@ -47,6 +50,7 @@ func TestGetTunnels(t *testing.T) {
 					WindowSize:   10,
 					RetryTimeout: 250 * time.Millisecond,
 					MaxRetries:   2,
+					FramingCaps:  FramingCapSync | FramingCapAsync,
 				},
 			},
 		},
@@ -73,9 +77,10 @@ func TestGetTunnels(t *testing.T) {
 				`,
 			want: map[string]*TunnelConfig{
 				"t1": &TunnelConfig{
-					Encap:   EncapTypeIP,
-					Version: ProtocolVersion3,
-					Peer:    "127.0.0.1:5001",
+					Encap:       EncapTypeIP,
+					Version:     ProtocolVersion3,
+					Peer:        "127.0.0.1:5001",
+					FramingCaps: FramingCapSync | FramingCapAsync,
 					Sessions: map[string]*SessionConfig{
 						"s1": &SessionConfig{
 							Pseudowire:     PseudowireTypeEth,
@@ -164,6 +169,12 @@ func TestBadConfig(t *testing.T) {
 				 [tunnel.t1.session.s1]
 				 l2spec_type = "whizzoo"`,
 			estr: "expect 'none' or 'default'",
+		},
+		{
+			name: "Bad value (unrecognised FramingCap)",
+			in: `[tunnel.t1]
+				 framing_caps = [ "bizzle" ]`,
+			estr: "expect 'sync' or 'async'",
 		},
 		{
 			name: "Bad value (range exceeded)",

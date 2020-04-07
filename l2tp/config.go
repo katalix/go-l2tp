@@ -30,6 +30,7 @@ type TunnelConfig struct {
 	HelloTimeout time.Duration
 	RetryTimeout time.Duration
 	MaxRetries   uint
+	FramingCaps  FramingCapability
 	// map of sessions within the tunnel
 	Sessions map[string]*SessionConfig
 }
@@ -128,6 +129,34 @@ func toVersion(v interface{}) (ProtocolVersion, error) {
 		return 0, fmt.Errorf("expect 'l2tpv2' or 'l2tpv3'")
 	}
 	return 0, err
+}
+
+func toFramingCaps(v interface{}) (FramingCapability, error) {
+	var fc FramingCapability
+
+	// First ensure that the supplied value is actually an array
+	caps, ok := v.([]interface{})
+	if !ok {
+		return 0, fmt.Errorf("expected array value")
+	}
+
+	// TOML arrays can be mixed type, so we have to check on a value-by-value
+	// basis that the value in the array can be represented as a string.
+	for _, c := range caps {
+		cs, err := toString(c)
+		if err != nil {
+			return 0, err
+		}
+		switch cs {
+		case "sync":
+			fc |= FramingCapSync
+		case "async":
+			fc |= FramingCapAsync
+		default:
+			return 0, fmt.Errorf("expect 'sync' or 'async'")
+		}
+	}
+	return fc, nil
 }
 
 func toEncapType(v interface{}) (EncapType, error) {
@@ -252,7 +281,8 @@ func (t *TunnelConfig) loadSessions(v interface{}) error {
 
 func newTunnelConfig(tcfg map[string]interface{}) (*TunnelConfig, error) {
 	tc := TunnelConfig{
-		Sessions: make(map[string]*SessionConfig),
+		FramingCaps: FramingCapSync | FramingCapAsync,
+		Sessions:    make(map[string]*SessionConfig),
 	}
 	for k, v := range tcfg {
 		var err error
@@ -279,6 +309,8 @@ func newTunnelConfig(tcfg map[string]interface{}) (*TunnelConfig, error) {
 			if u, err := toUint16(v); err == nil {
 				tc.MaxRetries = uint(u)
 			}
+		case "framing_caps":
+			tc.FramingCaps, err = toFramingCaps(v)
 		case "session":
 			err = tc.loadSessions(v)
 		default:
