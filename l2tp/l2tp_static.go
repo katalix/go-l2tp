@@ -21,7 +21,7 @@ type staticTunnel struct {
 type staticSession struct {
 	logger log.Logger
 	name   string
-	parent Tunnel
+	parent tunnel
 	cfg    *SessionConfig
 	dp     dataPlane
 }
@@ -104,7 +104,7 @@ func newStaticTunnel(name string, parent *Context, sal, sap unix.Sockaddr, cfg *
 	return
 }
 
-func newStaticSession(name string, parent Tunnel, cfg *SessionConfig) (ss *staticSession, err error) {
+func newStaticSession(name string, parent tunnel, cfg *SessionConfig) (ss *staticSession, err error) {
 	// Since we're static we instantiate the session in the
 	// dataplane at the point of creation.
 	dp, err := newSessionDataPlane(parent.getNLConn(), parent.getCfg().TunnelID, parent.getCfg().PeerTunnelID, cfg)

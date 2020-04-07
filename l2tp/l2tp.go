@@ -31,7 +31,11 @@ type Tunnel interface {
 	//
 	// Any sessions instantiated inside the tunnel are removed.
 	Close()
+}
 
+// Internal interface used by sessions
+type tunnel interface {
+	Tunnel
 	getCfg() *TunnelConfig
 	getNLConn() *nll2tp.Conn
 	getLogger() log.Logger
