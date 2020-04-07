@@ -146,6 +146,11 @@ configuration parameters for that instance as key:value pairs.
 	# The default is 3 retries.
 	max_retries 5
 
+	# framing_caps sets the framing capabilites the tunnel will advertise
+	# in the Framing Capabilites AVP per RFC2661.
+	# The default is to advertise both sync and async framing.
+	framing_caps = ["sync","async"]
+
 	# This is a session instance called "s1" within parent tunnel "t1".
 	# Session instances are always created inside a parent tunnel.
 	[tunnel.t1.session.s1]
