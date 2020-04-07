@@ -134,6 +134,23 @@ func getV2MsgSpec(t avpMsgType) (*msgSpec, error) {
 	return nil, fmt.Errorf("no specification for v2 message %v", t)
 }
 
+func v3HelloMsgSpec() *msgSpec {
+	/* Ref: RFC3931 section 6.5 */
+	spec := msgSpec{make(map[avpType]avpSpec)}
+	spec.m[avpTypeMessage] = mustExist
+	spec.m[avpTypeRandomVector] = mayExist
+	spec.m[avpTypeMessageDigest] = mayExist
+	return &spec
+}
+
+func getV3MsgSpec(t avpMsgType) (*msgSpec, error) {
+	switch t {
+	case avpMsgTypeHello:
+		return v3HelloMsgSpec(), nil
+	}
+	return nil, fmt.Errorf("no specification for v3 message %v", t)
+}
+
 func (h *l2tpCommonHeader) protocolVersion() (version ProtocolVersion, err error) {
 	switch h.FlagsVer & 0xf {
 	case 2:
@@ -142,6 +159,46 @@ func (h *l2tpCommonHeader) protocolVersion() (version ProtocolVersion, err error
 		return ProtocolVersion3, nil
 	}
 	return 0, errors.New("illegal protocol version")
+}
+
+func validateAvps(avps []avp, spec *msgSpec) error {
+	seen := make(map[avpType]bool)
+
+	for at, as := range spec.m {
+		if as == mustExist {
+			seen[at] = false
+		}
+	}
+
+	for _, avp := range avps {
+		as, ok := spec.hasAvp(avp.getType())
+		if !ok {
+			// RFC2661 section 4.1 says we MUST tear down the tunnel on receipt of
+			// an unrecognised AVP with the M bit set.
+			// And we MUST ignore an unrecognised AVP with the M bit unset.
+			if avp.isMandatory() {
+				return fmt.Errorf("unexpected AVP %v", avp.getType())
+			} else {
+				continue
+			}
+		}
+		if as == mustExist {
+			seen[avp.getType()] = true
+		}
+		_, err := avp.decode()
+		if err != nil {
+			return fmt.Errorf("failed to decode AVP %v: %v", avp.getType(), err)
+		}
+	}
+
+	// ensure we saw all the AVPs we must have
+	for at, ok := range seen {
+		if !ok {
+			return fmt.Errorf("missing mandatory AVP %v", at)
+		}
+	}
+
+	return nil
 }
 
 func newL2tpV2MessageHeader(tid, sid, ns, nr uint16, payloadBytes int) *l2tpV2Header {
@@ -343,48 +400,11 @@ func (m *v2ControlMessage) toBytes() ([]byte, error) {
 }
 
 func (m *v2ControlMessage) validate() error {
-	seen := make(map[avpType]bool)
-
 	spec, err := getV2MsgSpec(m.getType())
 	if err != nil {
 		return err
 	}
-
-	for at, as := range spec.m {
-		if as == mustExist {
-			seen[at] = false
-		}
-	}
-
-	for _, avp := range m.avps {
-		as, ok := spec.hasAvp(avp.getType())
-		if !ok {
-			// RFC2661 section 4.1 says we MUST tear down the tunnel on receipt of
-			// an unrecognised AVP with the M bit set.
-			// And we MUST ignore an unrecognised AVP with the M bit unset.
-			if avp.isMandatory() {
-				return fmt.Errorf("unexpected AVP %v in message %v", avp.getType(), m.getType())
-			} else {
-				continue
-			}
-		}
-		if as == mustExist {
-			seen[avp.getType()] = true
-		}
-		_, err = avp.decode()
-		if err != nil {
-			return fmt.Errorf("failed to decode AVP %v in message %v: %v", avp.getType(), m.getType(), err)
-		}
-	}
-
-	// ensure we saw all the AVPs we must have
-	for at, ok := range seen {
-		if !ok {
-			return fmt.Errorf("missing mandatory AVP %v in message %v", at, m.getType())
-		}
-	}
-
-	return nil
+	return validateAvps(m.avps, spec)
 }
 
 func (m *v3ControlMessage) protocolVersion() ProtocolVersion {
@@ -458,7 +478,11 @@ func (m *v3ControlMessage) toBytes() ([]byte, error) {
 }
 
 func (m *v3ControlMessage) validate() error {
-	return fmt.Errorf("v3ControlMessage validate() not implemented")
+	spec, err := getV3MsgSpec(m.getType())
+	if err != nil {
+		return err
+	}
+	return validateAvps(m.avps, spec)
 }
 
 // parseMessageBuffer takes a byte slice of L2TP control message data and
