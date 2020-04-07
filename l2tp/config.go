@@ -30,6 +30,7 @@ type TunnelConfig struct {
 	HelloTimeout time.Duration
 	RetryTimeout time.Duration
 	MaxRetries   uint
+	HostName     string
 	FramingCaps  FramingCapability
 	// map of sessions within the tunnel
 	Sessions map[string]*SessionConfig
@@ -309,6 +310,8 @@ func newTunnelConfig(tcfg map[string]interface{}) (*TunnelConfig, error) {
 			if u, err := toUint16(v); err == nil {
 				tc.MaxRetries = uint(u)
 			}
+		case "host_name":
+			tc.HostName, err = toString(v)
 		case "framing_caps":
 			tc.FramingCaps, err = toFramingCaps(v)
 		case "session":

@@ -20,6 +20,7 @@ func TestGetTunnels(t *testing.T) {
 				 tid = 412
 				 ptid = 8192
 				 framing_caps = ["sync"]
+				 host_name = "blackhole.local"
 
 				 [tunnel.t2]
 				 encap = "udp"
@@ -39,6 +40,7 @@ func TestGetTunnels(t *testing.T) {
 					TunnelID:     412,
 					PeerTunnelID: 8192,
 					FramingCaps:  FramingCapSync,
+					HostName:     "blackhole.local",
 					Sessions:     make(map[string]*SessionConfig),
 				},
 				"t2": &TunnelConfig{
