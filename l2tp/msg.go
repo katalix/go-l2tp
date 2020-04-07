@@ -359,8 +359,14 @@ func (m *v2ControlMessage) validate() error {
 	for _, avp := range m.avps {
 		as, ok := spec.hasAvp(avp.getType())
 		if !ok {
-			// TODO only fail if avp is mandatory?
-			return fmt.Errorf("unexpected AVP %v in message %v", avp.getType(), m.getType())
+			// RFC2661 section 4.1 says we MUST tear down the tunnel on receipt of
+			// an unrecognised AVP with the M bit set.
+			// And we MUST ignore an unrecognised AVP with the M bit unset.
+			if avp.isMandatory() {
+				return fmt.Errorf("unexpected AVP %v in message %v", avp.getType(), m.getType())
+			} else {
+				continue
+			}
 		}
 		if as == mustExist {
 			seen[avp.getType()] = true
