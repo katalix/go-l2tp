@@ -301,8 +301,6 @@ func runTransport(xport *transport, wg *sync.WaitGroup) {
 				}
 			}
 
-			// TODO: connect socket here if required
-
 			// Having added messages to the receive queue, process the queue
 			// to attempt to handle any messages that are in sequence.
 			xport.processRxQueue()
