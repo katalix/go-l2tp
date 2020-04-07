@@ -2,6 +2,7 @@ package l2tp
 
 import (
 	"github.com/katalix/go-l2tp/internal/nll2tp"
+	"time"
 )
 
 // ProtocolVersion is the version of the L2TP protocol to use
@@ -105,3 +106,37 @@ const (
 	// only.
 	TunnelTypeStatic
 )
+
+// TunnelConfig encapsulates tunnel configuration for a single
+// connection between two L2TP hosts.  Each tunnel may contain
+// multiple sessions.
+type TunnelConfig struct {
+	Local        string
+	Peer         string
+	Encap        EncapType
+	Version      ProtocolVersion
+	TunnelID     ControlConnID
+	PeerTunnelID ControlConnID
+	WindowSize   uint16
+	HelloTimeout time.Duration
+	RetryTimeout time.Duration
+	MaxRetries   uint
+	HostName     string
+	FramingCaps  FramingCapability
+	// map of sessions within the tunnel
+	Sessions map[string]*SessionConfig
+}
+
+// SessionConfig encapsulates session configuration for a pseudowire
+// connection within a tunnel between two L2TP hosts.
+type SessionConfig struct {
+	SessionID      ControlConnID
+	PeerSessionID  ControlConnID
+	Pseudowire     PseudowireType
+	SeqNum         bool
+	ReorderTimeout time.Duration
+	Cookie         []byte
+	PeerCookie     []byte
+	InterfaceName  string
+	L2SpecType     L2SpecType
+}

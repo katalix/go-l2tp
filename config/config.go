@@ -1,9 +1,10 @@
-package l2tp
+package config
 
 import (
 	"fmt"
 	"time"
 
+	"github.com/katalix/go-l2tp/l2tp"
 	"github.com/pelletier/go-toml"
 )
 
@@ -13,41 +14,7 @@ type Config struct {
 	// entire tree as a map
 	cm map[string]interface{}
 	// map of tunnels mapping tunnel name to config
-	tunnels map[string]*TunnelConfig
-}
-
-// TunnelConfig encapsulates tunnel configuration for a single
-// connection between two L2TP hosts.  Each tunnel may contain
-// multiple sessions.
-type TunnelConfig struct {
-	Local        string
-	Peer         string
-	Encap        EncapType
-	Version      ProtocolVersion
-	TunnelID     ControlConnID
-	PeerTunnelID ControlConnID
-	WindowSize   uint16
-	HelloTimeout time.Duration
-	RetryTimeout time.Duration
-	MaxRetries   uint
-	HostName     string
-	FramingCaps  FramingCapability
-	// map of sessions within the tunnel
-	Sessions map[string]*SessionConfig
-}
-
-// SessionConfig encapsulates session configuration for a pseudowire
-// connection within a tunnel between two L2TP hosts.
-type SessionConfig struct {
-	SessionID      ControlConnID
-	PeerSessionID  ControlConnID
-	Pseudowire     PseudowireType
-	SeqNum         bool
-	ReorderTimeout time.Duration
-	Cookie         []byte
-	PeerCookie     []byte
-	InterfaceName  string
-	L2SpecType     L2SpecType
+	tunnels map[string]*l2tp.TunnelConfig
 }
 
 func toBool(v interface{}) (bool, error) {
@@ -118,22 +85,22 @@ func toDurationMs(v interface{}) (time.Duration, error) {
 	return time.Duration(u) * time.Millisecond, err
 }
 
-func toVersion(v interface{}) (ProtocolVersion, error) {
+func toVersion(v interface{}) (l2tp.ProtocolVersion, error) {
 	s, err := toString(v)
 	if err == nil {
 		switch s {
 		case "l2tpv2":
-			return ProtocolVersion2, nil
+			return l2tp.ProtocolVersion2, nil
 		case "l2tpv3":
-			return ProtocolVersion3, nil
+			return l2tp.ProtocolVersion3, nil
 		}
 		return 0, fmt.Errorf("expect 'l2tpv2' or 'l2tpv3'")
 	}
 	return 0, err
 }
 
-func toFramingCaps(v interface{}) (FramingCapability, error) {
-	var fc FramingCapability
+func toFramingCaps(v interface{}) (l2tp.FramingCapability, error) {
+	var fc l2tp.FramingCapability
 
 	// First ensure that the supplied value is actually an array
 	caps, ok := v.([]interface{})
@@ -150,9 +117,9 @@ func toFramingCaps(v interface{}) (FramingCapability, error) {
 		}
 		switch cs {
 		case "sync":
-			fc |= FramingCapSync
+			fc |= l2tp.FramingCapSync
 		case "async":
-			fc |= FramingCapAsync
+			fc |= l2tp.FramingCapAsync
 		default:
 			return 0, fmt.Errorf("expect 'sync' or 'async'")
 		}
@@ -160,51 +127,51 @@ func toFramingCaps(v interface{}) (FramingCapability, error) {
 	return fc, nil
 }
 
-func toEncapType(v interface{}) (EncapType, error) {
+func toEncapType(v interface{}) (l2tp.EncapType, error) {
 	s, err := toString(v)
 	if err == nil {
 		switch s {
 		case "udp":
-			return EncapTypeUDP, nil
+			return l2tp.EncapTypeUDP, nil
 		case "ip":
-			return EncapTypeIP, nil
+			return l2tp.EncapTypeIP, nil
 		}
 		return 0, fmt.Errorf("expect 'udp' or 'ip'")
 	}
 	return 0, err
 }
 
-func toPseudowireType(v interface{}) (PseudowireType, error) {
+func toPseudowireType(v interface{}) (l2tp.PseudowireType, error) {
 	s, err := toString(v)
 	if err == nil {
 		switch s {
 		case "ppp":
-			return PseudowireTypePPP, nil
+			return l2tp.PseudowireTypePPP, nil
 		case "eth":
-			return PseudowireTypeEth, nil
+			return l2tp.PseudowireTypeEth, nil
 		}
 		return 0, fmt.Errorf("expect 'ppp' or 'eth'")
 	}
 	return 0, err
 }
 
-func toL2SpecType(v interface{}) (L2SpecType, error) {
+func toL2SpecType(v interface{}) (l2tp.L2SpecType, error) {
 	s, err := toString(v)
 	if err == nil {
 		switch s {
 		case "none":
-			return L2SpecTypeNone, nil
+			return l2tp.L2SpecTypeNone, nil
 		case "default":
-			return L2SpecTypeDefault, nil
+			return l2tp.L2SpecTypeDefault, nil
 		}
 		return 0, fmt.Errorf("expect 'none' or 'default'")
 	}
-	return L2SpecTypeNone, err
+	return l2tp.L2SpecTypeNone, err
 }
 
-func toCCID(v interface{}) (ControlConnID, error) {
+func toCCID(v interface{}) (l2tp.ControlConnID, error) {
 	u, err := toUint32(v)
-	return ControlConnID(u), err
+	return l2tp.ControlConnID(u), err
 }
 
 func toBytes(v interface{}) ([]byte, error) {
@@ -228,8 +195,8 @@ func toBytes(v interface{}) ([]byte, error) {
 	return out, nil
 }
 
-func newSessionConfig(scfg map[string]interface{}) (*SessionConfig, error) {
-	sc := SessionConfig{}
+func newSessionConfig(scfg map[string]interface{}) (*l2tp.SessionConfig, error) {
+	sc := l2tp.SessionConfig{}
 	for k, v := range scfg {
 		var err error
 		switch k {
@@ -261,29 +228,30 @@ func newSessionConfig(scfg map[string]interface{}) (*SessionConfig, error) {
 	return &sc, nil
 }
 
-func (t *TunnelConfig) loadSessions(v interface{}) error {
+func loadSessions(v interface{}) (map[string]*l2tp.SessionConfig, error) {
+	out := make(map[string]*l2tp.SessionConfig)
 	sessions, ok := v.(map[string]interface{})
 	if !ok {
-		return fmt.Errorf("session instances must be named, e.g. '[tunnel.mytunnel.session.mysession]'")
+		return nil, fmt.Errorf("session instances must be named, e.g. '[tunnel.mytunnel.session.mysession]'")
 	}
 	for name, got := range sessions {
 		smap, ok := got.(map[string]interface{})
 		if !ok {
-			return fmt.Errorf("session instances must be named, e.g. '[tunnel.mytunnel.session.mysession]'")
+			return nil, fmt.Errorf("session instances must be named, e.g. '[tunnel.mytunnel.session.mysession]'")
 		}
 		scfg, err := newSessionConfig(smap)
 		if err != nil {
-			return fmt.Errorf("session %v: %v", name, err)
+			return nil, fmt.Errorf("session %v: %v", name, err)
 		}
-		t.Sessions[name] = scfg
+		out[name] = scfg
 	}
-	return nil
+	return out, nil
 }
 
-func newTunnelConfig(tcfg map[string]interface{}) (*TunnelConfig, error) {
-	tc := TunnelConfig{
-		FramingCaps: FramingCapSync | FramingCapAsync,
-		Sessions:    make(map[string]*SessionConfig),
+func newTunnelConfig(tcfg map[string]interface{}) (*l2tp.TunnelConfig, error) {
+	tc := l2tp.TunnelConfig{
+		FramingCaps: l2tp.FramingCapSync | l2tp.FramingCapAsync,
+		Sessions:    make(map[string]*l2tp.SessionConfig),
 	}
 	for k, v := range tcfg {
 		var err error
@@ -315,7 +283,7 @@ func newTunnelConfig(tcfg map[string]interface{}) (*TunnelConfig, error) {
 		case "framing_caps":
 			tc.FramingCaps, err = toFramingCaps(v)
 		case "session":
-			err = tc.loadSessions(v)
+			tc.Sessions, err = loadSessions(v)
 		default:
 			return nil, fmt.Errorf("unrecognised parameter '%v'", k)
 		}
@@ -357,7 +325,7 @@ func (cfg *Config) loadTunnels() error {
 func newConfig(tree *toml.Tree) (*Config, error) {
 	cfg := &Config{
 		cm:      tree.ToMap(),
-		tunnels: make(map[string]*TunnelConfig),
+		tunnels: make(map[string]*l2tp.TunnelConfig),
 	}
 	err := cfg.loadTunnels()
 	if err != nil {
@@ -386,7 +354,7 @@ func LoadConfigString(content string) (*Config, error) {
 
 // GetTunnels returns a map of tunnel name to tunnel config for
 // all the tunnels described by the configuration.
-func (cfg *Config) GetTunnels() map[string]*TunnelConfig {
+func (cfg *Config) GetTunnels() map[string]*l2tp.TunnelConfig {
 	return cfg.tunnels
 }
 

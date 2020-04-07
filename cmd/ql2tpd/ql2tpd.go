@@ -29,6 +29,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/katalix/go-l2tp/config"
 	"github.com/katalix/go-l2tp/l2tp"
 	"golang.org/x/sys/unix"
 )
@@ -43,7 +44,7 @@ func main() {
 	verbosePtr := flag.Bool("verbose", false, "toggle verbose log output")
 	flag.Parse()
 
-	config, err := l2tp.LoadConfigFile(*cfgPathPtr)
+	config, err := config.LoadConfigFile(*cfgPathPtr)
 	if err != nil {
 		stdlog.Fatalf("failed to load l2tp configuration: %v", err)
 	}

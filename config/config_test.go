@@ -1,16 +1,18 @@
-package l2tp
+package config
 
 import (
 	"reflect"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/katalix/go-l2tp/l2tp"
 )
 
 func TestGetTunnels(t *testing.T) {
 	cases := []struct {
 		in   string
-		want map[string]*TunnelConfig
+		want map[string]*l2tp.TunnelConfig
 	}{
 		{
 			in: `[tunnel.t1]
@@ -32,27 +34,27 @@ func TestGetTunnels(t *testing.T) {
 				 max_retries = 2
 				 framing_caps = ["sync","async"]
 				 `,
-			want: map[string]*TunnelConfig{
-				"t1": &TunnelConfig{
-					Encap:        EncapTypeIP,
-					Version:      ProtocolVersion3,
+			want: map[string]*l2tp.TunnelConfig{
+				"t1": &l2tp.TunnelConfig{
+					Encap:        l2tp.EncapTypeIP,
+					Version:      l2tp.ProtocolVersion3,
 					Peer:         "82.9.90.101:1701",
 					TunnelID:     412,
 					PeerTunnelID: 8192,
-					FramingCaps:  FramingCapSync,
+					FramingCaps:  l2tp.FramingCapSync,
 					HostName:     "blackhole.local",
-					Sessions:     make(map[string]*SessionConfig),
+					Sessions:     make(map[string]*l2tp.SessionConfig),
 				},
-				"t2": &TunnelConfig{
-					Encap:        EncapTypeUDP,
-					Version:      ProtocolVersion2,
+				"t2": &l2tp.TunnelConfig{
+					Encap:        l2tp.EncapTypeUDP,
+					Version:      l2tp.ProtocolVersion2,
 					Peer:         "[2001:0000:1234:0000:0000:C1C0:ABCD:0876]:6543",
-					Sessions:     make(map[string]*SessionConfig),
+					Sessions:     make(map[string]*l2tp.SessionConfig),
 					HelloTimeout: 250 * time.Millisecond,
 					WindowSize:   10,
 					RetryTimeout: 250 * time.Millisecond,
 					MaxRetries:   2,
-					FramingCaps:  FramingCapSync | FramingCapAsync,
+					FramingCaps:  l2tp.FramingCapSync | l2tp.FramingCapAsync,
 				},
 			},
 		},
@@ -77,27 +79,27 @@ func TestGetTunnels(t *testing.T) {
 				 interface_name = "becky"
 				 l2spec_type = "default"
 				`,
-			want: map[string]*TunnelConfig{
-				"t1": &TunnelConfig{
-					Encap:       EncapTypeIP,
-					Version:     ProtocolVersion3,
+			want: map[string]*l2tp.TunnelConfig{
+				"t1": &l2tp.TunnelConfig{
+					Encap:       l2tp.EncapTypeIP,
+					Version:     l2tp.ProtocolVersion3,
 					Peer:        "127.0.0.1:5001",
-					FramingCaps: FramingCapSync | FramingCapAsync,
-					Sessions: map[string]*SessionConfig{
-						"s1": &SessionConfig{
-							Pseudowire:     PseudowireTypeEth,
+					FramingCaps: l2tp.FramingCapSync | l2tp.FramingCapAsync,
+					Sessions: map[string]*l2tp.SessionConfig{
+						"s1": &l2tp.SessionConfig{
+							Pseudowire:     l2tp.PseudowireTypeEth,
 							Cookie:         []byte{0x34, 0x04, 0xa9, 0xbe},
 							PeerCookie:     []byte{0x80, 0x12, 0xff, 0x5b},
 							SeqNum:         true,
 							ReorderTimeout: time.Millisecond * 1500,
-							L2SpecType:     L2SpecTypeNone,
+							L2SpecType:     l2tp.L2SpecTypeNone,
 						},
-						"s2": &SessionConfig{
-							Pseudowire:    PseudowireTypePPP,
+						"s2": &l2tp.SessionConfig{
+							Pseudowire:    l2tp.PseudowireTypePPP,
 							SessionID:     90210,
 							PeerSessionID: 1237812,
 							InterfaceName: "becky",
-							L2SpecType:    L2SpecTypeDefault,
+							L2SpecType:    l2tp.L2SpecTypeDefault,
 						},
 					},
 				},
