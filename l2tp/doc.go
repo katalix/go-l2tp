@@ -148,6 +148,7 @@ configuration parameters for that instance as key:value pairs.
 
 	# host_name sets the host name the tunnel will advertise in the
 	# Host Name AVP per RFC2661.
+	# If unset the host's name will be queried and the returned value used.
 	host_name "basilbrush.local"
 
 	# framing_caps sets the framing capabilites the tunnel will advertise

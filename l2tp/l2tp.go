@@ -3,6 +3,7 @@ package l2tp
 import (
 	"fmt"
 	"net"
+	"os"
 	"sync"
 
 	"github.com/go-kit/kit/log"
@@ -105,10 +106,18 @@ func (ctx *Context) NewDynamicTunnel(name string, cfg *TunnelConfig) (tunl Tunne
 		return nil, fmt.Errorf("invalid nil config")
 	}
 
+	// Generate host name if unset
+	if cfg.HostName == "" {
+		name, err := os.Hostname()
+		if err != nil {
+			return nil, fmt.Errorf("failed to look up host name: %v", err)
+		}
+		cfg.HostName = name
+	}
+
 	// TODO:
 	// If the tunnel ID in the config is unset we must generate one.
 	// If the tunnel ID is set, we must check for collisions.
-	// If the tunnel host name is unset, we must generate one.
 
 	// Must not have name clashes
 	if _, ok := ctx.findTunnel(name); ok {
