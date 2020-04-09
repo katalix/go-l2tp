@@ -14,10 +14,10 @@ import (
 // Context is a container for a collection of L2TP tunnels and
 // their sessions.
 type Context struct {
-	logger  log.Logger
-	nlconn  *nll2tp.Conn
-	tunnels map[string]Tunnel
-	tlock   sync.RWMutex
+	logger        log.Logger
+	nlconn        *nll2tp.Conn
+	tunnelsByName map[string]Tunnel
+	tlock         sync.RWMutex
 }
 
 // Tunnel is an interface representing an L2TP tunnel.
@@ -75,9 +75,9 @@ func NewContext(logger log.Logger) (*Context, error) {
 	}
 
 	return &Context{
-		logger:  logger,
-		nlconn:  nlconn,
-		tunnels: make(map[string]Tunnel),
+		logger:        logger,
+		nlconn:        nlconn,
+		tunnelsByName: make(map[string]Tunnel),
 	}, nil
 }
 
@@ -112,7 +112,7 @@ func (ctx *Context) NewDynamicTunnel(name string, cfg *TunnelConfig) (tunl Tunne
 	// If the tunnel ID is set, we must check for collisions.
 
 	// Must not have name clashes
-	if _, ok := ctx.findTunnel(name); ok {
+	if _, ok := ctx.findTunnelByName(name); ok {
 		return nil, fmt.Errorf("already have tunnel %q", name)
 	}
 
@@ -179,7 +179,7 @@ func (ctx *Context) NewQuiescentTunnel(name string, cfg *TunnelConfig) (tunl Tun
 	}
 
 	// Must not have name clashes
-	if _, ok := ctx.findTunnel(name); ok {
+	if _, ok := ctx.findTunnelByName(name); ok {
 		return nil, fmt.Errorf("already have tunnel %q", name)
 	}
 
@@ -255,7 +255,7 @@ func (ctx *Context) NewStaticTunnel(name string, cfg *TunnelConfig) (tunl Tunnel
 	}
 
 	// Must not have name clashes
-	if _, ok := ctx.findTunnel(name); ok {
+	if _, ok := ctx.findTunnelByName(name); ok {
 		return nil, fmt.Errorf("already have tunnel %q", name)
 	}
 
@@ -304,9 +304,9 @@ func (ctx *Context) Close() {
 	tunnels := []Tunnel{}
 
 	ctx.tlock.Lock()
-	for name, tunl := range ctx.tunnels {
+	for name, tunl := range ctx.tunnelsByName {
 		tunnels = append(tunnels, tunl)
-		delete(ctx.tunnels, name)
+		delete(ctx.tunnelsByName, name)
 	}
 	ctx.tlock.Unlock()
 
@@ -320,19 +320,19 @@ func (ctx *Context) Close() {
 func (ctx *Context) linkTunnel(name string, tunl Tunnel) {
 	ctx.tlock.Lock()
 	defer ctx.tlock.Unlock()
-	ctx.tunnels[name] = tunl
+	ctx.tunnelsByName[name] = tunl
 }
 
 func (ctx *Context) unlinkTunnel(name string) {
 	ctx.tlock.Lock()
 	defer ctx.tlock.Unlock()
-	delete(ctx.tunnels, name)
+	delete(ctx.tunnelsByName, name)
 }
 
-func (ctx *Context) findTunnel(name string) (tunl Tunnel, ok bool) {
+func (ctx *Context) findTunnelByName(name string) (tunl Tunnel, ok bool) {
 	ctx.tlock.RLock()
 	defer ctx.tlock.RUnlock()
-	tunl, ok = ctx.tunnels[name]
+	tunl, ok = ctx.tunnelsByName[name]
 	return
 }
 
