@@ -2,9 +2,11 @@ package l2tp
 
 import (
 	"fmt"
+	"math/rand"
 	"net"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/go-kit/kit/log"
 	"github.com/katalix/go-l2tp/internal/nll2tp"
@@ -76,6 +78,8 @@ func NewContext(logger log.Logger) (*Context, error) {
 		return nil, fmt.Errorf("failed to establish a netlink/L2TP connection: %v", err)
 	}
 
+	rand.Seed(time.Now().UnixNano())
+
 	return &Context{
 		logger:        logger,
 		nlconn:        nlconn,
@@ -110,10 +114,6 @@ func (ctx *Context) NewDynamicTunnel(name string, cfg *TunnelConfig) (tunl Tunne
 		cfg.HostName = name
 	}
 
-	// TODO:
-	// If the tunnel ID in the config is unset we must generate one.
-	// If the tunnel ID is set, we must check for collisions.
-
 	// Must not have name clashes
 	if _, ok := ctx.findTunnelByName(name); ok {
 		return nil, fmt.Errorf("already have tunnel %q", name)
@@ -133,6 +133,23 @@ func (ctx *Context) NewDynamicTunnel(name string, cfg *TunnelConfig) (tunl Tunne
 	}
 	if cfg.Peer == "" {
 		return nil, fmt.Errorf("must specify peer address for dynamic tunnel")
+	}
+
+	// If the tunnel ID in the config is unset we must generate one.
+	// If the tunnel ID is set, we must check for collisions.
+	// TODO: there is a potential race here if dynamic tunnels are concurrently
+	// added -- an ID assigned here isn't actually reserved until the linkTunnel
+	// call below.
+	if cfg.TunnelID != 0 {
+		// Must not have TID clashes
+		if _, ok := ctx.findTunnelByID(cfg.TunnelID); ok {
+			return nil, fmt.Errorf("already have tunnel with TID %q", cfg.TunnelID)
+		}
+	} else {
+		cfg.TunnelID, err = ctx.allocTid(cfg.Version)
+		if err != nil {
+			return nil, fmt.Errorf("failed to allocate a TID: %q", err)
+		}
 	}
 
 	// Initialise tunnel address structures
@@ -210,6 +227,11 @@ func (ctx *Context) NewQuiescentTunnel(name string, cfg *TunnelConfig) (tunl Tun
 		return nil, fmt.Errorf("must specify peer address for quiescent tunnel")
 	}
 
+	// Must not have TID clashes
+	if _, ok := ctx.findTunnelByID(cfg.TunnelID); ok {
+		return nil, fmt.Errorf("already have tunnel with TID %q", cfg.TunnelID)
+	}
+
 	// Initialise tunnel address structures
 	switch cfg.Encap {
 	case EncapTypeUDP:
@@ -279,6 +301,11 @@ func (ctx *Context) NewStaticTunnel(name string, cfg *TunnelConfig) (tunl Tunnel
 		return nil, fmt.Errorf("must specify peer address for static tunnel")
 	}
 
+	// Must not have TID clashes
+	if _, ok := ctx.findTunnelByID(cfg.TunnelID); ok {
+		return nil, fmt.Errorf("already have tunnel with TID %q", cfg.TunnelID)
+	}
+
 	// Initialise tunnel address structures
 	switch cfg.Encap {
 	case EncapTypeUDP:
@@ -322,6 +349,24 @@ func (ctx *Context) Close() {
 	}
 
 	ctx.nlconn.Close()
+}
+
+func (ctx *Context) allocTid(version ProtocolVersion) (ControlConnID, error) {
+	for i := 0; i < 10; i++ {
+		var id ControlConnID
+		switch version {
+		case ProtocolVersion2:
+			id = ControlConnID(uint16(rand.Uint32()))
+		case ProtocolVersion3:
+			id = ControlConnID(rand.Uint32())
+		default:
+			return 0, fmt.Errorf("allocTid: unhandled version %v", version)
+		}
+		if _, ok := ctx.findTunnelByID(id); !ok {
+			return id, nil
+		}
+	}
+	return 0, fmt.Errorf("ID space exhausted")
 }
 
 func (ctx *Context) linkTunnel(tunl tunnel) {
