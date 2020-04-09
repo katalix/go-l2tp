@@ -55,10 +55,14 @@ func (st *staticTunnel) Close() {
 			st.dp.close(st.getNLConn())
 		}
 
-		st.parent.unlinkTunnel(st.name)
+		st.parent.unlinkTunnel(st)
 
 		level.Info(st.logger).Log("message", "close")
 	}
+}
+
+func (dt *staticTunnel) getName() string {
+	return dt.name
 }
 
 func (st *staticTunnel) getCfg() *TunnelConfig {

@@ -65,10 +65,14 @@ func (qt *quiescentTunnel) close() {
 			qt.dp.close(qt.getNLConn())
 		}
 
-		qt.parent.unlinkTunnel(qt.name)
+		qt.parent.unlinkTunnel(qt)
 
 		level.Info(qt.logger).Log("message", "close")
 	}
+}
+
+func (dt *quiescentTunnel) getName() string {
+	return dt.name
 }
 
 func (qt *quiescentTunnel) getCfg() *TunnelConfig {

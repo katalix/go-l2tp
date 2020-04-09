@@ -50,6 +50,10 @@ func (dt *dynamicTunnel) Close() {
 	}
 }
 
+func (dt *dynamicTunnel) getName() string {
+	return dt.name
+}
+
 func (dt *dynamicTunnel) getCfg() *TunnelConfig {
 	return dt.cfg
 }
@@ -353,7 +357,7 @@ func (dt *dynamicTunnel) fsmActClose(args []interface{}) {
 			dt.dp.close(dt.getNLConn())
 		}
 
-		dt.parent.unlinkTunnel(dt.name)
+		dt.parent.unlinkTunnel(dt)
 
 		level.Info(dt.logger).Log("message", "close")
 	}

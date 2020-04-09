@@ -37,6 +37,7 @@ type Tunnel interface {
 // Internal interface used by sessions
 type tunnel interface {
 	Tunnel
+	getName() string
 	getCfg() *TunnelConfig
 	getNLConn() *nll2tp.Conn
 	getLogger() log.Logger
@@ -153,7 +154,7 @@ func (ctx *Context) NewDynamicTunnel(name string, cfg *TunnelConfig) (tunl Tunne
 		return nil, err
 	}
 
-	ctx.linkTunnel(name, t)
+	ctx.linkTunnel(t)
 	tunl = t
 
 	return
@@ -228,7 +229,7 @@ func (ctx *Context) NewQuiescentTunnel(name string, cfg *TunnelConfig) (tunl Tun
 		return nil, err
 	}
 
-	ctx.linkTunnel(name, t)
+	ctx.linkTunnel(t)
 	tunl = t
 
 	return
@@ -297,7 +298,7 @@ func (ctx *Context) NewStaticTunnel(name string, cfg *TunnelConfig) (tunl Tunnel
 		return nil, err
 	}
 
-	ctx.linkTunnel(name, t)
+	ctx.linkTunnel(t)
 	tunl = t
 
 	return
@@ -323,17 +324,18 @@ func (ctx *Context) Close() {
 	ctx.nlconn.Close()
 }
 
-func (ctx *Context) linkTunnel(name string, tunl tunnel) {
+func (ctx *Context) linkTunnel(tunl tunnel) {
 	ctx.tlock.Lock()
 	defer ctx.tlock.Unlock()
-	ctx.tunnelsByName[name] = tunl
+	ctx.tunnelsByName[tunl.getName()] = tunl
 	ctx.tunnelsByID[tunl.getCfg().TunnelID] = tunl
 }
 
-func (ctx *Context) unlinkTunnel(name string) {
+func (ctx *Context) unlinkTunnel(tunl tunnel) {
 	ctx.tlock.Lock()
 	defer ctx.tlock.Unlock()
-	delete(ctx.tunnelsByName, name)
+	delete(ctx.tunnelsByName, tunl.getName())
+	delete(ctx.tunnelsByID, tunl.getCfg().TunnelID)
 }
 
 func (ctx *Context) findTunnelByName(name string) (tunl tunnel, ok bool) {
