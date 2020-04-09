@@ -46,6 +46,7 @@ func dummyV2LNS(tcfg *TunnelConfig, xport *transport, wg *sync.WaitGroup) {
 				}
 				xport.send(rsp)
 			} else if msg.getType() == avpMsgTypeStopccn {
+				xport.close()
 				return
 			}
 		}
@@ -65,6 +66,22 @@ func TestDynamicClient(t *testing.T) {
 				Version:  ProtocolVersion2,
 				TunnelID: 4567,
 				Encap:    EncapTypeUDP,
+			},
+			peerCfg: TunnelConfig{
+				Local:    "localhost:5000",
+				Peer:     "127.0.0.1:6000",
+				Version:  ProtocolVersion2,
+				TunnelID: 4567,
+				Encap:    EncapTypeUDP,
+			},
+		},
+		{
+			name: "L2TPv2 UDP AF_INET (alloc TID)",
+			localCfg: TunnelConfig{
+				Local:   "127.0.0.1:6000",
+				Peer:    "localhost:5000",
+				Version: ProtocolVersion2,
+				Encap:   EncapTypeUDP,
 			},
 			peerCfg: TunnelConfig{
 				Local:    "localhost:5000",
