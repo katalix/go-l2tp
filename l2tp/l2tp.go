@@ -16,7 +16,8 @@ import (
 type Context struct {
 	logger        log.Logger
 	nlconn        *nll2tp.Conn
-	tunnelsByName map[string]Tunnel
+	tunnelsByName map[string]tunnel
+	tunnelsByID   map[ControlConnID]tunnel
 	tlock         sync.RWMutex
 }
 
@@ -77,7 +78,8 @@ func NewContext(logger log.Logger) (*Context, error) {
 	return &Context{
 		logger:        logger,
 		nlconn:        nlconn,
-		tunnelsByName: make(map[string]Tunnel),
+		tunnelsByName: make(map[string]tunnel),
+		tunnelsByID:   make(map[ControlConnID]tunnel),
 	}, nil
 }
 
@@ -146,14 +148,15 @@ func (ctx *Context) NewDynamicTunnel(name string, cfg *TunnelConfig) (tunl Tunne
 		return nil, fmt.Errorf("failed to initialise tunnel addresses: %v", err)
 	}
 
-	tunl, err = newDynamicTunnel(name, ctx, sal, sap, cfg)
+	t, err := newDynamicTunnel(name, ctx, sal, sap, cfg)
 	if err != nil {
 		return nil, err
 	}
 
-	ctx.linkTunnel(name, tunl)
+	ctx.linkTunnel(name, t)
+	tunl = t
 
-	return tunl, nil
+	return
 }
 
 // NewQuiescentTunnel creates a new "quiescent" L2TP tunnel.
@@ -220,14 +223,15 @@ func (ctx *Context) NewQuiescentTunnel(name string, cfg *TunnelConfig) (tunl Tun
 		return nil, fmt.Errorf("failed to initialise tunnel addresses: %v", err)
 	}
 
-	tunl, err = newQuiescentTunnel(name, ctx, sal, sap, cfg)
+	t, err := newQuiescentTunnel(name, ctx, sal, sap, cfg)
 	if err != nil {
 		return nil, err
 	}
 
-	ctx.linkTunnel(name, tunl)
+	ctx.linkTunnel(name, t)
+	tunl = t
 
-	return tunl, nil
+	return
 }
 
 // NewStaticTunnel creates a new static (unmanaged) L2TP tunnel.
@@ -288,14 +292,15 @@ func (ctx *Context) NewStaticTunnel(name string, cfg *TunnelConfig) (tunl Tunnel
 		return nil, fmt.Errorf("failed to initialise tunnel addresses: %v", err)
 	}
 
-	tunl, err = newStaticTunnel(name, ctx, sal, sap, cfg)
+	t, err := newStaticTunnel(name, ctx, sal, sap, cfg)
 	if err != nil {
 		return nil, err
 	}
 
-	ctx.linkTunnel(name, tunl)
+	ctx.linkTunnel(name, t)
+	tunl = t
 
-	return tunl, nil
+	return
 }
 
 // Close tears down the context, including all the L2TP tunnels and sessions
@@ -307,6 +312,7 @@ func (ctx *Context) Close() {
 	for name, tunl := range ctx.tunnelsByName {
 		tunnels = append(tunnels, tunl)
 		delete(ctx.tunnelsByName, name)
+		delete(ctx.tunnelsByID, tunl.getCfg().TunnelID)
 	}
 	ctx.tlock.Unlock()
 
@@ -317,10 +323,11 @@ func (ctx *Context) Close() {
 	ctx.nlconn.Close()
 }
 
-func (ctx *Context) linkTunnel(name string, tunl Tunnel) {
+func (ctx *Context) linkTunnel(name string, tunl tunnel) {
 	ctx.tlock.Lock()
 	defer ctx.tlock.Unlock()
 	ctx.tunnelsByName[name] = tunl
+	ctx.tunnelsByID[tunl.getCfg().TunnelID] = tunl
 }
 
 func (ctx *Context) unlinkTunnel(name string) {
@@ -329,10 +336,17 @@ func (ctx *Context) unlinkTunnel(name string) {
 	delete(ctx.tunnelsByName, name)
 }
 
-func (ctx *Context) findTunnelByName(name string) (tunl Tunnel, ok bool) {
+func (ctx *Context) findTunnelByName(name string) (tunl tunnel, ok bool) {
 	ctx.tlock.RLock()
 	defer ctx.tlock.RUnlock()
 	tunl, ok = ctx.tunnelsByName[name]
+	return
+}
+
+func (ctx *Context) findTunnelByID(tid ControlConnID) (tunl tunnel, ok bool) {
+	ctx.tlock.RLock()
+	defer ctx.tlock.RUnlock()
+	tunl, ok = ctx.tunnelsByID[tid]
 	return
 }
 
