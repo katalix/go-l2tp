@@ -21,7 +21,6 @@ type dynamicTunnel struct {
 	xport     *transport
 	dp        dataPlane
 	closeChan chan bool
-	eventChan chan string
 	wg        sync.WaitGroup
 	sessions  map[string]Session
 	fsm       fsm
@@ -72,17 +71,12 @@ func (dt *dynamicTunnel) unlinkSession(name string) {
 
 func (dt *dynamicTunnel) runTunnel() {
 	defer dt.wg.Done()
+	dt.handleEvent("open")
 	for {
 		select {
 		case <-dt.closeChan:
 			dt.handleEvent("close", avpStopCCNResultCodeClearConnection)
 			return
-		case evt, ok := <-dt.eventChan:
-			if !ok {
-				dt.fsmActClose(nil)
-				return
-			}
-			dt.handleEvent(evt)
 		case m, ok := <-dt.xport.recvChan:
 			if !ok {
 				dt.fsmActClose(nil)
@@ -377,7 +371,6 @@ func newDynamicTunnel(name string, parent *Context, sal, sap unix.Sockaddr, cfg 
 		parent:    parent,
 		cfg:       cfg,
 		closeChan: make(chan bool),
-		eventChan: make(chan string),
 		sessions:  make(map[string]Session),
 	}
 
@@ -457,6 +450,5 @@ func newDynamicTunnel(name string, parent *Context, sal, sap unix.Sockaddr, cfg 
 		"tunnel_id", cfg.TunnelID,
 		"peer_tunnel_id", cfg.PeerTunnelID)
 
-	dt.eventChan <- "open"
 	return
 }
