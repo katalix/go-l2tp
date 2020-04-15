@@ -42,7 +42,7 @@ func (qt *quiescentTunnel) NewSession(name string, cfg *SessionConfig) (Session,
 
 func (qt *quiescentTunnel) Close() {
 	if qt != nil {
-		qt.closeChan <- true
+		close(qt.closeChan)
 		qt.wg.Wait()
 		qt.close()
 	}
