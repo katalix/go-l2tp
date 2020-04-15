@@ -56,7 +56,7 @@ func main() {
 		logger = level.NewFilter(logger, level.AllowInfo())
 	}
 
-	l2tpCtx, err := l2tp.NewContext(logger)
+	l2tpCtx, err := l2tp.NewContext(l2tp.LinuxNetlinkDataPlane, logger)
 	if err != nil {
 		stdlog.Fatalf("failed to load l2tp configuration: %v", err)
 	}
