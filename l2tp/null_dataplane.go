@@ -28,15 +28,7 @@ func (ndp *nullDataPlane) NewSession(tid, ptid ControlConnID, scfg *SessionConfi
 func (ndp *nullDataPlane) Close() {
 }
 
-func (tdp *nullTunnelDataPlane) Up(localAddress, peerAddress unix.Sockaddr, fd int) error {
-	return nil
-}
-
 func (tdp *nullTunnelDataPlane) Down() error {
-	return nil
-}
-
-func (tdp *nullSessionDataPlane) Up() error {
 	return nil
 }
 
