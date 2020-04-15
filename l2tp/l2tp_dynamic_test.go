@@ -95,7 +95,7 @@ func TestDynamicClient(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			var out bytes.Buffer
-			testLog := level.NewFilter(log.NewLogfmtLogger(&out), level.AllowDebug(), level.AllowInfo())
+			testLog := level.NewFilter(log.NewLogfmtLogger(log.NewSyncWriter(&out)), level.AllowDebug(), level.AllowInfo())
 			myLog := level.NewFilter(log.NewLogfmtLogger(os.Stderr), level.AllowDebug(), level.AllowInfo())
 
 			// Set up a transport to dummy the LNS
