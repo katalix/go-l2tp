@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
-	"github.com/katalix/go-l2tp/internal/nll2tp"
 	"golang.org/x/sys/unix"
 )
 
@@ -17,10 +16,10 @@ import (
 // their sessions.
 type Context struct {
 	logger        log.Logger
-	nlconn        *nll2tp.Conn
 	tunnelsByName map[string]tunnel
 	tunnelsByID   map[ControlConnID]tunnel
 	tlock         sync.RWMutex
+	dp            DataPlane
 }
 
 // Tunnel is an interface representing an L2TP tunnel.
@@ -36,12 +35,11 @@ type Tunnel interface {
 	Close()
 }
 
-// Internal interface used by sessions
 type tunnel interface {
 	Tunnel
 	getName() string
 	getCfg() *TunnelConfig
-	getNLConn() *nll2tp.Conn
+	getDP() DataPlane
 	getLogger() log.Logger
 	unlinkSession(name string)
 }
@@ -52,17 +50,72 @@ type Session interface {
 	Close()
 }
 
-// Internal interface
 type session interface {
 	Session
 }
 
+// DataPlane is an interface for creating tunnel and session
+// data plane instances.
+type DataPlane interface {
+	// NewTunnel creates a new tunnel data plane instance.
+	//
+	// The localAddress and peerAddress arguments are unix Sockaddr
+	// representations of the tunnel local and peer address.
+	//
+	// fd is the tunnel socket fd, which may be invalid (<0) for tunnel
+	// types which don't manage the tunnel socket in userspace.
+	//
+	// On successful return the dataplane should be fully ready for use.
+	NewTunnel(
+		tcfg *TunnelConfig,
+		localAddress, peerAddress unix.Sockaddr,
+		fd int) (TunnelDataPlane, error)
+
+	// NewSession creates a new session data plane instance.
+	//
+	// tunnelID and peerTunnelID are the L2TP IDs for the parent tunnel
+	// of this session (local and peer respectively).
+	//
+	// On successful return the dataplane should be fully ready for use.
+	NewSession(tunnelID, peerTunnelID ControlConnID, scfg *SessionConfig) (SessionDataPlane, error)
+
+	// Close is called to release any resources held by the dataplane instance.
+	// It is called when the l2tp Context using the dataplane shuts down.
+	Close()
+}
+
+// TunnelDataPlane is an interface representing a tunnel data plane.
+type TunnelDataPlane interface {
+	// Down performs the necessary actions to tear down the data plane.
+	// On successful return the dataplane should be fully destroyed.
+	Down() error
+}
+
+// SessionDataPlane is an interface representing a session data plane.
+type SessionDataPlane interface {
+	// Down performs the necessary actions to tear down the data plane.
+	// On successful return the dataplane should be fully destroyed.
+	Down() error
+}
+
+// LinuxNetlinkDataPlane is a special sentinel value used to indicate
+// that the L2TP context should use the internal Linux kernel data plane
+// implementation.
+var LinuxNetlinkDataPlane DataPlane = &nullDataPlane{}
+
 // NewContext creates a new L2TP context, which can then be used
 // to instantiate tunnel and session instances.
 //
-// Context creation will fail if it is not possible to connect to
-// the Linux kernel L2TP subsystem using netlink, so the Linux
-// kernel L2TP modules must be running.
+// The dataplane interface may be specified as LinuxNetlinkDataPlane,
+// in which case an internal implementation of the Linux Kernel
+// L2TP data plane is used.  In this case, context creation will
+// fail if it is not possible to connect to the kernel L2TP subsystem:
+// the kernel must be running the L2TP modules, and the process must
+// have appropriate permissions to access them.
+//
+// If the dataplane is specified as nil, a special "null" data plane
+// implementation is used.  This is useful for experimenting with the
+// control protocol without requiring root permissions.
 //
 // Logging is generated using go-kit levels: informational logging
 // uses the Info level, while verbose debugging logging uses the
@@ -70,26 +123,24 @@ type session interface {
 // depending on the tunnel type.
 //
 // If a nil logger is passed, all logging is disabled.
-// If a nil configuration is passed, default configuration will
-// be used.
-func NewContext(logger log.Logger) (*Context, error) {
+func NewContext(dataPlane DataPlane, logger log.Logger) (*Context, error) {
 
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
 
-	nlconn, err := nll2tp.Dial()
-	if err != nil {
-		return nil, fmt.Errorf("failed to establish a netlink/L2TP connection: %v", err)
-	}
-
 	rand.Seed(time.Now().UnixNano())
+
+	dp, err := initDataPlane(dataPlane)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialise data plane: %v", err)
+	}
 
 	return &Context{
 		logger:        logger,
-		nlconn:        nlconn,
 		tunnelsByName: make(map[string]tunnel),
 		tunnelsByID:   make(map[ControlConnID]tunnel),
+		dp:            dp,
 	}, nil
 }
 
@@ -353,7 +404,8 @@ func (ctx *Context) Close() {
 		tunl.Close()
 	}
 
-	ctx.nlconn.Close()
+	ctx.dp.Close()
+
 }
 
 func (ctx *Context) allocTid(version ProtocolVersion) (ControlConnID, error) {
@@ -517,4 +569,13 @@ func newIPAddressPair(local string, ccid ControlConnID, remote string, pccid Con
 		}
 	}
 	return
+}
+
+func initDataPlane(dp DataPlane) (DataPlane, error) {
+	if dp == nil {
+		return &nullDataPlane{}, nil
+	} else if dp == LinuxNetlinkDataPlane {
+		return newNetlinkDataPlane()
+	}
+	return dp, nil
 }

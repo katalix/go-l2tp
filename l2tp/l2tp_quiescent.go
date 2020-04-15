@@ -7,18 +7,18 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/katalix/go-l2tp/internal/nll2tp"
 	"golang.org/x/sys/unix"
 )
 
 type quiescentTunnel struct {
 	logger    log.Logger
 	name      string
+	sal, sap  unix.Sockaddr
 	parent    *Context
 	cfg       *TunnelConfig
 	cp        *controlPlane
 	xport     *transport
-	dp        dataPlane
+	dp        TunnelDataPlane
 	closeChan chan bool
 	wg        sync.WaitGroup
 	sessions  map[string]Session
@@ -62,7 +62,8 @@ func (qt *quiescentTunnel) close() {
 			qt.cp.close()
 		}
 		if qt.dp != nil {
-			qt.dp.close(qt.getNLConn())
+			err := qt.dp.Down()
+			level.Error(qt.logger).Log("message", "dataplane down failed", "error", err)
 		}
 
 		qt.parent.unlinkTunnel(qt)
@@ -79,8 +80,8 @@ func (qt *quiescentTunnel) getCfg() *TunnelConfig {
 	return qt.cfg
 }
 
-func (qt *quiescentTunnel) getNLConn() *nll2tp.Conn {
-	return qt.parent.nlconn
+func (qt *quiescentTunnel) getDP() DataPlane {
+	return qt.parent.dp
 }
 
 func (qt *quiescentTunnel) getLogger() log.Logger {
@@ -113,6 +114,8 @@ func newQuiescentTunnel(name string, parent *Context, sal, sap unix.Sockaddr, cf
 	qt = &quiescentTunnel{
 		logger:    log.With(parent.logger, "tunnel_name", name),
 		name:      name,
+		sal:       sal,
+		sap:       sap,
 		parent:    parent,
 		cfg:       cfg,
 		closeChan: make(chan bool),
@@ -139,7 +142,7 @@ func newQuiescentTunnel(name string, parent *Context, sal, sap unix.Sockaddr, cf
 		return nil, err
 	}
 
-	qt.dp, err = newManagedTunnelDataPlane(parent.nlconn, qt.cp.fd, cfg)
+	qt.dp, err = parent.dp.NewTunnel(qt.cfg, qt.sal, qt.sap, qt.cp.fd)
 	if err != nil {
 		qt.Close()
 		return nil, err

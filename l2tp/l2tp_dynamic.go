@@ -7,7 +7,6 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/katalix/go-l2tp/internal/nll2tp"
 	"golang.org/x/sys/unix"
 )
 
@@ -15,11 +14,12 @@ type dynamicTunnel struct {
 	isClosing bool
 	logger    log.Logger
 	name      string
+	sal, sap  unix.Sockaddr
 	parent    *Context
 	cfg       *TunnelConfig
 	cp        *controlPlane
 	xport     *transport
-	dp        dataPlane
+	dp        TunnelDataPlane
 	closeChan chan bool
 	wg        sync.WaitGroup
 	sessions  map[string]Session
@@ -57,8 +57,8 @@ func (dt *dynamicTunnel) getCfg() *TunnelConfig {
 	return dt.cfg
 }
 
-func (dt *dynamicTunnel) getNLConn() *nll2tp.Conn {
-	return dt.parent.nlconn
+func (dt *dynamicTunnel) getDP() DataPlane {
+	return dt.parent.dp
 }
 
 func (dt *dynamicTunnel) getLogger() log.Logger {
@@ -71,6 +71,16 @@ func (dt *dynamicTunnel) unlinkSession(name string) {
 
 func (dt *dynamicTunnel) runTunnel() {
 	defer dt.wg.Done()
+
+	level.Info(dt.logger).Log(
+		"message", "new dynamic tunnel",
+		"version", dt.cfg.Version,
+		"encap", dt.cfg.Encap,
+		"local", dt.cfg.Local,
+		"peer", dt.cfg.Peer,
+		"tunnel_id", dt.cfg.TunnelID,
+		"peer_tunnel_id", dt.cfg.PeerTunnelID)
+
 	dt.handleEvent("open")
 	for {
 		select {
@@ -284,7 +294,7 @@ func (dt *dynamicTunnel) fsmActOnSccrp(args []interface{}) {
 	level.Info(dt.logger).Log("message", "control plane established")
 
 	// establish the data plane
-	dt.dp, err = newManagedTunnelDataPlane(dt.getNLConn(), dt.cp.fd, dt.cfg)
+	dt.dp, err = dt.parent.dp.NewTunnel(dt.cfg, dt.sal, dt.sap, dt.cp.fd)
 	if err != nil {
 		level.Error(dt.logger).Log(
 			"message", "failed to establish data plane",
@@ -348,7 +358,8 @@ func (dt *dynamicTunnel) fsmActClose(args []interface{}) {
 			dt.cp.close()
 		}
 		if dt.dp != nil {
-			dt.dp.close(dt.getNLConn())
+			err := dt.dp.Down()
+			level.Error(dt.logger).Log("message", "dataplane down failed", "error", err)
 		}
 
 		dt.parent.unlinkTunnel(dt)
@@ -368,6 +379,8 @@ func newDynamicTunnel(name string, parent *Context, sal, sap unix.Sockaddr, cfg 
 	dt = &dynamicTunnel{
 		logger:    log.With(parent.logger, "tunnel_name", name),
 		name:      name,
+		sal:       sal,
+		sap:       sap,
 		parent:    parent,
 		cfg:       cfg,
 		closeChan: make(chan bool),
@@ -440,15 +453,6 @@ func newDynamicTunnel(name string, parent *Context, sal, sap unix.Sockaddr, cfg 
 
 	dt.wg.Add(1)
 	go dt.runTunnel()
-
-	level.Info(dt.logger).Log(
-		"message", "new dynamic tunnel",
-		"version", cfg.Version,
-		"encap", cfg.Encap,
-		"local", cfg.Local,
-		"peer", cfg.Peer,
-		"tunnel_id", cfg.TunnelID,
-		"peer_tunnel_id", cfg.PeerTunnelID)
 
 	return
 }

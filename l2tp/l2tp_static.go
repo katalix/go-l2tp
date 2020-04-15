@@ -5,7 +5,6 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/katalix/go-l2tp/internal/nll2tp"
 	"golang.org/x/sys/unix"
 )
 
@@ -14,7 +13,7 @@ type staticTunnel struct {
 	name     string
 	parent   *Context
 	cfg      *TunnelConfig
-	dp       dataPlane
+	dp       TunnelDataPlane
 	sessions map[string]Session
 }
 
@@ -23,7 +22,7 @@ type staticSession struct {
 	name   string
 	parent tunnel
 	cfg    *SessionConfig
-	dp     dataPlane
+	dp     SessionDataPlane
 }
 
 func (st *staticTunnel) NewSession(name string, cfg *SessionConfig) (Session, error) {
@@ -52,7 +51,10 @@ func (st *staticTunnel) Close() {
 		}
 
 		if st.dp != nil {
-			st.dp.close(st.getNLConn())
+			err := st.dp.Down()
+			if err != nil {
+				level.Error(st.logger).Log("message", "dataplane down failed", "error", err)
+			}
 		}
 
 		st.parent.unlinkTunnel(st)
@@ -69,8 +71,8 @@ func (st *staticTunnel) getCfg() *TunnelConfig {
 	return st.cfg
 }
 
-func (st *staticTunnel) getNLConn() *nll2tp.Conn {
-	return st.parent.nlconn
+func (st *staticTunnel) getDP() DataPlane {
+	return st.parent.dp
 }
 
 func (st *staticTunnel) getLogger() log.Logger {
@@ -90,7 +92,7 @@ func newStaticTunnel(name string, parent *Context, sal, sap unix.Sockaddr, cfg *
 		sessions: make(map[string]Session),
 	}
 
-	st.dp, err = newStaticTunnelDataPlane(parent.nlconn, sal, sap, cfg)
+	st.dp, err = parent.dp.NewTunnel(st.cfg, sal, sap, -1)
 	if err != nil {
 		st.Close()
 		return nil, err
@@ -109,19 +111,20 @@ func newStaticTunnel(name string, parent *Context, sal, sap unix.Sockaddr, cfg *
 }
 
 func newStaticSession(name string, parent tunnel, cfg *SessionConfig) (ss *staticSession, err error) {
-	// Since we're static we instantiate the session in the
-	// dataplane at the point of creation.
-	dp, err := newSessionDataPlane(parent.getNLConn(), parent.getCfg().TunnelID, parent.getCfg().PeerTunnelID, cfg)
-	if err != nil {
-		return
-	}
+
+	tid := parent.getCfg().TunnelID
+	ptid := parent.getCfg().PeerTunnelID
 
 	ss = &staticSession{
 		logger: log.With(parent.getLogger(), "session_name", name),
 		name:   name,
 		parent: parent,
 		cfg:    cfg,
-		dp:     dp,
+	}
+
+	ss.dp, err = parent.getDP().NewSession(tid, ptid, ss.cfg)
+	if err != nil {
+		return nil, err
 	}
 
 	level.Info(ss.logger).Log(
@@ -134,7 +137,12 @@ func newStaticSession(name string, parent tunnel, cfg *SessionConfig) (ss *stati
 }
 
 func (ss *staticSession) Close() {
-	ss.dp.close(ss.parent.getNLConn())
+	if ss.dp != nil {
+		err := ss.dp.Down()
+		if err != nil {
+			level.Error(ss.logger).Log("message", "dataplane down failed", "error", err)
+		}
+	}
 	ss.parent.unlinkSession(ss.name)
 	level.Info(ss.logger).Log("message", "close")
 }

@@ -7,15 +7,21 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-type dataPlane interface {
-	close(nl *nll2tp.Conn)
+var _ DataPlane = (*nlDataPlane)(nil)
+var _ TunnelDataPlane = (*nlTunnelDataPlane)(nil)
+var _ SessionDataPlane = (*nlSessionDataPlane)(nil)
+
+type nlDataPlane struct {
+	nlconn *nll2tp.Conn
 }
 
-type tunnelDataPlane struct {
+type nlTunnelDataPlane struct {
+	f   *nlDataPlane
 	cfg *nll2tp.TunnelConfig
 }
 
-type sessionDataPlane struct {
+type nlSessionDataPlane struct {
+	f   *nlDataPlane
 	cfg *nll2tp.SessionConfig
 }
 
@@ -74,63 +80,73 @@ func sessionCfgToNl(tid, ptid ControlConnID, cfg *SessionConfig) (*nll2tp.Sessio
 		DebugFlags:     nll2tp.L2tpDebugFlags(0)}, nil
 }
 
-func newStaticTunnelDataPlane(nl *nll2tp.Conn, local, peer unix.Sockaddr, cfg *TunnelConfig) (dataPlane, error) {
+func (dpf *nlDataPlane) NewTunnel(tcfg *TunnelConfig, sal, sap unix.Sockaddr, fd int) (TunnelDataPlane, error) {
 
-	nlcfg, err := tunnelCfgToNl(cfg)
+	nlcfg, err := tunnelCfgToNl(tcfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert tunnel config for netlink use: %v", err)
 	}
 
-	la, lp, err := sockaddrAddrPort(local)
-	if err != nil {
-		return nil, fmt.Errorf("invalid local address %v: %v", local, err)
+	// If the tunnel has a socket FD, create a managed tunnel dataplane.
+	// Otherwise, create a static dataplane.
+	if fd >= 0 {
+		err = dpf.nlconn.CreateManagedTunnel(fd, nlcfg)
+	} else {
+		la, lp, err := sockaddrAddrPort(sal)
+		if err != nil {
+			return nil, fmt.Errorf("invalid local address %v: %v", sal, err)
+		}
+
+		ra, rp, err := sockaddrAddrPort(sap)
+		if err != nil {
+			return nil, fmt.Errorf("invalid remote address %v: %v", sap, err)
+		}
+
+		err = dpf.nlconn.CreateStaticTunnel(la, lp, ra, rp, nlcfg)
 	}
-
-	ra, rp, err := sockaddrAddrPort(peer)
-	if err != nil {
-		return nil, fmt.Errorf("invalid remote address %v: %v", peer, err)
-	}
-
-	err = nl.CreateStaticTunnel(la, lp, ra, rp, nlcfg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to instantiate tunnel via. netlink: %v", err)
-	}
-
-	return &tunnelDataPlane{nlcfg}, nil
-}
-
-func newManagedTunnelDataPlane(nl *nll2tp.Conn, fd int, cfg *TunnelConfig) (dataPlane, error) {
-	nlcfg, err := tunnelCfgToNl(cfg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert tunnel config for netlink use: %v", err)
-	}
-
-	err = nl.CreateManagedTunnel(fd, nlcfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to instantiate tunnel via. netlink: %v", err)
 	}
-
-	return &tunnelDataPlane{nlcfg}, nil
+	return &nlTunnelDataPlane{f: dpf, cfg: nlcfg}, nil
 }
 
-func newSessionDataPlane(nl *nll2tp.Conn, tid, ptid ControlConnID, cfg *SessionConfig) (dataPlane, error) {
-	nlcfg, err := sessionCfgToNl(tid, ptid, cfg)
+func (dpf *nlDataPlane) NewSession(tid, ptid ControlConnID, scfg *SessionConfig) (SessionDataPlane, error) {
+
+	nlcfg, err := sessionCfgToNl(tid, ptid, scfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert session config for netlink use: %v", err)
 	}
 
-	err = nl.CreateSession(nlcfg)
+	err = dpf.nlconn.CreateSession(nlcfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to instantiate session via. netlink: %v", err)
 	}
-
-	return &sessionDataPlane{nlcfg}, nil
+	return &nlSessionDataPlane{f: dpf, cfg: nlcfg}, nil
 }
 
-func (t *tunnelDataPlane) close(nl *nll2tp.Conn) {
-	_ = nl.DeleteTunnel(t.cfg)
+func (dpf *nlDataPlane) Close() {
+
+	if dpf.nlconn != nil {
+		dpf.nlconn.Close()
+	}
 }
 
-func (s *sessionDataPlane) close(nl *nll2tp.Conn) {
-	_ = nl.DeleteSession(s.cfg)
+func (tdp *nlTunnelDataPlane) Down() error {
+	return tdp.f.nlconn.DeleteTunnel(tdp.cfg)
+}
+
+func (sdp *nlSessionDataPlane) Down() error {
+	return sdp.f.nlconn.DeleteSession(sdp.cfg)
+}
+
+func newNetlinkDataPlane() (DataPlane, error) {
+
+	nlconn, err := nll2tp.Dial()
+	if err != nil {
+		return nil, fmt.Errorf("failed to establish a netlink/L2TP connection: %v", err)
+	}
+
+	return &nlDataPlane{
+		nlconn: nlconn,
+	}, nil
 }

@@ -126,6 +126,7 @@ func testQuiescentTunnels(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			ctx, err := NewContext(
+				LinuxNetlinkDataPlane,
 				level.NewFilter(log.NewLogfmtLogger(os.Stderr),
 					level.AllowDebug(), level.AllowInfo()))
 			if err != nil {
@@ -182,6 +183,7 @@ func testQuiescentSessions(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			ctx, err := NewContext(
+				LinuxNetlinkDataPlane,
 				level.NewFilter(log.NewLogfmtLogger(os.Stderr),
 					level.AllowDebug(), level.AllowInfo()))
 			if err != nil {
@@ -274,6 +276,7 @@ func testStaticTunnels(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			ctx, err := NewContext(
+				LinuxNetlinkDataPlane,
 				level.NewFilter(log.NewLogfmtLogger(os.Stderr),
 					level.AllowDebug(), level.AllowInfo()))
 			if err != nil {
@@ -330,6 +333,7 @@ func testStaticSessions(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			ctx, err := NewContext(
+				LinuxNetlinkDataPlane,
 				level.NewFilter(log.NewLogfmtLogger(os.Stderr),
 					level.AllowDebug(), level.AllowInfo()))
 			if err != nil {
