@@ -92,12 +92,15 @@ func (dpf *nlDataPlane) NewTunnel(tcfg *TunnelConfig, sal, sap unix.Sockaddr, fd
 	if fd >= 0 {
 		err = dpf.nlconn.CreateManagedTunnel(fd, nlcfg)
 	} else {
-		la, lp, err := sockaddrAddrPort(sal)
+		var la, ra []byte
+		var lp, rp uint16
+
+		la, lp, err = sockaddrAddrPort(sal)
 		if err != nil {
 			return nil, fmt.Errorf("invalid local address %v: %v", sal, err)
 		}
 
-		ra, rp, err := sockaddrAddrPort(sap)
+		ra, rp, err = sockaddrAddrPort(sap)
 		if err != nil {
 			return nil, fmt.Errorf("invalid remote address %v: %v", sap, err)
 		}

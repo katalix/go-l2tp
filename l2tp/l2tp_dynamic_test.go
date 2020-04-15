@@ -23,7 +23,7 @@ func dummyV2LNS(tcfg *TunnelConfig, xport *transport, wg *sync.WaitGroup) {
 	timeout := time.NewTimer(3 * time.Second)
 	for {
 		select {
-		case _ = <-timeout.C:
+		case <-timeout.C:
 			fmt.Printf("dummyV2LNS: timeout establishing tunnel")
 			rsp, err := newV2Stopccn(&resultCode{avpStopCCNResultCodeClearConnection, 0, ""}, tcfg)
 			if err != nil {
@@ -134,6 +134,9 @@ func TestDynamicClient(t *testing.T) {
 			xcfg := defaulttransportConfig()
 			xcfg.Version = c.peerCfg.Version
 			xport, err := newTransport(myLog, cp, xcfg)
+			if err != nil {
+				t.Fatalf("newTransport(): %v", err)
+			}
 			var wg sync.WaitGroup
 			wg.Add(1)
 			go dummyV2LNS(&c.peerCfg, xport, &wg)
