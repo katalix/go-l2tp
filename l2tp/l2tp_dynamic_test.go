@@ -3,9 +3,7 @@ package l2tp
 // More tunnel tests which require root permissions are implemented
 // in l2tp_test.go in the TestRequiresRoot function.
 //
-// These tests cover the dynamic tunnel control plane which doesn't
-// require root permissions to run.  We expect tunnels to fail when
-// trying to instantiate the data plane.
+// These tests are using the null dataplane and hence don't require root.
 
 import (
 	"bytes"
@@ -14,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -21,8 +20,18 @@ import (
 
 func dummyV2LNS(tcfg *TunnelConfig, xport *transport, wg *sync.WaitGroup) {
 	defer wg.Done()
+	timeout := time.NewTimer(3 * time.Second)
 	for {
 		select {
+		case _ = <-timeout.C:
+			fmt.Printf("dummyV2LNS: timeout establishing tunnel")
+			rsp, err := newV2Stopccn(&resultCode{avpStopCCNResultCodeClearConnection, 0, ""}, tcfg)
+			if err != nil {
+				panic(fmt.Sprintf("failed to build STOPCCN: %v", err))
+			}
+			xport.send(rsp)
+			xport.close()
+			return
 		case m, ok := <-xport.recvChan:
 			if !ok {
 				return
@@ -45,6 +54,14 @@ func dummyV2LNS(tcfg *TunnelConfig, xport *transport, wg *sync.WaitGroup) {
 					panic(fmt.Sprintf("failed to build SCCRP: %v", err))
 				}
 				xport.send(rsp)
+			} else if msg.getType() == avpMsgTypeScccn {
+				rsp, err := newV2Stopccn(&resultCode{avpStopCCNResultCodeClearConnection, 0, ""}, tcfg)
+				if err != nil {
+					panic(fmt.Sprintf("failed to build STOPCCN: %v", err))
+				}
+				xport.send(rsp)
+				xport.close()
+				return
 			} else if msg.getType() == avpMsgTypeStopccn {
 				xport.close()
 				return
@@ -122,11 +139,7 @@ func TestDynamicClient(t *testing.T) {
 			go dummyV2LNS(&c.peerCfg, xport, &wg)
 
 			// Bring up the client tunnel.
-			// Note that we are relying on the tunnel failing to come up due to dataplane
-			// permissions issues, and sending a stopccn to the dummy LNS which will cause its
-			// goroutine to exit.
-			// It would be better to be able to control this more directly.
-			ctx, err := NewContext(LinuxNetlinkDataPlane, testLog)
+			ctx, err := NewContext(nil, testLog)
 			if err != nil {
 				t.Fatalf("NewContext(): %v", err)
 			}
