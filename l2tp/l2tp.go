@@ -52,6 +52,11 @@ type Session interface {
 	Close()
 }
 
+// Internal interface
+type session interface {
+	Session
+}
+
 // NewContext creates a new L2TP context, which can then be used
 // to instantiate tunnel and session instances.
 //
