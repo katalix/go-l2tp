@@ -36,7 +36,6 @@ func dummyV2LNS(tcfg *TunnelConfig, xport *transport, wg *sync.WaitGroup, establ
 	for {
 		select {
 		case <-timeout.C:
-			fmt.Printf("dummyV2LNS: timeout establishing tunnel")
 			rsp, err := newV2Stopccn(&resultCode{avpStopCCNResultCodeClearConnection, 0, ""}, tcfg)
 			if err != nil {
 				panic(fmt.Sprintf("failed to build STOPCCN: %v", err))
@@ -52,7 +51,6 @@ func dummyV2LNS(tcfg *TunnelConfig, xport *transport, wg *sync.WaitGroup, establ
 			if !ok {
 				panic("failed to cast received message as v2ControlMessage")
 			}
-			fmt.Printf("dummyV2LNS: recv %v\n", msg.getType())
 			if msg.getType() == avpMsgTypeSccrq {
 				ptid, err := findUint16Avp(msg.getAvps(), vendorIDIetf, avpTypeTunnelID)
 				if err != nil {
@@ -126,7 +124,7 @@ func TestDynamicClient(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			log := level.NewFilter(log.NewLogfmtLogger(os.Stderr), level.AllowDebug(), level.AllowInfo())
+			logger := level.NewFilter(log.NewLogfmtLogger(os.Stderr), level.AllowDebug())
 
 			// Set up a transport to dummy the LNS
 			sal, sap, err := newUDPAddressPair(c.peerCfg.Local, c.peerCfg.Peer)
@@ -146,7 +144,7 @@ func TestDynamicClient(t *testing.T) {
 
 			xcfg := defaulttransportConfig()
 			xcfg.Version = c.peerCfg.Version
-			xport, err := newTransport(log, cp, xcfg)
+			xport, err := newTransport(log.With(logger, "tunnel_name", "dummyV2LNS"), cp, xcfg)
 			if err != nil {
 				t.Fatalf("newTransport(): %v", err)
 			}
@@ -156,7 +154,7 @@ func TestDynamicClient(t *testing.T) {
 			go dummyV2LNS(&c.peerCfg, xport, &wg, &lnsEstablished)
 
 			// Bring up the client tunnel.
-			ctx, err := NewContext(nil, log)
+			ctx, err := NewContext(nil, logger)
 			if err != nil {
 				t.Fatalf("NewContext(): %v", err)
 			}
