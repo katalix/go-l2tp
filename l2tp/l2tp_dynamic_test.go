@@ -6,10 +6,8 @@ package l2tp
 // These tests are using the null dataplane and hence don't require root.
 
 import (
-	"bytes"
 	"fmt"
 	"os"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -18,7 +16,21 @@ import (
 	"github.com/go-kit/kit/log/level"
 )
 
-func dummyV2LNS(tcfg *TunnelConfig, xport *transport, wg *sync.WaitGroup) {
+type testEventHandler struct {
+	tunnelUp   int
+	tunnelDown int
+}
+
+func (teh *testEventHandler) HandleEvent(event interface{}) {
+	switch event.(type) {
+	case *TunnelUpEvent:
+		teh.tunnelUp++
+	case *TunnelDownEvent:
+		teh.tunnelDown++
+	}
+}
+
+func dummyV2LNS(tcfg *TunnelConfig, xport *transport, wg *sync.WaitGroup, established *bool) {
 	defer wg.Done()
 	timeout := time.NewTimer(3 * time.Second)
 	for {
@@ -55,6 +67,7 @@ func dummyV2LNS(tcfg *TunnelConfig, xport *transport, wg *sync.WaitGroup) {
 				}
 				xport.send(rsp)
 			} else if msg.getType() == avpMsgTypeScccn {
+				*established = true
 				rsp, err := newV2Stopccn(&resultCode{avpStopCCNResultCodeClearConnection, 0, ""}, tcfg)
 				if err != nil {
 					panic(fmt.Sprintf("failed to build STOPCCN: %v", err))
@@ -63,6 +76,8 @@ func dummyV2LNS(tcfg *TunnelConfig, xport *transport, wg *sync.WaitGroup) {
 				xport.close()
 				return
 			} else if msg.getType() == avpMsgTypeStopccn {
+				// HACK: allow the transport to ack the stopccn
+				time.Sleep(250 * time.Millisecond)
 				xport.close()
 				return
 			}
@@ -111,9 +126,7 @@ func TestDynamicClient(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			var out bytes.Buffer
-			testLog := level.NewFilter(log.NewLogfmtLogger(log.NewSyncWriter(&out)), level.AllowDebug(), level.AllowInfo())
-			myLog := level.NewFilter(log.NewLogfmtLogger(os.Stderr), level.AllowDebug(), level.AllowInfo())
+			log := level.NewFilter(log.NewLogfmtLogger(os.Stderr), level.AllowDebug(), level.AllowInfo())
 
 			// Set up a transport to dummy the LNS
 			sal, sap, err := newUDPAddressPair(c.peerCfg.Local, c.peerCfg.Peer)
@@ -133,19 +146,23 @@ func TestDynamicClient(t *testing.T) {
 
 			xcfg := defaulttransportConfig()
 			xcfg.Version = c.peerCfg.Version
-			xport, err := newTransport(myLog, cp, xcfg)
+			xport, err := newTransport(log, cp, xcfg)
 			if err != nil {
 				t.Fatalf("newTransport(): %v", err)
 			}
 			var wg sync.WaitGroup
+			lnsEstablished := false
 			wg.Add(1)
-			go dummyV2LNS(&c.peerCfg, xport, &wg)
+			go dummyV2LNS(&c.peerCfg, xport, &wg, &lnsEstablished)
 
 			// Bring up the client tunnel.
-			ctx, err := NewContext(nil, testLog)
+			ctx, err := NewContext(nil, log)
 			if err != nil {
 				t.Fatalf("NewContext(): %v", err)
 			}
+
+			teh := testEventHandler{}
+			ctx.RegisterEventHandler(&teh)
 
 			_, err = ctx.NewDynamicTunnel("t1", &c.localCfg)
 			if err != nil {
@@ -154,9 +171,14 @@ func TestDynamicClient(t *testing.T) {
 
 			wg.Wait()
 			ctx.Close()
-			want := "control plane established"
-			if !strings.Contains(out.String(), want) {
-				t.Fatalf("%q does not contain %q", out.String(), want)
+
+			expect := testEventHandler{1, 1}
+			if teh != expect {
+				t.Errorf("event listener: expected %v event, got %v", expect, teh)
+			}
+
+			if lnsEstablished != true {
+				t.Errorf("LNS didn't establish")
 			}
 		})
 	}
