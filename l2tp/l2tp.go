@@ -20,6 +20,8 @@ type Context struct {
 	tunnelsByID   map[ControlConnID]tunnel
 	tlock         sync.RWMutex
 	dp            DataPlane
+	eventHandlers []EventHandler
+	evtLock       sync.RWMutex
 }
 
 // Tunnel is an interface representing an L2TP tunnel.
@@ -96,6 +98,41 @@ type SessionDataPlane interface {
 	// Down performs the necessary actions to tear down the data plane.
 	// On successful return the dataplane should be fully destroyed.
 	Down() error
+}
+
+// EventHandler is an interface for receiving L2TP-specific events.
+type EventHandler interface {
+	// HandleEvent is called when an event occurs.
+	//
+	// HandleEvent will be called from the goroutine of the tunnel or
+	// session generating the event.
+	//
+	// The event passed is a pointer to a type specific to the event
+	// which has occurred.  Use type assertions to determine which event
+	// is being passed.
+	HandleEvent(event interface{})
+}
+
+// TunnelUpEvent is passed to registered EventHandler instances when a
+// tunnel comes up.  In the case of static or quiescent tunnels, this occurs
+// immediately on instantiation of the tunnel.  For dynamic tunnels, this
+// occurs on completion of the L2TP control protocol message exchange with
+// the peer.
+type TunnelUpEvent struct {
+	Tunnel                    Tunnel
+	Config                    *TunnelConfig
+	LocalAddress, PeerAddress unix.Sockaddr
+}
+
+// TunnelDownEvent is passed to registered EventHandler instances when a
+// tunnel goes down.  In the case of static or quiescent tunnels, this occurs
+// immediately on closure of the tunnel.  For dynamic tunnels, this
+// occurs on completion of the L2TP control protocol message exchange with
+// the peer.
+type TunnelDownEvent struct {
+	Tunnel                    Tunnel
+	Config                    *TunnelConfig
+	LocalAddress, PeerAddress unix.Sockaddr
 }
 
 // LinuxNetlinkDataPlane is a special sentinel value used to indicate
@@ -385,6 +422,42 @@ func (ctx *Context) NewStaticTunnel(name string, cfg *TunnelConfig) (tunl Tunnel
 	tunl = t
 
 	return
+}
+
+// RegisterEventHandler adds an event handler to the L2TP context.
+//
+// On return, the event handler may be called at any time.
+//
+// The event handler may be called from multiple go routines managed
+// by the L2TP context.
+func (ctx *Context) RegisterEventHandler(handler EventHandler) {
+	ctx.evtLock.Lock()
+	defer ctx.evtLock.Unlock()
+	ctx.eventHandlers = append(ctx.eventHandlers, handler)
+}
+
+// UnregisterEventHandler removes an event handler from the L2TP context.
+//
+// It must not be called from the context of an event handler callback.
+//
+// On return the event handler will not be called on further L2TP events.
+func (ctx *Context) UnregisterEventHandler(handler EventHandler) {
+	ctx.evtLock.Lock()
+	defer ctx.evtLock.Unlock()
+	for i, hdlr := range ctx.eventHandlers {
+		if hdlr == handler {
+			ctx.eventHandlers = append(ctx.eventHandlers[:], ctx.eventHandlers[i+1:]...)
+			break
+		}
+	}
+}
+
+func (ctx *Context) handleUserEvent(event interface{}) {
+	ctx.evtLock.RLock()
+	defer ctx.evtLock.RUnlock()
+	for _, hdlr := range ctx.eventHandlers {
+		hdlr.HandleEvent(event)
+	}
 }
 
 // Close tears down the context, including all the L2TP tunnels and sessions
