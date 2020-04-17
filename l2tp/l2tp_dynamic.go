@@ -351,6 +351,26 @@ func (dt *dynamicTunnel) sendStopccn(rc *resultCode) error {
 	return dt.xport.send(msg)
 }
 
+// Implementes stopccn pend timeout as per RFC2661 section 5.7.
+//
+// While pending the timeout we ignore further messages, but
+// continue to drain the transport in order to allow messages to
+// be ACKed.
+func (dt *dynamicTunnel) fsmActOnStopccn(args []interface{}) {
+	level.Debug(dt.logger).Log(
+		"message", "pending for stopccn retransmit period",
+		"timeout", dt.cfg.StopCCNTimeout)
+	timeout := time.NewTimer(dt.cfg.StopCCNTimeout)
+	for {
+		select {
+		case <-timeout.C:
+			dt.fsmActClose(args)
+			return
+		case <-dt.xport.recvChan:
+		}
+	}
+}
+
 // Closes all tunnel resources and unlinks child sessions.
 // The tunnel goroutine will terminate after this call completes
 // because the transport recv channel will have been closed.
@@ -424,7 +444,7 @@ func newDynamicTunnel(name string, parent *Context, sal, sap unix.Sockaddr, cfg 
 
 			// waitctlreply is for when we've sent an sccrq to the peer and are waiting on the reply
 			{from: "waitctlreply", events: []string{"sccrp"}, cb: dt.fsmActOnSccrp, to: "established"},
-			{from: "waitctlreply", events: []string{"stopccn"}, cb: dt.fsmActClose, to: "dead"},
+			{from: "waitctlreply", events: []string{"stopccn"}, cb: dt.fsmActOnStopccn, to: "dead"},
 			{
 				from: "waitctlreply",
 				events: []string{
@@ -437,7 +457,7 @@ func newDynamicTunnel(name string, parent *Context, sal, sap unix.Sockaddr, cfg 
 			},
 
 			// established is for once the tunnel three-way handshake is complete
-			{from: "established", events: []string{"stopccn"}, cb: dt.fsmActClose, to: "dead"},
+			{from: "established", events: []string{"stopccn"}, cb: dt.fsmActOnStopccn, to: "dead"},
 			{
 				from: "established",
 				events: []string{
