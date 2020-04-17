@@ -11,19 +11,20 @@ import (
 )
 
 type dynamicTunnel struct {
-	isClosing bool
-	logger    log.Logger
-	name      string
-	sal, sap  unix.Sockaddr
-	parent    *Context
-	cfg       *TunnelConfig
-	cp        *controlPlane
-	xport     *transport
-	dp        TunnelDataPlane
-	closeChan chan bool
-	wg        sync.WaitGroup
-	sessions  map[string]Session
-	fsm       fsm
+	isClosing   bool
+	established bool
+	logger      log.Logger
+	name        string
+	sal, sap    unix.Sockaddr
+	parent      *Context
+	cfg         *TunnelConfig
+	cp          *controlPlane
+	xport       *transport
+	dp          TunnelDataPlane
+	closeChan   chan bool
+	wg          sync.WaitGroup
+	sessions    map[string]Session
+	fsm         fsm
 }
 
 func (dt *dynamicTunnel) NewSession(name string, cfg *SessionConfig) (Session, error) {
@@ -44,6 +45,7 @@ func (dt *dynamicTunnel) NewSession(name string, cfg *SessionConfig) (Session, e
 
 func (dt *dynamicTunnel) Close() {
 	if dt != nil {
+		dt.parent.unlinkTunnel(dt)
 		close(dt.closeChan)
 		dt.wg.Wait()
 	}
@@ -307,6 +309,14 @@ func (dt *dynamicTunnel) fsmActOnSccrp(args []interface{}) {
 	}
 
 	level.Info(dt.logger).Log("message", "data plane established")
+
+	dt.established = true
+	dt.parent.handleUserEvent(&TunnelUpEvent{
+		Tunnel:       dt,
+		Config:       dt.cfg,
+		LocalAddress: dt.sal,
+		PeerAddress:  dt.sap,
+	})
 }
 
 func (dt *dynamicTunnel) sendScccn() error {
@@ -362,8 +372,17 @@ func (dt *dynamicTunnel) fsmActClose(args []interface{}) {
 			level.Error(dt.logger).Log("message", "dataplane down failed", "error", err)
 		}
 
-		dt.parent.unlinkTunnel(dt)
+		if dt.established {
+			dt.established = false
+			dt.parent.handleUserEvent(&TunnelDownEvent{
+				Tunnel:       dt,
+				Config:       dt.cfg,
+				LocalAddress: dt.sal,
+				PeerAddress:  dt.sap,
+			})
+		}
 
+		dt.parent.unlinkTunnel(dt)
 		level.Info(dt.logger).Log("message", "close")
 	}
 }
