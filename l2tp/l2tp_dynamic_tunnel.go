@@ -41,7 +41,7 @@ func (dt *dynamicTunnel) NewSession(name string, cfg *SessionConfig) (Session, e
 		return nil, fmt.Errorf("already have session %q", name)
 	}
 
-	s, err := newStaticSession(name, dt, &myCfg)
+	s, err := newDynamicSession(name, dt, &myCfg)
 	if err != nil {
 		return nil, err
 	}
