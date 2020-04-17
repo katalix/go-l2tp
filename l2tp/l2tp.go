@@ -198,13 +198,16 @@ func (ctx *Context) NewDynamicTunnel(name string, cfg *TunnelConfig) (tunl Tunne
 		return nil, fmt.Errorf("invalid nil config")
 	}
 
+	// Duplicate the configuration so we don't modify the user's copy
+	myCfg := *cfg
+
 	// Generate host name if unset
-	if cfg.HostName == "" {
+	if myCfg.HostName == "" {
 		name, err := os.Hostname()
 		if err != nil {
 			return nil, fmt.Errorf("failed to look up host name: %v", err)
 		}
-		cfg.HostName = name
+		myCfg.HostName = name
 	}
 
 	// Must not have name clashes
@@ -213,18 +216,18 @@ func (ctx *Context) NewDynamicTunnel(name string, cfg *TunnelConfig) (tunl Tunne
 	}
 
 	// Sanity check the configuration
-	if cfg.Version != ProtocolVersion3 && cfg.Encap == EncapTypeIP {
+	if myCfg.Version != ProtocolVersion3 && myCfg.Encap == EncapTypeIP {
 		return nil, fmt.Errorf("IP encapsulation only supported for L2TPv3 tunnels")
 	}
-	if cfg.Version == ProtocolVersion2 {
-		if cfg.TunnelID > 65535 {
-			return nil, fmt.Errorf("L2TPv2 connection ID %v out of range", cfg.TunnelID)
+	if myCfg.Version == ProtocolVersion2 {
+		if myCfg.TunnelID > 65535 {
+			return nil, fmt.Errorf("L2TPv2 connection ID %v out of range", myCfg.TunnelID)
 		}
 	}
-	if cfg.PeerTunnelID != 0 {
+	if myCfg.PeerTunnelID != 0 {
 		return nil, fmt.Errorf("L2TPv2 peer connection ID cannot be specified for dynamic tunnels")
 	}
-	if cfg.Peer == "" {
+	if myCfg.Peer == "" {
 		return nil, fmt.Errorf("must specify peer address for dynamic tunnel")
 	}
 
@@ -233,33 +236,33 @@ func (ctx *Context) NewDynamicTunnel(name string, cfg *TunnelConfig) (tunl Tunne
 	// TODO: there is a potential race here if dynamic tunnels are concurrently
 	// added -- an ID assigned here isn't actually reserved until the linkTunnel
 	// call below.
-	if cfg.TunnelID != 0 {
+	if myCfg.TunnelID != 0 {
 		// Must not have TID clashes
-		if _, ok := ctx.findTunnelByID(cfg.TunnelID); ok {
-			return nil, fmt.Errorf("already have tunnel with TID %q", cfg.TunnelID)
+		if _, ok := ctx.findTunnelByID(myCfg.TunnelID); ok {
+			return nil, fmt.Errorf("already have tunnel with TID %q", myCfg.TunnelID)
 		}
 	} else {
-		cfg.TunnelID, err = ctx.allocTid(cfg.Version)
+		myCfg.TunnelID, err = ctx.allocTid(myCfg.Version)
 		if err != nil {
 			return nil, fmt.Errorf("failed to allocate a TID: %q", err)
 		}
 	}
 
 	// Initialise tunnel address structures
-	switch cfg.Encap {
+	switch myCfg.Encap {
 	case EncapTypeUDP:
-		sal, sap, err = newUDPAddressPair(cfg.Local, cfg.Peer)
+		sal, sap, err = newUDPAddressPair(myCfg.Local, myCfg.Peer)
 	case EncapTypeIP:
-		sal, sap, err = newIPAddressPair(cfg.Local, cfg.TunnelID,
-			cfg.Peer, cfg.PeerTunnelID)
+		sal, sap, err = newIPAddressPair(myCfg.Local, myCfg.TunnelID,
+			myCfg.Peer, myCfg.PeerTunnelID)
 	default:
-		err = fmt.Errorf("unrecognised encapsulation type %v", cfg.Encap)
+		err = fmt.Errorf("unrecognised encapsulation type %v", myCfg.Encap)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialise tunnel addresses: %v", err)
 	}
 
-	t, err := newDynamicTunnel(name, ctx, sal, sap, cfg)
+	t, err := newDynamicTunnel(name, ctx, sal, sap, &myCfg)
 	if err != nil {
 		return nil, err
 	}
@@ -292,54 +295,57 @@ func (ctx *Context) NewQuiescentTunnel(name string, cfg *TunnelConfig) (tunl Tun
 		return nil, fmt.Errorf("invalid nil config")
 	}
 
+	// Duplicate the configuration so we don't modify the user's copy
+	myCfg := *cfg
+
 	// Must not have name clashes
 	if _, ok := ctx.findTunnelByName(name); ok {
 		return nil, fmt.Errorf("already have tunnel %q", name)
 	}
 
 	// Sanity check the configuration
-	if cfg.Version != ProtocolVersion3 && cfg.Encap == EncapTypeIP {
+	if myCfg.Version != ProtocolVersion3 && myCfg.Encap == EncapTypeIP {
 		return nil, fmt.Errorf("IP encapsulation only supported for L2TPv3 tunnels")
 	}
-	if cfg.Version == ProtocolVersion2 {
-		if cfg.TunnelID == 0 || cfg.TunnelID > 65535 {
-			return nil, fmt.Errorf("L2TPv2 connection ID %v out of range", cfg.TunnelID)
-		} else if cfg.PeerTunnelID == 0 || cfg.PeerTunnelID > 65535 {
-			return nil, fmt.Errorf("L2TPv2 peer connection ID %v out of range", cfg.PeerTunnelID)
+	if myCfg.Version == ProtocolVersion2 {
+		if myCfg.TunnelID == 0 || myCfg.TunnelID > 65535 {
+			return nil, fmt.Errorf("L2TPv2 connection ID %v out of range", myCfg.TunnelID)
+		} else if myCfg.PeerTunnelID == 0 || myCfg.PeerTunnelID > 65535 {
+			return nil, fmt.Errorf("L2TPv2 peer connection ID %v out of range", myCfg.PeerTunnelID)
 		}
 	} else {
-		if cfg.TunnelID == 0 || cfg.PeerTunnelID == 0 {
+		if myCfg.TunnelID == 0 || myCfg.PeerTunnelID == 0 {
 			return nil, fmt.Errorf("L2TPv3 tunnel IDs %v and %v must both be > 0",
-				cfg.TunnelID, cfg.PeerTunnelID)
+				myCfg.TunnelID, myCfg.PeerTunnelID)
 		}
 	}
-	if cfg.Local == "" {
+	if myCfg.Local == "" {
 		return nil, fmt.Errorf("must specify local address for quiescent tunnel")
 	}
-	if cfg.Peer == "" {
+	if myCfg.Peer == "" {
 		return nil, fmt.Errorf("must specify peer address for quiescent tunnel")
 	}
 
 	// Must not have TID clashes
-	if _, ok := ctx.findTunnelByID(cfg.TunnelID); ok {
-		return nil, fmt.Errorf("already have tunnel with TID %q", cfg.TunnelID)
+	if _, ok := ctx.findTunnelByID(myCfg.TunnelID); ok {
+		return nil, fmt.Errorf("already have tunnel with TID %q", myCfg.TunnelID)
 	}
 
 	// Initialise tunnel address structures
-	switch cfg.Encap {
+	switch myCfg.Encap {
 	case EncapTypeUDP:
-		sal, sap, err = newUDPAddressPair(cfg.Local, cfg.Peer)
+		sal, sap, err = newUDPAddressPair(myCfg.Local, myCfg.Peer)
 	case EncapTypeIP:
-		sal, sap, err = newIPAddressPair(cfg.Local, cfg.TunnelID,
-			cfg.Peer, cfg.PeerTunnelID)
+		sal, sap, err = newIPAddressPair(myCfg.Local, myCfg.TunnelID,
+			myCfg.Peer, myCfg.PeerTunnelID)
 	default:
-		err = fmt.Errorf("unrecognised encapsulation type %v", cfg.Encap)
+		err = fmt.Errorf("unrecognised encapsulation type %v", myCfg.Encap)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialise tunnel addresses: %v", err)
 	}
 
-	t, err := newQuiescentTunnel(name, ctx, sal, sap, cfg)
+	t, err := newQuiescentTunnel(name, ctx, sal, sap, &myCfg)
 	if err != nil {
 		return nil, err
 	}
@@ -374,46 +380,49 @@ func (ctx *Context) NewStaticTunnel(name string, cfg *TunnelConfig) (tunl Tunnel
 		return nil, fmt.Errorf("invalid nil config")
 	}
 
+	// Duplicate the configuration so we don't modify the user's copy
+	myCfg := *cfg
+
 	// Must not have name clashes
 	if _, ok := ctx.findTunnelByName(name); ok {
 		return nil, fmt.Errorf("already have tunnel %q", name)
 	}
 
 	// Sanity check  the configuration
-	if cfg.Version != ProtocolVersion3 {
+	if myCfg.Version != ProtocolVersion3 {
 		return nil, fmt.Errorf("static tunnels can be L2TPv3 only")
 	}
-	if cfg.TunnelID == 0 || cfg.PeerTunnelID == 0 {
+	if myCfg.TunnelID == 0 || myCfg.PeerTunnelID == 0 {
 		return nil, fmt.Errorf("L2TPv3 tunnel IDs %v and %v must both be > 0",
-			cfg.TunnelID, cfg.PeerTunnelID)
+			myCfg.TunnelID, myCfg.PeerTunnelID)
 	}
-	if cfg.Local == "" {
+	if myCfg.Local == "" {
 		return nil, fmt.Errorf("must specify local address for static tunnel")
 	}
-	if cfg.Peer == "" {
+	if myCfg.Peer == "" {
 		return nil, fmt.Errorf("must specify peer address for static tunnel")
 	}
 
 	// Must not have TID clashes
-	if _, ok := ctx.findTunnelByID(cfg.TunnelID); ok {
-		return nil, fmt.Errorf("already have tunnel with TID %q", cfg.TunnelID)
+	if _, ok := ctx.findTunnelByID(myCfg.TunnelID); ok {
+		return nil, fmt.Errorf("already have tunnel with TID %q", myCfg.TunnelID)
 	}
 
 	// Initialise tunnel address structures
-	switch cfg.Encap {
+	switch myCfg.Encap {
 	case EncapTypeUDP:
-		sal, sap, err = newUDPAddressPair(cfg.Local, cfg.Peer)
+		sal, sap, err = newUDPAddressPair(myCfg.Local, myCfg.Peer)
 	case EncapTypeIP:
-		sal, sap, err = newIPAddressPair(cfg.Local, cfg.TunnelID,
-			cfg.Peer, cfg.PeerTunnelID)
+		sal, sap, err = newIPAddressPair(myCfg.Local, myCfg.TunnelID,
+			myCfg.Peer, myCfg.PeerTunnelID)
 	default:
-		err = fmt.Errorf("unrecognised encapsulation type %v", cfg.Encap)
+		err = fmt.Errorf("unrecognised encapsulation type %v", myCfg.Encap)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialise tunnel addresses: %v", err)
 	}
 
-	t, err := newStaticTunnel(name, ctx, sal, sap, cfg)
+	t, err := newStaticTunnel(name, ctx, sal, sap, &myCfg)
 	if err != nil {
 		return nil, err
 	}

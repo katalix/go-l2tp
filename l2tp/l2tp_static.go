@@ -27,11 +27,19 @@ type staticSession struct {
 
 func (st *staticTunnel) NewSession(name string, cfg *SessionConfig) (Session, error) {
 
+	// Must have configuration
+	if cfg == nil {
+		return nil, fmt.Errorf("invalid nil config")
+	}
+
+	// Duplicate the configuration so we don't modify the user's copy
+	myCfg := *cfg
+
 	if _, ok := st.sessions[name]; ok {
 		return nil, fmt.Errorf("already have session %q", name)
 	}
 
-	s, err := newStaticSession(name, st, cfg)
+	s, err := newStaticSession(name, st, &myCfg)
 
 	if err != nil {
 		return nil, err
@@ -129,9 +137,9 @@ func newStaticSession(name string, parent tunnel, cfg *SessionConfig) (ss *stati
 
 	level.Info(ss.logger).Log(
 		"message", "new static session",
-		"session_id", cfg.SessionID,
-		"peer_session_id", cfg.PeerSessionID,
-		"pseudowire", cfg.Pseudowire)
+		"session_id", ss.cfg.SessionID,
+		"peer_session_id", ss.cfg.PeerSessionID,
+		"pseudowire", ss.cfg.Pseudowire)
 
 	return
 }

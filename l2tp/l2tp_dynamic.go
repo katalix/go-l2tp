@@ -29,11 +29,19 @@ type dynamicTunnel struct {
 
 func (dt *dynamicTunnel) NewSession(name string, cfg *SessionConfig) (Session, error) {
 
+	// Must have configuration
+	if cfg == nil {
+		return nil, fmt.Errorf("invalid nil config")
+	}
+
+	// Duplicate the configuration so we don't modify the user's copy
+	myCfg := *cfg
+
 	if _, ok := dt.sessions[name]; ok {
 		return nil, fmt.Errorf("already have session %q", name)
 	}
 
-	s, err := newStaticSession(name, dt, cfg)
+	s, err := newStaticSession(name, dt, &myCfg)
 	if err != nil {
 		return nil, err
 	}
@@ -457,13 +465,13 @@ func newDynamicTunnel(name string, parent *Context, sal, sap unix.Sockaddr, cfg 
 	}
 
 	dt.xport, err = newTransport(dt.logger, dt.cp, transportConfig{
-		HelloTimeout:      cfg.HelloTimeout,
-		TxWindowSize:      cfg.WindowSize,
-		MaxRetries:        cfg.MaxRetries,
-		RetryTimeout:      cfg.RetryTimeout,
+		HelloTimeout:      dt.cfg.HelloTimeout,
+		TxWindowSize:      dt.cfg.WindowSize,
+		MaxRetries:        dt.cfg.MaxRetries,
+		RetryTimeout:      dt.cfg.RetryTimeout,
 		AckTimeout:        time.Millisecond * 100,
-		Version:           cfg.Version,
-		PeerControlConnID: cfg.PeerTunnelID,
+		Version:           dt.cfg.Version,
+		PeerControlConnID: dt.cfg.PeerTunnelID,
 	})
 	if err != nil {
 		dt.Close()

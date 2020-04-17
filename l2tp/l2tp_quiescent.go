@@ -26,11 +26,19 @@ type quiescentTunnel struct {
 
 func (qt *quiescentTunnel) NewSession(name string, cfg *SessionConfig) (Session, error) {
 
+	// Must have configuration
+	if cfg == nil {
+		return nil, fmt.Errorf("invalid nil config")
+	}
+
+	// Duplicate the configuration so we don't modify the user's copy
+	myCfg := *cfg
+
 	if _, ok := qt.sessions[name]; ok {
 		return nil, fmt.Errorf("already have session %q", name)
 	}
 
-	s, err := newStaticSession(name, qt, cfg)
+	s, err := newStaticSession(name, qt, &myCfg)
 	if err != nil {
 		return nil, err
 	}
@@ -149,13 +157,13 @@ func newQuiescentTunnel(name string, parent *Context, sal, sap unix.Sockaddr, cf
 	}
 
 	qt.xport, err = newTransport(qt.logger, qt.cp, transportConfig{
-		HelloTimeout:      cfg.HelloTimeout,
-		TxWindowSize:      cfg.WindowSize,
-		MaxRetries:        cfg.MaxRetries,
-		RetryTimeout:      cfg.RetryTimeout,
+		HelloTimeout:      qt.cfg.HelloTimeout,
+		TxWindowSize:      qt.cfg.WindowSize,
+		MaxRetries:        qt.cfg.MaxRetries,
+		RetryTimeout:      qt.cfg.RetryTimeout,
 		AckTimeout:        time.Millisecond * 100,
-		Version:           cfg.Version,
-		PeerControlConnID: cfg.PeerTunnelID,
+		Version:           qt.cfg.Version,
+		PeerControlConnID: qt.cfg.PeerTunnelID,
 	})
 	if err != nil {
 		qt.Close()
@@ -167,12 +175,12 @@ func newQuiescentTunnel(name string, parent *Context, sal, sap unix.Sockaddr, cf
 
 	level.Info(qt.logger).Log(
 		"message", "new quiescent tunnel",
-		"version", cfg.Version,
-		"encap", cfg.Encap,
-		"local", cfg.Local,
-		"peer", cfg.Peer,
-		"tunnel_id", cfg.TunnelID,
-		"peer_tunnel_id", cfg.PeerTunnelID)
+		"version", qt.cfg.Version,
+		"encap", qt.cfg.Encap,
+		"local", qt.cfg.Local,
+		"peer", qt.cfg.Peer,
+		"tunnel_id", qt.cfg.TunnelID,
+		"peer_tunnel_id", qt.cfg.PeerTunnelID)
 
 	return
 }
