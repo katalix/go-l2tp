@@ -151,6 +151,11 @@ type TunnelConfig struct {
 	// this from the default value of 4.
 	WindowSize uint16
 
+	// The amount of time to wait on receipt of a StopCCN message to allow
+	// and retransmissions to be acknowledged.
+	// The default is 31s per RFC2661 section 5.7.
+	StopCCNTimeout time.Duration
+
 	// The hello timeout, if set, enables transmission of L2TP keep-alive
 	// (HELLO) messages.
 	// A hello message is sent N milliseconds after the last control

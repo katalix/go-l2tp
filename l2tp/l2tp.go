@@ -201,6 +201,11 @@ func (ctx *Context) NewDynamicTunnel(name string, cfg *TunnelConfig) (tunl Tunne
 	// Duplicate the configuration so we don't modify the user's copy
 	myCfg := *cfg
 
+	// Must not have name clashes
+	if _, ok := ctx.findTunnelByName(name); ok {
+		return nil, fmt.Errorf("already have tunnel %q", name)
+	}
+
 	// Generate host name if unset
 	if myCfg.HostName == "" {
 		name, err := os.Hostname()
@@ -210,9 +215,10 @@ func (ctx *Context) NewDynamicTunnel(name string, cfg *TunnelConfig) (tunl Tunne
 		myCfg.HostName = name
 	}
 
-	// Must not have name clashes
-	if _, ok := ctx.findTunnelByName(name); ok {
-		return nil, fmt.Errorf("already have tunnel %q", name)
+	// Default StopCCN retransmit timeout if unset.
+	// RFC2661 section 5.7 recommends a default of 31s.
+	if myCfg.StopCCNTimeout == 0 {
+		myCfg.StopCCNTimeout = 31 * time.Second
 	}
 
 	// Sanity check the configuration
