@@ -14,14 +14,15 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"golang.org/x/sys/unix"
 )
 
-type testEventHandler struct {
+type testTunnelEventCounter struct {
 	tunnelUp   int
 	tunnelDown int
 }
 
-func (teh *testEventHandler) HandleEvent(event interface{}) {
+func (teh *testTunnelEventCounter) HandleEvent(event interface{}) {
 	switch event.(type) {
 	case *TunnelUpEvent:
 		teh.tunnelUp++
@@ -30,20 +31,112 @@ func (teh *testEventHandler) HandleEvent(event interface{}) {
 	}
 }
 
-func dummyV2LNS(tcfg *TunnelConfig, xport *transport, wg *sync.WaitGroup, established *bool) {
-	defer wg.Done()
-	timeout := time.NewTimer(3 * time.Second)
+type testTunnelEventCounterCloser struct {
+	testTunnelEventCounter
+}
+
+func (teh *testTunnelEventCounterCloser) HandleEvent(event interface{}) {
+	teh.testTunnelEventCounter.HandleEvent(event)
+	if ev, ok := event.(*TunnelUpEvent); ok {
+		t := ev.Tunnel
+		go func() {
+			t.Close()
+		}()
+	}
+}
+
+type testLNS struct {
+	logger             log.Logger
+	tcfg               *TunnelConfig
+	scfg               *SessionConfig
+	xport              *transport
+	tunnelEstablished  bool
+	sessionEstablished bool
+}
+
+func newTestLNS(logger log.Logger, tcfg *TunnelConfig, scfg *SessionConfig) (*testLNS, error) {
+	myLogger := log.With(logger, "tunnel_name", "testLNS")
+
+	sal, sap, err := newUDPAddressPair(tcfg.Local, tcfg.Peer)
+	if err != nil {
+		return nil, fmt.Errorf("newUDPAddressPair(%v, %v): %v", tcfg.Local, tcfg.Peer, err)
+	}
+
+	cp, err := newL2tpControlPlane(sal, sap)
+	if err != nil {
+		return nil, fmt.Errorf("newL2tpControlPlane(%v, %v): %v", sal, sap, err)
+	}
+
+	err = cp.bind()
+	if err != nil {
+		return nil, fmt.Errorf("cp.bind(): %v", err)
+	}
+
+	xcfg := defaulttransportConfig()
+	xcfg.Version = tcfg.Version
+	xport, err := newTransport(myLogger, cp, xcfg)
+	if err != nil {
+		return nil, fmt.Errorf("newTransport(): %v", err)
+	}
+
+	lns := &testLNS{
+		logger: myLogger,
+		tcfg:   tcfg,
+		scfg:   scfg,
+		xport:  xport,
+	}
+
+	return lns, nil
+}
+
+func (lns *testLNS) shutdown() {
+	msg, err := newV2Stopccn(&resultCode{avpStopCCNResultCodeClearConnection, 0, ""}, lns.tcfg)
+	if err != nil {
+		panic(fmt.Sprintf("failed to build STOPCCN: %v", err))
+	}
+	lns.xport.send(msg)
+	lns.xport.close()
+}
+
+func (lns *testLNS) handleV2Msg(msg *v2ControlMessage, from unix.Sockaddr) error {
+	switch msg.getType() {
+	case avpMsgTypeSccrq:
+		ptid, err := findUint16Avp(msg.getAvps(), vendorIDIetf, avpTypeTunnelID)
+		if err != nil {
+			panic("no Tunnel ID AVP in SCCRQ")
+		}
+		lns.xport.config.PeerControlConnID = ControlConnID(ptid)
+		lns.tcfg.PeerTunnelID = ControlConnID(ptid)
+		lns.xport.cp.connectTo(from)
+		rsp, err := newV2Sccrp(lns.tcfg)
+		if err != nil {
+			panic(fmt.Sprintf("failed to build SCCRP: %v", err))
+		}
+		return lns.xport.send(rsp)
+	case avpMsgTypeScccn:
+		lns.tunnelEstablished = true
+		return nil
+	case avpMsgTypeStopccn:
+		// HACK: allow the transport to ack the stopccn.
+		// By closing the transport the transport recvChan will be
+		// closed, which will cause the run() function to return.
+		time.Sleep(250 * time.Millisecond)
+		lns.xport.close()
+		return nil
+	case avpMsgTypeHello:
+		return nil
+	}
+	return fmt.Errorf("message %v not handled", msg.getType())
+}
+
+func (lns *testLNS) run(timeout time.Duration) {
+	deadline := time.NewTimer(timeout)
 	for {
 		select {
-		case <-timeout.C:
-			rsp, err := newV2Stopccn(&resultCode{avpStopCCNResultCodeClearConnection, 0, ""}, tcfg)
-			if err != nil {
-				panic(fmt.Sprintf("failed to build STOPCCN: %v", err))
-			}
-			xport.send(rsp)
-			xport.close()
+		case <-deadline.C:
+			lns.shutdown()
 			return
-		case m, ok := <-xport.recvChan:
+		case m, ok := <-lns.xport.recvChan:
 			if !ok {
 				return
 			}
@@ -51,32 +144,9 @@ func dummyV2LNS(tcfg *TunnelConfig, xport *transport, wg *sync.WaitGroup, establ
 			if !ok {
 				panic("failed to cast received message as v2ControlMessage")
 			}
-			if msg.getType() == avpMsgTypeSccrq {
-				ptid, err := findUint16Avp(msg.getAvps(), vendorIDIetf, avpTypeTunnelID)
-				if err != nil {
-					panic("no Tunnel ID AVP in SCCRQ")
-				}
-				xport.config.PeerControlConnID = ControlConnID(ptid)
-				tcfg.PeerTunnelID = ControlConnID(ptid)
-				xport.cp.connectTo(m.from)
-				rsp, err := newV2Sccrp(tcfg)
-				if err != nil {
-					panic(fmt.Sprintf("failed to build SCCRP: %v", err))
-				}
-				xport.send(rsp)
-			} else if msg.getType() == avpMsgTypeScccn {
-				*established = true
-				rsp, err := newV2Stopccn(&resultCode{avpStopCCNResultCodeClearConnection, 0, ""}, tcfg)
-				if err != nil {
-					panic(fmt.Sprintf("failed to build STOPCCN: %v", err))
-				}
-				xport.send(rsp)
-				xport.close()
-				return
-			} else if msg.getType() == avpMsgTypeStopccn {
-				// HACK: allow the transport to ack the stopccn
-				time.Sleep(250 * time.Millisecond)
-				xport.close()
+			err := lns.handleV2Msg(msg, m.from)
+			if err != nil {
+				lns.shutdown()
 				return
 			}
 		}
@@ -130,32 +200,18 @@ func TestDynamicClient(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			logger := level.NewFilter(log.NewLogfmtLogger(os.Stderr), level.AllowDebug())
 
-			// Set up a transport to dummy the LNS
-			sal, sap, err := newUDPAddressPair(c.peerCfg.Local, c.peerCfg.Peer)
+			// Create and run a test LNS instance
+			lns, err := newTestLNS(logger, &c.peerCfg, nil)
 			if err != nil {
-				t.Fatalf("newUDPAddressPair(%v, %v): %v", c.peerCfg.Local, c.peerCfg.Peer, err)
+				t.Fatalf("newTestLNS: %v", err)
 			}
 
-			cp, err := newL2tpControlPlane(sal, sap)
-			if err != nil {
-				t.Fatalf("newL2tpControlPlane(%v, %v): %v", sal, sap, err)
-			}
-
-			err = cp.bind()
-			if err != nil {
-				t.Fatalf("cp.bind(): %v", err)
-			}
-
-			xcfg := defaulttransportConfig()
-			xcfg.Version = c.peerCfg.Version
-			xport, err := newTransport(log.With(logger, "tunnel_name", "dummyV2LNS"), cp, xcfg)
-			if err != nil {
-				t.Fatalf("newTransport(): %v", err)
-			}
 			var wg sync.WaitGroup
-			lnsEstablished := false
 			wg.Add(1)
-			go dummyV2LNS(&c.peerCfg, xport, &wg, &lnsEstablished)
+			go func() {
+				lns.run(3 * time.Second)
+				wg.Done()
+			}()
 
 			// Bring up the client tunnel.
 			ctx, err := NewContext(nil, logger)
@@ -163,7 +219,7 @@ func TestDynamicClient(t *testing.T) {
 				t.Fatalf("NewContext(): %v", err)
 			}
 
-			teh := testEventHandler{}
+			teh := testTunnelEventCounterCloser{}
 			ctx.RegisterEventHandler(&teh)
 
 			_, err = ctx.NewDynamicTunnel("t1", &c.localCfg)
@@ -174,12 +230,12 @@ func TestDynamicClient(t *testing.T) {
 			wg.Wait()
 			ctx.Close()
 
-			expect := testEventHandler{1, 1}
+			expect := testTunnelEventCounterCloser{testTunnelEventCounter: testTunnelEventCounter{1, 1}}
 			if teh != expect {
 				t.Errorf("event listener: expected %v event, got %v", expect, teh)
 			}
 
-			if lnsEstablished != true {
+			if lns.tunnelEstablished != true {
 				t.Errorf("LNS didn't establish")
 			}
 		})
