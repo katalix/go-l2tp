@@ -136,3 +136,7 @@ func (ss *staticSession) Close() {
 	ss.parent.unlinkSession(ss)
 	level.Info(ss.logger).Log("message", "close")
 }
+
+func (ss *staticSession) kill() {
+	ss.Close()
+}

@@ -10,45 +10,72 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+type sendMsg struct {
+	msg          controlMessage
+	completeChan chan error
+}
+
+type eventArgs struct {
+	event string
+	args  []interface{}
+}
+
 type dynamicTunnel struct {
+	*baseTunnel
 	isClosing   bool
 	established bool
-	logger      log.Logger
-	name        string
 	sal, sap    unix.Sockaddr
-	parent      *Context
-	cfg         *TunnelConfig
 	cp          *controlPlane
 	xport       *transport
 	dp          TunnelDataPlane
 	closeChan   chan bool
+	sendChan    chan *sendMsg
+	eventChan   chan *eventArgs
 	wg          sync.WaitGroup
-	sessions    map[string]Session
 	fsm         fsm
 }
 
-func (dt *dynamicTunnel) NewSession(name string, cfg *SessionConfig) (Session, error) {
+func (dt *dynamicTunnel) NewSession(name string, cfg *SessionConfig) (sess Session, err error) {
 
 	// Must have configuration
 	if cfg == nil {
 		return nil, fmt.Errorf("invalid nil config")
 	}
 
-	// Duplicate the configuration so we don't modify the user's copy
-	myCfg := *cfg
-
-	if _, ok := dt.sessions[name]; ok {
+	// Name clashes are not allowed
+	if _, ok := dt.findSessionByName(name); ok {
 		return nil, fmt.Errorf("already have session %q", name)
 	}
 
-	s, err := newDynamicSession(name, dt, &myCfg)
+	// Duplicate the configuration so we don't modify the user's copy
+	myCfg := *cfg
+
+	// If the session ID in the config is unset, we must generate one.
+	// If the session ID is set, we must check for collisions.
+	// TODO: there is a potential race here if sessions are concurrently
+	// added -- an ID assigned here isn't actually reserved until the linkSession
+	// call.
+	if myCfg.SessionID != 0 {
+		// Must not have session ID clashes
+		if _, ok := dt.findSessionByID(myCfg.SessionID); ok {
+			return nil, fmt.Errorf("already have session with SID %q", myCfg.SessionID)
+		}
+	} else {
+		myCfg.SessionID, err = dt.allocSid()
+		if err != nil {
+			return nil, fmt.Errorf("failed to allocate a SID: %q", err)
+		}
+	}
+
+	s, err := newDynamicSession(dt.parent.allocCallSerial(), name, dt, &myCfg)
 	if err != nil {
 		return nil, err
 	}
 
-	dt.sessions[name] = s
+	dt.injectEvent("newsession", s)
+	sess = s
 
-	return s, nil
+	return
 }
 
 func (dt *dynamicTunnel) Close() {
@@ -59,24 +86,13 @@ func (dt *dynamicTunnel) Close() {
 	}
 }
 
-func (dt *dynamicTunnel) getName() string {
-	return dt.name
-}
-
-func (dt *dynamicTunnel) getCfg() *TunnelConfig {
-	return dt.cfg
-}
-
-func (dt *dynamicTunnel) getDP() DataPlane {
-	return dt.parent.dp
-}
-
-func (dt *dynamicTunnel) getLogger() log.Logger {
-	return dt.logger
-}
-
-func (dt *dynamicTunnel) unlinkSession(name string) {
-	delete(dt.sessions, name)
+func (dt *dynamicTunnel) sendMessage(msg controlMessage) error {
+	sm := &sendMsg{
+		msg:          msg,
+		completeChan: make(chan error),
+	}
+	dt.sendChan <- sm
+	return <-sm.completeChan
 }
 
 func (dt *dynamicTunnel) runTunnel() {
@@ -103,6 +119,21 @@ func (dt *dynamicTunnel) runTunnel() {
 				return
 			}
 			dt.handleMsg(m)
+		case ea, ok := <-dt.eventChan:
+			if !ok {
+				dt.fsmActClose(nil)
+				return
+			}
+			dt.handleEvent(ea.event, ea.args...)
+		case sm, ok := <-dt.sendChan:
+			if !ok {
+				dt.fsmActClose(nil)
+				return
+			}
+			go func() {
+				err := dt.xport.send(sm.msg)
+				sm.completeChan <- err
+			}()
 		}
 	}
 }
@@ -123,6 +154,14 @@ func (dt *dynamicTunnel) handleEvent(ev string, args ...interface{}) {
 	}
 }
 
+func (dt *dynamicTunnel) injectEvent(ev string, args ...interface{}) {
+	ea := eventArgs{event: ev}
+	for i := 0; i < len(args); i++ {
+		ea.args = append(ea.args, args[i])
+	}
+	dt.eventChan <- &ea
+}
+
 // panics if expected arguments are not passed
 func fsmArgsToV2MsgFrom(args []interface{}) (msg *v2ControlMessage, from unix.Sockaddr) {
 	if len(args) != 2 {
@@ -135,6 +174,18 @@ func fsmArgsToV2MsgFrom(args []interface{}) (msg *v2ControlMessage, from unix.So
 	from, ok = args[1].(unix.Sockaddr)
 	if !ok {
 		panic(fmt.Sprintf("second argument %T not unix.Sockaddr", args[0]))
+	}
+	return
+}
+
+// panics if expected arguments are not passed
+func fsmArgsToSession(args []interface{}) (ds *dynamicSession) {
+	if len(args) != 1 {
+		panic(fmt.Sprintf("unexpected argument count (wanted 1, got %v)", len(args)))
+	}
+	ds, ok := args[0].(*dynamicSession)
+	if !ok {
+		panic(fmt.Sprintf("first argument %T not *dynamicSession", args[0]))
 	}
 	return
 }
@@ -189,7 +240,7 @@ func (dt *dynamicTunnel) handleMsg(m *recvMsg) {
 
 	level.Error(dt.logger).Log(
 		"message", "unhandled protocol version",
-		"version", dt.cfg.Version)
+		"version", m.msg.protocolVersion())
 
 	dt.handleEvent("close",
 		avpStopCCNResultCodeChannelProtocolVersionUnsupported,
@@ -235,6 +286,10 @@ func (dt *dynamicTunnel) handleV2Msg(msg *v2ControlMessage, from unix.Sockaddr) 
 		{avpMsgTypeScccn, "scccn"},
 		{avpMsgTypeStopccn, "stopccn"},
 		{avpMsgTypeHello, ""}, // fsm ignores empty events
+		{avpMsgTypeIcrq, "sessionmsg"},
+		{avpMsgTypeIcrp, "sessionmsg"},
+		{avpMsgTypeIccn, "sessionmsg"},
+		{avpMsgTypeCdn, "sessionmsg"},
 	}
 
 	for _, em := range eventMap {
@@ -318,6 +373,13 @@ func (dt *dynamicTunnel) fsmActOnSccrp(args []interface{}) {
 
 	level.Info(dt.logger).Log("message", "data plane established")
 
+	// inform sessions that we're up
+	for _, s := range dt.allSessions() {
+		if ds, ok := s.(*dynamicSession); ok {
+			ds.onTunnelUp()
+		}
+	}
+
 	dt.established = true
 	dt.parent.handleUserEvent(&TunnelUpEvent{
 		Tunnel:       dt,
@@ -371,6 +433,35 @@ func (dt *dynamicTunnel) fsmActOnStopccn(args []interface{}) {
 	}
 }
 
+func (dt *dynamicTunnel) fsmActLinkSession(args []interface{}) {
+	ds := fsmArgsToSession(args)
+	dt.linkSession(ds)
+}
+
+func (dt *dynamicTunnel) fsmActStartSession(args []interface{}) {
+	ds := fsmArgsToSession(args)
+	dt.linkSession(ds)
+	ds.onTunnelUp()
+}
+
+func (dt *dynamicTunnel) fsmActForwardSessionMsg(args []interface{}) {
+
+	msg, _ := fsmArgsToV2MsgFrom(args)
+
+	if s, ok := dt.findSessionByID(ControlConnID(msg.Sid())); ok {
+		if ds, ok := s.(*dynamicSession); ok {
+			ds.handleCtlMsg(msg)
+		}
+	} else {
+		// TODO: on receipt of ICRQ we'll end up here; to handle this
+		// we'd need to be able to create an LNS-mode session instance
+		level.Error(dt.logger).Log(
+			"message", "received session message for unknown session",
+			"message_type", msg.getType(),
+			"session ID", msg.Sid())
+	}
+}
+
 // Closes all tunnel resources and unlinks child sessions.
 // The tunnel goroutine will terminate after this call completes
 // because the transport recv channel will have been closed.
@@ -383,21 +474,19 @@ func (dt *dynamicTunnel) fsmActClose(args []interface{}) {
 
 		dt.isClosing = true
 
-		for name, session := range dt.sessions {
-			// TODO: need to close session w/o kicking session FSM
-			session.Close()
-			dt.unlinkSession(name)
-		}
+		dt.baseTunnel.closeAllSessions()
 
+		if dt.dp != nil {
+			err := dt.dp.Down()
+			if err != nil {
+				level.Error(dt.logger).Log("message", "dataplane down failed", "error", err)
+			}
+		}
 		if dt.xport != nil {
 			dt.xport.close()
 		}
 		if dt.cp != nil {
 			dt.cp.close()
-		}
-		if dt.dp != nil {
-			err := dt.dp.Down()
-			level.Error(dt.logger).Log("message", "dataplane down failed", "error", err)
 		}
 
 		if dt.established {
@@ -424,14 +513,16 @@ func newDynamicTunnel(name string, parent *Context, sal, sap unix.Sockaddr, cfg 
 	}
 
 	dt = &dynamicTunnel{
-		logger:    log.With(parent.logger, "tunnel_name", name),
-		name:      name,
+		baseTunnel: newBaseTunnel(
+			log.With(parent.logger, "tunnel_name", name),
+			name,
+			parent,
+			cfg),
 		sal:       sal,
 		sap:       sap,
-		parent:    parent,
-		cfg:       cfg,
 		closeChan: make(chan bool),
-		sessions:  make(map[string]Session),
+		sendChan:  make(chan *sendMsg),
+		eventChan: make(chan *eventArgs),
 	}
 
 	// Ref: RFC2661 section 7.2.1
@@ -445,6 +536,9 @@ func newDynamicTunnel(name string, parent *Context, sal, sap unix.Sockaddr, cfg 
 			// waitctlreply is for when we've sent an sccrq to the peer and are waiting on the reply
 			{from: "waitctlreply", events: []string{"sccrp"}, cb: dt.fsmActOnSccrp, to: "established"},
 			{from: "waitctlreply", events: []string{"stopccn"}, cb: dt.fsmActOnStopccn, to: "dead"},
+			{from: "waitctlreply", events: []string{"newsession"}, cb: dt.fsmActLinkSession, to: "waitctlreply"},
+			// TODO: don't really expect session messages: OK to ignore?
+			{from: "waitctlreply", events: []string{"sessionmsg"}, cb: nil, to: "waitctlreply"},
 			{
 				from: "waitctlreply",
 				events: []string{
@@ -458,6 +552,8 @@ func newDynamicTunnel(name string, parent *Context, sal, sap unix.Sockaddr, cfg 
 
 			// established is for once the tunnel three-way handshake is complete
 			{from: "established", events: []string{"stopccn"}, cb: dt.fsmActOnStopccn, to: "dead"},
+			{from: "established", events: []string{"newsession"}, cb: dt.fsmActStartSession, to: "established"},
+			{from: "established", events: []string{"sessionmsg"}, cb: dt.fsmActForwardSessionMsg, to: "established"},
 			{
 				from: "established",
 				events: []string{

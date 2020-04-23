@@ -56,6 +56,9 @@ type Session interface {
 
 type session interface {
 	Session
+	getName() string
+	getCfg() *SessionConfig
+	kill()
 }
 
 // DataPlane is an interface for creating tunnel and session
