@@ -501,14 +501,9 @@ func (ctx *Context) Close() {
 
 func (ctx *Context) allocTid(version ProtocolVersion) (ControlConnID, error) {
 	for i := 0; i < 10; i++ {
-		var id ControlConnID
-		switch version {
-		case ProtocolVersion2:
-			id = ControlConnID(uint16(rand.Uint32()))
-		case ProtocolVersion3:
-			id = ControlConnID(rand.Uint32())
-		default:
-			return 0, fmt.Errorf("allocTid: unhandled version %v", version)
+		id, err := generateControlConnID(version)
+		if err != nil {
+			return 0, fmt.Errorf("failed to generate tunnel ID: %v", err)
 		}
 		if _, ok := ctx.findTunnelByID(id); !ok {
 			return id, nil
@@ -676,6 +671,19 @@ func initDataPlane(dp DataPlane) (DataPlane, error) {
 		return newNetlinkDataPlane()
 	}
 	return dp, nil
+}
+
+func generateControlConnID(version ProtocolVersion) (ControlConnID, error) {
+	var id ControlConnID
+	switch version {
+	case ProtocolVersion2:
+		id = ControlConnID(uint16(rand.Uint32()))
+	case ProtocolVersion3:
+		id = ControlConnID(rand.Uint32())
+	default:
+		return 0, fmt.Errorf("unhandled version %v", version)
+	}
+	return id, nil
 }
 
 // baseTunnel implements base functionality which all tunnel types will need
