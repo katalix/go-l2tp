@@ -546,7 +546,7 @@ func (ctx *Context) findTunnelByID(tid ControlConnID) (tunl tunnel, ok bool) {
 func (ctx *Context) allocCallSerial() uint32 {
 	ctx.serialLock.Lock()
 	defer ctx.serialLock.Unlock()
-	ctx.callSerial += 1
+	ctx.callSerial++
 	return ctx.callSerial
 }
 

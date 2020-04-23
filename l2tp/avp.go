@@ -837,12 +837,12 @@ func encodePayload(info *avpInfo, value interface{}) ([]byte, error) {
 		rc, ok = value.(resultCode)
 		if ok {
 			return encodeResultCode(&rc)
-		} else {
-			var rcp *resultCode
-			rcp, ok = value.(*resultCode)
-			if ok {
-				return encodeResultCode(rcp)
-			}
+		}
+
+		var rcp *resultCode
+		rcp, ok = value.(*resultCode)
+		if ok {
+			return encodeResultCode(rcp)
 		}
 	case avpDataTypeUnimplemented, avpDataTypeIllegal:
 		return nil, fmt.Errorf("AVP %v is not currently supported", info.avpType)

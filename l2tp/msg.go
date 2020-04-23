@@ -238,9 +238,8 @@ func validateAvps(avps []avp, spec *msgSpec) error {
 			// And we MUST ignore an unrecognised AVP with the M bit unset.
 			if avp.isMandatory() {
 				return fmt.Errorf("unexpected AVP %v", avp.getType())
-			} else {
-				continue
 			}
+			continue
 		}
 		if as == mustExist {
 			seen[avp.getType()] = true
