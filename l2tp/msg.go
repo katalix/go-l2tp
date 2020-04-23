@@ -118,6 +118,58 @@ func v2HelloMsgSpec() *msgSpec {
 	return &spec
 }
 
+func v2IcrqMsgSpec() *msgSpec {
+	/* Ref: RFC2661 section 6.6 */
+	spec := msgSpec{make(map[avpType]avpSpec)}
+	spec.m[avpTypeMessage] = mustExist
+	spec.m[avpTypeSessionID] = mustExist
+	spec.m[avpTypeCallSerialNumber] = mustExist
+	spec.m[avpTypeBearerType] = mayExist
+	spec.m[avpTypePhysicalChannelID] = mayExist
+	spec.m[avpTypeCallingNumber] = mayExist
+	spec.m[avpTypeCalledNumber] = mayExist
+	spec.m[avpTypeSubAddress] = mayExist
+	return &spec
+}
+
+func v2IcrpMsgSpec() *msgSpec {
+	/* Ref: RFC2661 section 6.7 */
+	spec := msgSpec{make(map[avpType]avpSpec)}
+	spec.m[avpTypeMessage] = mustExist
+	spec.m[avpTypeSessionID] = mustExist
+	return &spec
+}
+
+func v2IccnMsgSpec() *msgSpec {
+	/* Ref: RFC2661 section 6.8 */
+	spec := msgSpec{make(map[avpType]avpSpec)}
+	spec.m[avpTypeMessage] = mustExist
+	spec.m[avpTypeConnectSpeed] = mustExist
+	spec.m[avpTypeFramingType] = mustExist
+	spec.m[avpTypeInitialRcvdLcpConfreq] = mayExist
+	spec.m[avpTypeLastSentLcpConfreq] = mayExist
+	spec.m[avpTypeLastRcvdLcpConfreq] = mayExist
+	spec.m[avpTypeProxyAuthType] = mayExist
+	spec.m[avpTypeProxyAuthName] = mayExist
+	spec.m[avpTypeProxyAuthChallenge] = mayExist
+	spec.m[avpTypeProxyAuthID] = mayExist
+	spec.m[avpTypeProxyAuthResponse] = mayExist
+	spec.m[avpTypePrivGroupID] = mayExist
+	spec.m[avpTypeRxConnectSpeed] = mayExist
+	spec.m[avpTypeSequencingRequired] = mayExist
+	return &spec
+}
+
+func v2CdnMsgSpec() *msgSpec {
+	/* Ref: RFC2661 section 6.12 */
+	spec := msgSpec{make(map[avpType]avpSpec)}
+	spec.m[avpTypeMessage] = mustExist
+	spec.m[avpTypeResultCode] = mustExist
+	spec.m[avpTypeSessionID] = mustExist
+	spec.m[avpTypeQ931CauseCode] = mayExist
+	return &spec
+}
+
 func getV2MsgSpec(t avpMsgType) (*msgSpec, error) {
 	switch t {
 	case avpMsgTypeSccrq:
@@ -130,6 +182,14 @@ func getV2MsgSpec(t avpMsgType) (*msgSpec, error) {
 		return v2StopccnMsgSpec(), nil
 	case avpMsgTypeHello:
 		return v2HelloMsgSpec(), nil
+	case avpMsgTypeIcrq:
+		return v2IcrqMsgSpec(), nil
+	case avpMsgTypeIcrp:
+		return v2IcrpMsgSpec(), nil
+	case avpMsgTypeIccn:
+		return v2IccnMsgSpec(), nil
+	case avpMsgTypeCdn:
+		return v2CdnMsgSpec(), nil
 	}
 	return nil, fmt.Errorf("no specification for v2 message %v", t)
 }
@@ -557,8 +617,8 @@ type avpIn struct {
 	data interface{}
 }
 
-func buildV2TunnelMsg(ptid ControlConnID, in []avpIn) (msg *v2ControlMessage, err error) {
-	msg, err = newV2ControlMessage(ptid, 0, []avp{})
+func buildV2Msg(ptid ControlConnID, psid ControlConnID, in []avpIn) (msg *v2ControlMessage, err error) {
+	msg, err = newV2ControlMessage(ptid, psid, []avp{})
 	if err != nil {
 		return
 	}
@@ -598,7 +658,7 @@ func newV2Sccrq(cfg *TunnelConfig) (msg *v2ControlMessage, err error) {
 		{avpTypeFramingCap, uint32(cfg.FramingCaps)},
 		{avpTypeTunnelID, uint16(cfg.TunnelID)},
 	}
-	return buildV2TunnelMsg(0, in)
+	return buildV2Msg(0, 0, in)
 }
 
 // newV2Sccrp builds a new SCCRP message
@@ -627,7 +687,7 @@ func newV2Sccrp(cfg *TunnelConfig) (msg *v2ControlMessage, err error) {
 		{avpTypeHostName, cfg.HostName},
 		{avpTypeTunnelID, uint16(cfg.TunnelID)},
 	}
-	return buildV2TunnelMsg(cfg.PeerTunnelID, in)
+	return buildV2Msg(cfg.PeerTunnelID, 0, in)
 }
 
 // newV2Scccn builds a new SCCCN message
@@ -644,7 +704,7 @@ func newV2Scccn(cfg *TunnelConfig) (msg *v2ControlMessage, err error) {
 	in := []avpIn{
 		{avpTypeMessage, avpMsgTypeScccn},
 	}
-	return buildV2TunnelMsg(cfg.PeerTunnelID, in)
+	return buildV2Msg(cfg.PeerTunnelID, 0, in)
 }
 
 // newV2Stopccn builds a new StopCCN message
@@ -661,7 +721,7 @@ func newV2Stopccn(rc *resultCode, cfg *TunnelConfig) (msg *v2ControlMessage, err
 		{avpTypeTunnelID, uint16(cfg.TunnelID)},
 		{avpTypeResultCode, rc},
 	}
-	return buildV2TunnelMsg(cfg.PeerTunnelID, in)
+	return buildV2Msg(cfg.PeerTunnelID, 0, in)
 }
 
 // newV2Hello builds a new HELLO message
@@ -674,7 +734,82 @@ func newV2Hello(cfg *TunnelConfig) (msg *v2ControlMessage, err error) {
 	in := []avpIn{
 		{avpTypeMessage, avpMsgTypeHello},
 	}
-	return buildV2TunnelMsg(cfg.PeerTunnelID, in)
+	return buildV2Msg(cfg.PeerTunnelID, 0, in)
+}
+
+// newV2Icrq builds a new ICRQ message
+func newV2Icrq(callSerial uint32, ptid ControlConnID, scfg *SessionConfig) (msg *v2ControlMessage, err error) {
+	/* RFC2661 says we MUST include:
+
+	- Message Type
+	- Assigned Session ID
+	- Call Serial Number
+
+	and we MAY include:
+
+	- Bearer Type
+	- Physical Channel ID
+	- Calling Number
+	- Called Number
+	- Sub-Address
+
+	*/
+	in := []avpIn{
+		{avpTypeMessage, avpMsgTypeIcrq},
+		{avpTypeSessionID, uint16(scfg.SessionID)},
+		{avpTypeCallSerialNumber, callSerial},
+	}
+	return buildV2Msg(ptid, 0, in)
+}
+
+// newV2Iccn builds a new ICCN message
+func newV2Iccn(ptid ControlConnID, scfg *SessionConfig) (msg *v2ControlMessage, err error) {
+	/* RFC2661 says we MUST include:
+
+		- Message Type
+		- (Tx) Connect Speed
+		- Framing Type
+
+		and we MAY include:
+
+	    - Initial Received LCP CONFREQ
+	    - Last Sent LCP CONFREQ
+	    - Last Received LCP CONFREQ
+	    - Proxy Authen Type
+	    - Proxy Authen Name
+	    - Proxy Authen Challenge
+	    - Proxy Authen ID
+	    - Proxy Authen Response
+	    - Private Group ID
+	    - Rx Connect Speed
+	    - Sequencing Required
+	*/
+	in := []avpIn{
+		{avpTypeMessage, avpMsgTypeIccn},
+		{avpTypeConnectSpeed, uint32(0)},                               // TODO: config field?
+		{avpTypeFramingType, uint32(FramingCapSync | FramingCapAsync)}, // TODO: config field?
+	}
+	return buildV2Msg(ptid, scfg.PeerSessionID, in)
+}
+
+// newV2Cdn builds a new CDN message
+func newV2Cdn(ptid ControlConnID, rc *resultCode, scfg *SessionConfig) (msg *v2ControlMessage, err error) {
+	/* RFC2661 says we MUST include:
+
+	- Message Type
+	- Result Code
+	- Assigned Session ID
+
+	and we MAY include:
+
+	- Q.931 Cause Code
+	*/
+	in := []avpIn{
+		{avpTypeMessage, avpMsgTypeCdn},
+		{avpTypeResultCode, rc},
+		{avpTypeSessionID, uint16(scfg.SessionID)},
+	}
+	return buildV2Msg(ptid, scfg.PeerSessionID, in)
 }
 
 // newV3ControlMessage builds a new control message
