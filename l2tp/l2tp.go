@@ -20,6 +20,8 @@ type Context struct {
 	tunnelsByID   map[ControlConnID]tunnel
 	tlock         sync.RWMutex
 	dp            DataPlane
+	callSerial    uint32
+	serialLock    sync.Mutex
 	eventHandlers []EventHandler
 	evtLock       sync.RWMutex
 }
@@ -178,6 +180,7 @@ func NewContext(dataPlane DataPlane, logger log.Logger) (*Context, error) {
 		tunnelsByName: make(map[string]tunnel),
 		tunnelsByID:   make(map[ControlConnID]tunnel),
 		dp:            dp,
+		callSerial:    rand.Uint32(),
 	}, nil
 }
 
@@ -540,6 +543,13 @@ func (ctx *Context) findTunnelByID(tid ControlConnID) (tunl tunnel, ok bool) {
 	defer ctx.tlock.RUnlock()
 	tunl, ok = ctx.tunnelsByID[tid]
 	return
+}
+
+func (ctx *Context) allocCallSerial() uint32 {
+	ctx.serialLock.Lock()
+	defer ctx.serialLock.Unlock()
+	ctx.callSerial += 1
+	return ctx.callSerial
 }
 
 func newUDPTunnelAddress(address string) (unix.Sockaddr, error) {
