@@ -45,7 +45,7 @@ type tunnel interface {
 	getCfg() *TunnelConfig
 	getDP() DataPlane
 	getLogger() log.Logger
-	unlinkSession(name string)
+	unlinkSession(s session)
 }
 
 // Session is an interface representing an L2TP session.
@@ -676,4 +676,136 @@ func initDataPlane(dp DataPlane) (DataPlane, error) {
 		return newNetlinkDataPlane()
 	}
 	return dp, nil
+}
+
+// baseTunnel implements base functionality which all tunnel types will need
+type baseTunnel struct {
+	logger         log.Logger
+	name           string
+	parent         *Context
+	cfg            *TunnelConfig
+	sessionLock    sync.RWMutex
+	sessionsByName map[string]session
+	sessionsByID   map[ControlConnID]session
+}
+
+func newBaseTunnel(logger log.Logger, name string, parent *Context, config *TunnelConfig) *baseTunnel {
+	return &baseTunnel{
+		logger:         logger,
+		name:           name,
+		parent:         parent,
+		cfg:            config,
+		sessionsByName: make(map[string]session),
+		sessionsByID:   make(map[ControlConnID]session),
+	}
+}
+
+func (bt *baseTunnel) getName() string {
+	return bt.name
+}
+
+func (bt *baseTunnel) getCfg() *TunnelConfig {
+	return bt.cfg
+}
+
+func (bt *baseTunnel) getDP() DataPlane {
+	return bt.parent.dp
+}
+
+func (bt *baseTunnel) getLogger() log.Logger {
+	return bt.logger
+}
+
+func (bt *baseTunnel) linkSession(s session) {
+	bt.sessionLock.Lock()
+	defer bt.sessionLock.Unlock()
+	bt.sessionsByName[s.getName()] = s
+	bt.sessionsByID[s.getCfg().SessionID] = s
+}
+
+func (bt *baseTunnel) unlinkSession(s session) {
+	bt.sessionLock.Lock()
+	defer bt.sessionLock.Unlock()
+	delete(bt.sessionsByName, s.getName())
+	delete(bt.sessionsByID, s.getCfg().SessionID)
+}
+
+func (bt *baseTunnel) findSessionByName(name string) (s session, ok bool) {
+	bt.sessionLock.RLock()
+	defer bt.sessionLock.RUnlock()
+	s, ok = bt.sessionsByName[name]
+	return
+}
+
+func (bt *baseTunnel) findSessionByID(id ControlConnID) (s session, ok bool) {
+	bt.sessionLock.RLock()
+	defer bt.sessionLock.RUnlock()
+	s, ok = bt.sessionsByID[id]
+	return
+}
+
+func (bt *baseTunnel) allSessions() (sessions []session) {
+	bt.sessionLock.RLock()
+	defer bt.sessionLock.RUnlock()
+	for _, s := range bt.sessionsByName {
+		sessions = append(sessions, s)
+	}
+	return
+}
+
+// Close all sessions in a tunnel without kicking their FSM instances.
+// When a tunnel goes down, StopCCN is sufficient to implicitly terminate
+// all session instances running in that tunnel.
+func (bt *baseTunnel) closeAllSessions() {
+	sessions := []session{}
+
+	bt.sessionLock.Lock()
+	for name, s := range bt.sessionsByName {
+		sessions = append(sessions, s)
+		delete(bt.sessionsByName, name)
+		delete(bt.sessionsByID, s.getCfg().SessionID)
+	}
+	bt.sessionLock.Unlock()
+
+	for _, s := range sessions {
+		s.kill()
+	}
+}
+
+func (bt *baseTunnel) allocSid() (ControlConnID, error) {
+	for i := 0; i < 10; i++ {
+		id, err := generateControlConnID(bt.cfg.Version)
+		if err != nil {
+			return 0, fmt.Errorf("failed to generate session ID: %v", err)
+		}
+		if _, ok := bt.findSessionByID(id); !ok {
+			return id, nil
+		}
+	}
+	return 0, fmt.Errorf("ID space exhausted")
+}
+
+// baseSession implements base functionality which all session types will need
+type baseSession struct {
+	logger log.Logger
+	name   string
+	parent tunnel
+	cfg    *SessionConfig
+}
+
+func newBaseSession(logger log.Logger, name string, parent tunnel, config *SessionConfig) *baseSession {
+	return &baseSession{
+		logger: logger,
+		name:   name,
+		parent: parent,
+		cfg:    config,
+	}
+}
+
+func (bs *baseSession) getName() string {
+	return bs.name
+}
+
+func (bs *baseSession) getCfg() *SessionConfig {
+	return bs.cfg
 }

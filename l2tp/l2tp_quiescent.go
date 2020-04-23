@@ -11,17 +11,13 @@ import (
 )
 
 type quiescentTunnel struct {
-	logger    log.Logger
-	name      string
+	*baseTunnel
 	sal, sap  unix.Sockaddr
-	parent    *Context
-	cfg       *TunnelConfig
 	cp        *controlPlane
 	xport     *transport
 	dp        TunnelDataPlane
 	closeChan chan bool
 	wg        sync.WaitGroup
-	sessions  map[string]Session
 }
 
 func (qt *quiescentTunnel) NewSession(name string, cfg *SessionConfig) (Session, error) {
@@ -34,8 +30,12 @@ func (qt *quiescentTunnel) NewSession(name string, cfg *SessionConfig) (Session,
 	// Duplicate the configuration so we don't modify the user's copy
 	myCfg := *cfg
 
-	if _, ok := qt.sessions[name]; ok {
+	if _, ok := qt.findSessionByName(name); ok {
 		return nil, fmt.Errorf("already have session %q", name)
+	}
+
+	if _, ok := qt.findSessionByID(cfg.SessionID); ok {
+		return nil, fmt.Errorf("already have session %q", cfg.SessionID)
 	}
 
 	s, err := newStaticSession(name, qt, &myCfg)
@@ -43,7 +43,7 @@ func (qt *quiescentTunnel) NewSession(name string, cfg *SessionConfig) (Session,
 		return nil, err
 	}
 
-	qt.sessions[name] = s
+	qt.linkSession(s)
 
 	return s, nil
 }
@@ -58,10 +58,7 @@ func (qt *quiescentTunnel) Close() {
 
 func (qt *quiescentTunnel) close() {
 	if qt != nil {
-		for name, session := range qt.sessions {
-			session.Close()
-			qt.unlinkSession(name)
-		}
+		qt.baseTunnel.closeAllSessions()
 
 		if qt.xport != nil {
 			qt.xport.close()
@@ -78,26 +75,6 @@ func (qt *quiescentTunnel) close() {
 
 		level.Info(qt.logger).Log("message", "close")
 	}
-}
-
-func (dt *quiescentTunnel) getName() string {
-	return dt.name
-}
-
-func (qt *quiescentTunnel) getCfg() *TunnelConfig {
-	return qt.cfg
-}
-
-func (qt *quiescentTunnel) getDP() DataPlane {
-	return qt.parent.dp
-}
-
-func (qt *quiescentTunnel) getLogger() log.Logger {
-	return qt.logger
-}
-
-func (qt *quiescentTunnel) unlinkSession(name string) {
-	delete(qt.sessions, name)
 }
 
 func (qt *quiescentTunnel) xportReader() {
@@ -120,14 +97,14 @@ func (qt *quiescentTunnel) xportReader() {
 
 func newQuiescentTunnel(name string, parent *Context, sal, sap unix.Sockaddr, cfg *TunnelConfig) (qt *quiescentTunnel, err error) {
 	qt = &quiescentTunnel{
-		logger:    log.With(parent.logger, "tunnel_name", name),
-		name:      name,
+		baseTunnel: newBaseTunnel(
+			log.With(parent.logger, "tunnel_name", name),
+			name,
+			parent,
+			cfg),
 		sal:       sal,
 		sap:       sap,
-		parent:    parent,
-		cfg:       cfg,
 		closeChan: make(chan bool),
-		sessions:  make(map[string]Session),
 	}
 
 	// Initialise the control plane.
