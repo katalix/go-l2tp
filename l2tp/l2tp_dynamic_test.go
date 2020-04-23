@@ -100,17 +100,18 @@ func (lns *testLNS) shutdown() {
 
 func (lns *testLNS) handleV2Msg(msg *v2ControlMessage, from unix.Sockaddr) error {
 	switch msg.getType() {
+	// Tunnel messages
 	case avpMsgTypeSccrq:
 		ptid, err := findUint16Avp(msg.getAvps(), vendorIDIetf, avpTypeTunnelID)
 		if err != nil {
-			panic("no Tunnel ID AVP in SCCRQ")
+			return fmt.Errorf("no Tunnel ID AVP in SCCRQ")
 		}
 		lns.xport.config.PeerControlConnID = ControlConnID(ptid)
 		lns.tcfg.PeerTunnelID = ControlConnID(ptid)
 		lns.xport.cp.connectTo(from)
 		rsp, err := newV2Sccrp(lns.tcfg)
 		if err != nil {
-			panic(fmt.Sprintf("failed to build SCCRP: %v", err))
+			return fmt.Errorf("failed to build SCCRP: %v", err)
 		}
 		return lns.xport.send(rsp)
 	case avpMsgTypeScccn:
@@ -124,6 +125,24 @@ func (lns *testLNS) handleV2Msg(msg *v2ControlMessage, from unix.Sockaddr) error
 		lns.xport.close()
 		return nil
 	case avpMsgTypeHello:
+		return nil
+
+	// Session messages
+	case avpMsgTypeIcrq:
+		psid, err := findUint16Avp(msg.getAvps(), vendorIDIetf, avpTypeSessionID)
+		if err != nil {
+			return fmt.Errorf("no Session ID AVP in ICRQ")
+		}
+		lns.scfg.PeerSessionID = ControlConnID(psid)
+		rsp, err := newV2Icrp(lns.tcfg.PeerTunnelID, lns.scfg)
+		if err != nil {
+			return fmt.Errorf("failed to build ICRP: %v", err)
+		}
+		return lns.xport.send(rsp)
+	case avpMsgTypeIccn:
+		lns.sessionEstablished = true
+		return nil
+	case avpMsgTypeCdn:
 		return nil
 	}
 	return fmt.Errorf("message %v not handled", msg.getType())

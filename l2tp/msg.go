@@ -761,6 +761,20 @@ func newV2Icrq(callSerial uint32, ptid ControlConnID, scfg *SessionConfig) (msg 
 	return buildV2Msg(ptid, 0, in)
 }
 
+// newV2Icrp builds a new ICRP message
+func newV2Icrp(ptid ControlConnID, scfg *SessionConfig) (msg *v2ControlMessage, err error) {
+	/* RFC2661 says we MUST include
+
+	- Message Type
+	- Assigned Session ID
+	*/
+	in := []avpIn{
+		{avpTypeMessage, avpMsgTypeIcrp},
+		{avpTypeSessionID, uint16(scfg.SessionID)},
+	}
+	return buildV2Msg(ptid, scfg.PeerSessionID, in)
+}
+
 // newV2Iccn builds a new ICCN message
 func newV2Iccn(ptid ControlConnID, scfg *SessionConfig) (msg *v2ControlMessage, err error) {
 	/* RFC2661 says we MUST include:
