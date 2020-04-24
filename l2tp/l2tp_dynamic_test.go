@@ -33,14 +33,17 @@ func (teh *testTunnelEventCounter) HandleEvent(event interface{}) {
 
 type testTunnelEventCounterCloser struct {
 	testTunnelEventCounter
+	wg sync.WaitGroup
 }
 
 func (teh *testTunnelEventCounterCloser) HandleEvent(event interface{}) {
 	teh.testTunnelEventCounter.HandleEvent(event)
 	if ev, ok := event.(*TunnelUpEvent); ok {
 		t := ev.Tunnel
+		teh.wg.Add(1)
 		go func() {
 			t.Close()
+			teh.wg.Done()
 		}()
 	}
 }
@@ -52,6 +55,7 @@ type testLNS struct {
 	xport              *transport
 	tunnelEstablished  bool
 	sessionEstablished bool
+	isShutdown         bool
 }
 
 func newTestLNS(logger log.Logger, tcfg *TunnelConfig, scfg *SessionConfig) (*testLNS, error) {
@@ -90,15 +94,14 @@ func newTestLNS(logger log.Logger, tcfg *TunnelConfig, scfg *SessionConfig) (*te
 }
 
 func (lns *testLNS) shutdown() {
-	msg, err := newV2Stopccn(&resultCode{avpStopCCNResultCodeClearConnection, 0, ""}, lns.tcfg)
-	if err != nil {
-		panic(fmt.Sprintf("failed to build STOPCCN: %v", err))
-	}
-	lns.xport.send(msg)
-	lns.xport.close()
+	level.Debug(lns.logger).Log("message", "shutdown")
+	lns.isShutdown = true
 }
 
 func (lns *testLNS) handleV2Msg(msg *v2ControlMessage, from unix.Sockaddr) error {
+	level.Debug(lns.logger).Log(
+		"message", "receive control message",
+		"message_type", msg.getType())
 	switch msg.getType() {
 	// Tunnel messages
 	case avpMsgTypeSccrq:
@@ -122,7 +125,7 @@ func (lns *testLNS) handleV2Msg(msg *v2ControlMessage, from unix.Sockaddr) error
 		// By closing the transport the transport recvChan will be
 		// closed, which will cause the run() function to return.
 		time.Sleep(250 * time.Millisecond)
-		lns.xport.close()
+		lns.isShutdown = true
 		return nil
 	case avpMsgTypeHello:
 		return nil
@@ -150,7 +153,7 @@ func (lns *testLNS) handleV2Msg(msg *v2ControlMessage, from unix.Sockaddr) error
 
 func (lns *testLNS) run(timeout time.Duration) {
 	deadline := time.NewTimer(timeout)
-	for {
+	for !lns.isShutdown {
 		select {
 		case <-deadline.C:
 			lns.shutdown()
@@ -170,16 +173,18 @@ func (lns *testLNS) run(timeout time.Duration) {
 			}
 		}
 	}
+	lns.xport.close()
 }
 
 func TestDynamicClient(t *testing.T) {
 	cases := []struct {
-		name              string
-		localCfg, peerCfg TunnelConfig
+		name                            string
+		localTunnelCfg, peerTunnelCfg   *TunnelConfig
+		localSessionCfg, peerSessionCfg *SessionConfig
 	}{
 		{
 			name: "L2TPv2 UDP AF_INET",
-			localCfg: TunnelConfig{
+			localTunnelCfg: &TunnelConfig{
 				Local:          "127.0.0.1:6000",
 				Peer:           "localhost:5000",
 				Version:        ProtocolVersion2,
@@ -187,7 +192,7 @@ func TestDynamicClient(t *testing.T) {
 				Encap:          EncapTypeUDP,
 				StopCCNTimeout: 250 * time.Millisecond,
 			},
-			peerCfg: TunnelConfig{
+			peerTunnelCfg: &TunnelConfig{
 				Local:          "localhost:5000",
 				Peer:           "127.0.0.1:6000",
 				Version:        ProtocolVersion2,
@@ -198,14 +203,14 @@ func TestDynamicClient(t *testing.T) {
 		},
 		{
 			name: "L2TPv2 UDP AF_INET (alloc TID)",
-			localCfg: TunnelConfig{
+			localTunnelCfg: &TunnelConfig{
 				Local:          "127.0.0.1:6000",
 				Peer:           "localhost:5000",
 				Version:        ProtocolVersion2,
 				Encap:          EncapTypeUDP,
 				StopCCNTimeout: 250 * time.Millisecond,
 			},
-			peerCfg: TunnelConfig{
+			peerTunnelCfg: &TunnelConfig{
 				Local:          "localhost:5000",
 				Peer:           "127.0.0.1:6000",
 				Version:        ProtocolVersion2,
@@ -214,13 +219,38 @@ func TestDynamicClient(t *testing.T) {
 				StopCCNTimeout: 250 * time.Millisecond,
 			},
 		},
+		{
+			name: "L2TPv2 UDP AF_INET (alloc TID, with session)",
+			localTunnelCfg: &TunnelConfig{
+				Local:          "127.0.0.1:6000",
+				Peer:           "localhost:5000",
+				Version:        ProtocolVersion2,
+				Encap:          EncapTypeUDP,
+				StopCCNTimeout: 250 * time.Millisecond,
+			},
+			localSessionCfg: &SessionConfig{
+				Pseudowire: PseudowireTypePPP,
+			},
+			peerTunnelCfg: &TunnelConfig{
+				Local:          "localhost:5000",
+				Peer:           "127.0.0.1:6000",
+				Version:        ProtocolVersion2,
+				TunnelID:       4567,
+				Encap:          EncapTypeUDP,
+				StopCCNTimeout: 250 * time.Millisecond,
+			},
+			peerSessionCfg: &SessionConfig{
+				Pseudowire: PseudowireTypePPP,
+				SessionID:  5566,
+			},
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			logger := level.NewFilter(log.NewLogfmtLogger(os.Stderr), level.AllowDebug())
 
 			// Create and run a test LNS instance
-			lns, err := newTestLNS(logger, &c.peerCfg, nil)
+			lns, err := newTestLNS(logger, c.peerTunnelCfg, c.peerSessionCfg)
 			if err != nil {
 				t.Fatalf("newTestLNS: %v", err)
 			}
@@ -241,13 +271,22 @@ func TestDynamicClient(t *testing.T) {
 			teh := testTunnelEventCounterCloser{}
 			ctx.RegisterEventHandler(&teh)
 
-			_, err = ctx.NewDynamicTunnel("t1", &c.localCfg)
+			tunl, err := ctx.NewDynamicTunnel("t1", c.localTunnelCfg)
 			if err != nil {
-				t.Fatalf("NewDynamicTunnel(\"t1\", %v): %v", c.localCfg, err)
+				t.Fatalf("NewDynamicTunnel(%q, %v): %v", "t1", c.localTunnelCfg, err)
+			}
+
+			// And optionally the client session
+			if c.localSessionCfg != nil {
+				_, err = tunl.NewSession("s1", c.peerSessionCfg)
+				if err != nil {
+					t.Fatalf("NewSession(%q, %v): %v", "s1", c.peerSessionCfg, err)
+				}
 			}
 
 			wg.Wait()
 			ctx.Close()
+			teh.wg.Wait()
 
 			expect := testTunnelEventCounterCloser{testTunnelEventCounter: testTunnelEventCounter{1, 1}}
 			if teh != expect {
