@@ -356,7 +356,7 @@ func (xport *transport) recvFrame(rawMsg *rawMsg) (messages []controlMessage, er
 	}
 
 	for _, msg := range messages {
-		// Sanity check the packet sequence number: enqueue the packet for rx if it's OK
+		// Sanity check the packet sequence number: return an error if it's not OK
 		if seqCompare(msg.nr(), seqIncrement(xport.slowStart.ns)) > 0 {
 			return nil, fmt.Errorf("dropping invalid packet %s ns %d nr %d (transport ns %d nr %d)",
 				msg.getType(), msg.ns(), msg.nr(), xport.slowStart.ns, xport.slowStart.nr)
@@ -383,13 +383,14 @@ func (xport *transport) recvMessage(m *recvMsg) {
 }
 
 func (xport *transport) dequeueRxMessage() bool {
-	for i, m := range xport.rxQueue {
+	for len(xport.rxQueue) > 0 {
+		m := xport.rxQueue[0]
 		if xport.slowStart.msgIsInSequence(m.msg) || xport.slowStart.msgIsStale(m.msg) {
 			// Remove the message from the rx queue, and bubble it up for
 			// processing.
 			// In general we don't need to do anything more with an ack message
 			// since they're just for the transport's purposes, so just drop them
-			xport.rxQueue = append(xport.rxQueue[:i], xport.rxQueue[i+1:]...)
+			xport.rxQueue = append(xport.rxQueue[:0], xport.rxQueue[1:]...)
 			if m.msg.getType() != avpMsgTypeAck {
 				xport.recvMessage(m)
 			}
@@ -471,15 +472,16 @@ func (xport *transport) retransmitMessage(msg *xmitMsg) error {
 func (xport *transport) processTxQueue() error {
 	// Loop the transmit queue sending messages in order while
 	// the transmit window is open.
-	for i, msg := range xport.txQueue {
+	for len(xport.txQueue) > 0 {
 		if !xport.slowStart.canSend() {
 			// We've sent all we can for the time being.  This is not
 			// an error condition, so return successfully.
 			return nil
 		}
 
-		// Remove from the tx queue, send, add to the ack queue
-		xport.txQueue = append(xport.txQueue[:i], xport.txQueue[i+1:]...)
+		// Pop from the tx queue, send, add to the ack queue
+		msg := xport.txQueue[0]
+		xport.txQueue = append(xport.txQueue[:0], xport.txQueue[1:]...)
 		err := xport.sendMessage(msg)
 		if err == nil {
 			xport.ackQueue = append(xport.ackQueue, msg)
@@ -492,35 +494,35 @@ func (xport *transport) processTxQueue() error {
 	return nil
 }
 
-func (xport *transport) processAckQueue(recvd controlMessage) bool {
-	found := false
-	for i, msg := range xport.ackQueue {
+func (xport *transport) processAckQueue(recvd controlMessage) (found bool) {
+	for len(xport.ackQueue) > 0 {
+		msg := xport.ackQueue[0]
 		if seqCompare(recvd.nr(), msg.msg.ns()) > 0 {
 			xport.slowStart.onAck(xport.config.TxWindowSize)
-			xport.ackQueue = append(xport.ackQueue[:i], xport.ackQueue[i+1:]...)
+			xport.ackQueue = append(xport.ackQueue[:0], xport.ackQueue[1:]...)
 			msg.txComplete(nil)
 			found = true
 		}
 	}
-	return found
+	return
 }
 
 func (xport *transport) down(err error) {
 
 	// Flush rx queue
-	for i := range xport.rxQueue {
-		xport.rxQueue = append(xport.rxQueue[:i], xport.rxQueue[i+1:]...)
-	}
+	xport.rxQueue = xport.rxQueue[0:0]
 
 	// Flush tx and ack queues: complete these messages to unblock
 	// callers pending on their completion.
-	for i, msg := range xport.txQueue {
-		xport.txQueue = append(xport.txQueue[:i], xport.txQueue[i+1:]...)
+	for len(xport.txQueue) > 0 {
+		msg := xport.txQueue[0]
+		xport.txQueue = append(xport.txQueue[:0], xport.txQueue[1:]...)
 		msg.txComplete(err)
 	}
 
-	for i, msg := range xport.ackQueue {
-		xport.ackQueue = append(xport.ackQueue[:i], xport.ackQueue[i+1:]...)
+	for len(xport.ackQueue) > 0 {
+		msg := xport.ackQueue[0]
+		xport.ackQueue = append(xport.ackQueue[:0], xport.ackQueue[1:]...)
 		msg.txComplete(err)
 	}
 
