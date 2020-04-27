@@ -15,6 +15,7 @@ import (
 // slowStartState represents state for the transport sequence numbers
 // and slow start/congestion avoidance algorithm.
 type slowStartState struct {
+	lock                             sync.Mutex
 	ns, nr, cwnd, thresh, nacks, ntx uint16
 }
 
@@ -122,6 +123,8 @@ func seqCompare(seq1, seq2 uint16) int {
 }
 
 func (s *slowStartState) reset(txWindow uint16) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
 	s.cwnd = 1
 	s.thresh = txWindow
 	s.nacks = 0
@@ -129,17 +132,20 @@ func (s *slowStartState) reset(txWindow uint16) {
 }
 
 func (s *slowStartState) canSend() bool {
+	s.lock.Lock()
+	defer s.lock.Unlock()
 	return s.ntx < s.cwnd
 }
 
 func (s *slowStartState) onSend() {
-	if !s.canSend() {
-		panic("slowStartState onSend() called when tx window is closed")
-	}
+	s.lock.Lock()
+	defer s.lock.Unlock()
 	s.ntx++
 }
 
 func (s *slowStartState) onAck(maxTxWindow uint16) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
 	if s.ntx > 0 {
 		if s.cwnd < maxTxWindow {
 			if s.cwnd < s.thresh {
@@ -159,26 +165,42 @@ func (s *slowStartState) onAck(maxTxWindow uint16) {
 }
 
 func (s *slowStartState) onRetransmit() {
+	s.lock.Lock()
+	defer s.lock.Unlock()
 	s.thresh = s.cwnd / 2
 	s.cwnd = 1
 }
 
 func (s *slowStartState) incrementNr() {
+	s.lock.Lock()
+	defer s.lock.Unlock()
 	s.nr = seqIncrement(s.nr)
 }
 
 func (s *slowStartState) incrementNs() {
+	s.lock.Lock()
+	defer s.lock.Unlock()
 	s.ns = seqIncrement(s.ns)
 }
 
 // A message with ns value equal to our nr is the next packet in sequence.
 func (s *slowStartState) msgIsInSequence(msg controlMessage) bool {
+	s.lock.Lock()
+	defer s.lock.Unlock()
 	return seqCompare(s.nr, msg.ns()) == 0
 }
 
 // A message with ns value < our nr is stale/duplicated.
 func (s *slowStartState) msgIsStale(msg controlMessage) bool {
+	s.lock.Lock()
+	defer s.lock.Unlock()
 	return seqCompare(msg.ns(), s.nr) == -1
+}
+
+func (s *slowStartState) getSequenceNumbers() (ns, nr uint16) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	return s.ns, s.nr
 }
 
 func (m *xmitMsg) txComplete(err error) {
@@ -357,9 +379,10 @@ func (xport *transport) recvFrame(rawMsg *rawMsg) (messages []controlMessage, er
 
 	for _, msg := range messages {
 		// Sanity check the packet sequence number: return an error if it's not OK
-		if seqCompare(msg.nr(), seqIncrement(xport.slowStart.ns)) > 0 {
+		ns, nr := xport.slowStart.getSequenceNumbers()
+		if seqCompare(msg.nr(), seqIncrement(ns)) > 0 {
 			return nil, fmt.Errorf("dropping invalid packet %s ns %d nr %d (transport ns %d nr %d)",
-				msg.getType(), msg.ns(), msg.nr(), xport.slowStart.ns, xport.slowStart.nr)
+				msg.getType(), msg.ns(), msg.nr(), ns, nr)
 		}
 	}
 
@@ -414,10 +437,11 @@ func (xport *transport) processRxQueue() {
 func (xport *transport) sendMessage1(msg controlMessage, isRetransmit bool) error {
 	// Set message sequence numbers.
 	// A retransmitted message should have ns set already.
+	ns, nr := xport.slowStart.getSequenceNumbers()
 	if isRetransmit {
-		msg.setTransportSeqNum(msg.ns(), xport.slowStart.nr)
+		msg.setTransportSeqNum(msg.ns(), nr)
 	} else {
-		msg.setTransportSeqNum(xport.slowStart.ns, xport.slowStart.nr)
+		msg.setTransportSeqNum(ns, nr)
 	}
 
 	level.Debug(xport.logger).Log(
