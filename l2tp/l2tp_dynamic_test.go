@@ -290,7 +290,7 @@ func TestDynamicClient(t *testing.T) {
 
 			expect := testTunnelEventCounterCloser{testTunnelEventCounter: testTunnelEventCounter{1, 1}}
 			if teh != expect {
-				t.Errorf("event listener: expected %v event, got %v", expect, teh)
+				t.Errorf("event listener: expected %v event, got %v", &expect, &teh)
 			}
 
 			if lns.tunnelEstablished != true {

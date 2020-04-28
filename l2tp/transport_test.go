@@ -82,8 +82,7 @@ func TestSlowStart(t *testing.T) {
 	txWindow := uint16(4)
 
 	// initialise state and validate window is open
-	ss := slowStartState{}
-	ss.reset(txWindow)
+	ss := slowStartState{thresh: txWindow, cwnd: 1}
 	checkWindowOpen(&ss, t)
 
 	// send a packet, validate window is now closed

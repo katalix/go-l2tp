@@ -129,15 +129,6 @@ func seqCompare(seq1, seq2 uint16) int {
 	return -1
 }
 
-func (s *slowStartState) reset(txWindow uint16) {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-	s.cwnd = 1
-	s.thresh = txWindow
-	s.nacks = 0
-	s.ntx = 0
-}
-
 func (s *slowStartState) canSend() bool {
 	s.lock.Lock()
 	defer s.lock.Unlock()
@@ -708,17 +699,17 @@ func newTransport(logger log.Logger, cp *controlPlane, cfg transportConfig) (xpo
 	// Make sure the config is sane
 	sanitiseConfig(&cfg)
 
-	slowStart := slowStartState{}
-	slowStart.reset(cfg.TxWindowSize)
-
 	// We always create timer instances even if they're not going to be used.
 	// This makes the logic for the transport go routine select easier to manage.
 	helloTimer := newTimer(cfg.HelloTimeout)
 	ackTimer := newTimer(cfg.AckTimeout)
 
 	xport = &transport{
-		logger:     log.With(logger, "function", "transport"),
-		slowStart:  slowStart,
+		logger: log.With(logger, "function", "transport"),
+		slowStart: slowStartState{
+			thresh: cfg.TxWindowSize,
+			cwnd:   1,
+		},
 		config:     cfg,
 		cp:         cp,
 		helloTimer: helloTimer,
