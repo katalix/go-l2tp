@@ -424,10 +424,10 @@ func (xport *transport) recvFrame(rawMsg *rawMsg) (messages []controlMessage, er
 
 // Find the next message which can be handled (either stale or in-sequence)
 func (xport *transport) dequeueRxMessage() *recvMsg {
-	for len(xport.rxQueue) > 0 {
+	for i := 0; i < len(xport.rxQueue); i++ {
 		m := xport.rxQueue[0]
 		if xport.slowStart.msgIsInSequence(m.msg) || xport.slowStart.msgIsStale(m.msg) {
-			xport.rxQueue = append(xport.rxQueue[:0], xport.rxQueue[1:]...)
+			xport.rxQueue = append(xport.rxQueue[:i], xport.rxQueue[i+1:]...)
 			return m
 		}
 	}
@@ -546,11 +546,12 @@ func (xport *transport) processTxQueue() error {
 }
 
 func (xport *transport) processAckQueue(nr uint16) (found bool) {
-	for len(xport.ackQueue) > 0 {
+	for i := 0; i < len(xport.ackQueue); i++ {
 		msg := xport.ackQueue[0]
 		if seqCompare(nr, msg.msg.ns()) > 0 {
 			xport.slowStart.onAck(xport.config.TxWindowSize)
-			xport.ackQueue = append(xport.ackQueue[:0], xport.ackQueue[1:]...)
+			xport.ackQueue = append(xport.ackQueue[:i], xport.ackQueue[i+1:]...)
+			i--
 			msg.txComplete(nil)
 			found = true
 		}
