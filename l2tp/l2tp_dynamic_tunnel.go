@@ -32,6 +32,7 @@ type dynamicTunnel struct {
 	sendChan    chan *sendMsg
 	eventChan   chan *eventArgs
 	wg          sync.WaitGroup
+	sessionTxWg sync.WaitGroup
 	fsm         fsm
 }
 
@@ -86,6 +87,35 @@ func (dt *dynamicTunnel) Close() {
 	}
 }
 
+func (dt *dynamicTunnel) closeAllSessions() {
+	// In order to prevent any concurrently executing sessions from
+	// blocking in a channel send when trying to transmit control
+	// messages, drain the send channel while closing the sessions.
+	var wg sync.WaitGroup
+	exit := make(chan interface{})
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-exit:
+				return
+			case sm, ok := <-dt.sendChan:
+				if !ok {
+					return
+				}
+				sm.completeChan <- fmt.Errorf("tunnel is shutting down")
+			}
+		}
+	}()
+
+	dt.baseTunnel.closeAllSessions()
+	dt.sessionTxWg.Wait()
+	close(exit)
+	wg.Wait()
+}
+
 func (dt *dynamicTunnel) sendMessage(msg controlMessage) error {
 	sm := &sendMsg{
 		msg:          msg,
@@ -130,7 +160,9 @@ func (dt *dynamicTunnel) runTunnel() {
 				dt.fsmActClose(nil)
 				return
 			}
+			dt.sessionTxWg.Add(1)
 			go func() {
+				defer dt.sessionTxWg.Done()
 				err := dt.xport.send(sm.msg)
 				sm.completeChan <- err
 			}()
@@ -474,7 +506,7 @@ func (dt *dynamicTunnel) fsmActClose(args []interface{}) {
 
 		dt.isClosing = true
 
-		dt.baseTunnel.closeAllSessions()
+		dt.closeAllSessions()
 
 		if dt.dp != nil {
 			err := dt.dp.Down()
