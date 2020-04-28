@@ -53,6 +53,12 @@ type recvMsg struct {
 	from unix.Sockaddr
 }
 
+// nrInd represents a received sequence value.
+type nrInd struct {
+	msgType avpMsgType
+	nr      uint16
+}
+
 // transportConfig represents the tunable parameters governing
 // the behaviour of the reliable transport algorithm.
 type transportConfig struct {
@@ -92,7 +98,7 @@ type transport struct {
 	sendChan             chan *xmitMsg
 	retryChan            chan *xmitMsg
 	recvChan             chan *recvMsg
-	cpChan               chan *rawMsg
+	nrChan               chan []nrInd
 	rxQueue              []*recvMsg
 	txQueue, ackQueue    []*xmitMsg
 	wg                   sync.WaitGroup
@@ -243,24 +249,64 @@ func sanitiseConfig(cfg *transportConfig) {
 	}
 }
 
-func cpRead(xport *transport, wg *sync.WaitGroup) {
-	defer wg.Done()
+func (xport *transport) rawRecv() (buffer []byte, from unix.Sockaddr, err error) {
+	buffer = make([]byte, 4096)
+	n, from, err := xport.cp.recvFrom(buffer)
+	if err != nil {
+		return nil, nil, err
+	}
+	buffer = buffer[:n]
+	return
+}
+
+func (xport *transport) receiver() {
 	for {
-		b := make([]byte, 4096)
-		n, sa, err := xport.cp.recvFrom(b)
+		buffer, from, err := xport.rawRecv()
 		if err != nil {
-			close(xport.cpChan)
+			close(xport.nrChan)
 			level.Error(xport.logger).Log(
 				"message", "socket read failed",
 				"error", err)
 			return
 		}
-		xport.cpChan <- &rawMsg{b: b[:n], sa: sa}
+
+		level.Debug(xport.logger).Log(
+			"message", "socket recv",
+			"length", len(buffer))
+
+		// Parse the received frame into control messages, perform early
+		// sequence number validation.
+		messages, err := xport.recvFrame(&rawMsg{b: buffer, sa: from})
+		if err != nil {
+			// Early packet handling can fail for a variety of reasons.
+			// The most important of these is if a peer sends a mandatory
+			// AVP that we don't recognise: this MUST cause the tunnel to fail
+			// per the RFCs.  Anything else we just log for information.
+			level.Error(xport.logger).Log(
+				"message", "frame receive failed",
+				"error", err)
+			if strings.Contains("failed to parse mandatory AVP", err.Error()) {
+				close(xport.nrChan)
+				return
+			}
+		}
+
+		// Add received messages to the rx queue.  Pass the nr values of the received
+		// messages to the sender goroutine for processing of the ack queue and possible
+		// re-opening of the send window.
+		rxNr := []nrInd{}
+
+		for _, msg := range messages {
+			xport.rxQueue = append(xport.rxQueue, &recvMsg{msg: msg, from: from})
+			rxNr = append(rxNr, nrInd{msgType: msg.getType(), nr: msg.nr()})
+		}
+
+		xport.nrChan <- rxNr
+		xport.processRxQueue()
 	}
 }
 
-func runTransport(xport *transport, wg *sync.WaitGroup) {
-	defer wg.Done()
+func (xport *transport) sender() {
 	for {
 		select {
 		// Transmission request from user code
@@ -281,41 +327,20 @@ func runTransport(xport *transport, wg *sync.WaitGroup) {
 				return
 			}
 
-		// Socket receive from the transport socket
-		case rawMsg, ok := <-xport.cpChan:
+		// Nr sequence updates from receiver
+		case rxNr, ok := <-xport.nrChan:
 
 			if !ok {
-				xport.down(errors.New("control plane socket read error"))
+				xport.down(errors.New("receive path error"))
 				return
 			}
 
-			level.Debug(xport.logger).Log(
-				"message", "socket recv",
-				"length", len(rawMsg.b))
-
-			messages, err := xport.recvFrame(rawMsg)
-			if err != nil {
-				// Early packet handling can fail for a variety of reasons.
-				// The most important of these is if a peer sends a mandatory
-				// AVP that we don't recognise: this MUST cause the tunnel to fail
-				// per the RFCs.  Anything else we just log for information.
-				level.Error(xport.logger).Log(
-					"message", "frame receive failed",
-					"error", err)
-				if strings.Contains("failed to parse mandatory AVP", err.Error()) {
-					xport.down(err)
-					return
-				}
-			}
-
-			for _, msg := range messages {
-				xport.rxQueue = append(xport.rxQueue, &recvMsg{msg: msg, from: rawMsg.sa})
-
-				// Process the ack queue using sequence numbers from the newly received
-				// message.  If we manage to dequeue a message it may result in opening
-				// the window for further transmits.
-				if xport.processAckQueue(msg) {
-					err = xport.processTxQueue()
+			// Process the ack queue to see whether the nr updates ack any outstanding
+			// messages.  If we manage to dequeue a message it may result in opening the
+			// window for further transmission, in which case process the tx queue.
+			for _, nri := range rxNr {
+				if xport.processAckQueue(nri.nr) {
+					err := xport.processTxQueue()
 					if err != nil {
 						xport.down(err)
 						return
@@ -323,9 +348,17 @@ func runTransport(xport *transport, wg *sync.WaitGroup) {
 				}
 			}
 
-			// Having added messages to the receive queue, process the queue
-			// to attempt to handle any messages that are in sequence.
-			xport.processRxQueue()
+			// Kick the ack timer if we received any non-ack message.  We don't want to
+			// ack an ack message since we'll end up ping-ponging acks back and forth forever.
+			for _, nri := range rxNr {
+				if nri.msgType != avpMsgTypeAck {
+					xport.toggleAckTimer(true)
+					break
+				}
+			}
+
+			// The fact we've seen any traffic at all means we should reset the hello timer
+			xport.resetHelloTimer()
 
 		// Message retry request due to timeout waiting for an ack
 		case xmitMsg, ok := <-xport.retryChan:
@@ -377,9 +410,9 @@ func (xport *transport) recvFrame(rawMsg *rawMsg) (messages []controlMessage, er
 		return nil, err
 	}
 
+	ns, nr := xport.slowStart.getSequenceNumbers()
 	for _, msg := range messages {
 		// Sanity check the packet sequence number: return an error if it's not OK
-		ns, nr := xport.slowStart.getSequenceNumbers()
 		if seqCompare(msg.nr(), seqIncrement(ns)) > 0 {
 			return nil, fmt.Errorf("dropping invalid packet %s ns %d nr %d (transport ns %d nr %d)",
 				msg.getType(), msg.ns(), msg.nr(), ns, nr)
@@ -389,47 +422,41 @@ func (xport *transport) recvFrame(rawMsg *rawMsg) (messages []controlMessage, er
 	return messages, nil
 }
 
-func (xport *transport) recvMessage(m *recvMsg) {
-	if xport.slowStart.msgIsInSequence(m.msg) {
-
-		level.Debug(xport.logger).Log(
-			"message", "recv",
-			"message_type", m.msg.getType())
-
-		xport.toggleAckTimer(true)
-		xport.resetHelloTimer()
-		xport.slowStart.incrementNr()
-		xport.recvChan <- m
-	} else if xport.slowStart.msgIsStale(m.msg) {
-		_ = xport.sendExplicitAck()
-	}
-}
-
-func (xport *transport) dequeueRxMessage() bool {
+// Find the next message which can be handled (either stale or in-sequence)
+func (xport *transport) dequeueRxMessage() *recvMsg {
 	for len(xport.rxQueue) > 0 {
 		m := xport.rxQueue[0]
 		if xport.slowStart.msgIsInSequence(m.msg) || xport.slowStart.msgIsStale(m.msg) {
-			// Remove the message from the rx queue, and bubble it up for
-			// processing.
-			// In general we don't need to do anything more with an ack message
-			// since they're just for the transport's purposes, so just drop them
 			xport.rxQueue = append(xport.rxQueue[:0], xport.rxQueue[1:]...)
-			if m.msg.getType() != avpMsgTypeAck {
-				xport.recvMessage(m)
-			}
-			return true
+			return m
 		}
 	}
-	return false
+	return nil
 }
 
 func (xport *transport) processRxQueue() {
-	// Loop the receive queue looking for messages in sequence.
-	// We give up once we've been through the queue without finding
-	// an in-sequence message.
+	// Pop messages off the receive queue in sequence, and process.
+	// Give up when there are no more in-sequence messages to handle.
 	for {
-		if !xport.dequeueRxMessage() {
+		m := xport.dequeueRxMessage()
+		if m == nil {
 			return
+		}
+
+		// We don't need to do anything more with an ack message since
+		// they only serve to update the ack queue.  So just ignore them here.
+		if m.msg.getType() != avpMsgTypeAck {
+			// If a message is stale, just ignore it here.  It'll be acked
+			// implicitly by the ack timer.
+			if xport.slowStart.msgIsInSequence(m.msg) {
+
+				level.Debug(xport.logger).Log(
+					"message", "recv",
+					"message_type", m.msg.getType())
+
+				xport.slowStart.incrementNr()
+				xport.recvChan <- m
+			}
 		}
 	}
 }
@@ -518,10 +545,10 @@ func (xport *transport) processTxQueue() error {
 	return nil
 }
 
-func (xport *transport) processAckQueue(recvd controlMessage) (found bool) {
+func (xport *transport) processAckQueue(nr uint16) (found bool) {
 	for len(xport.ackQueue) > 0 {
 		msg := xport.ackQueue[0]
-		if seqCompare(recvd.nr(), msg.msg.ns()) > 0 {
+		if seqCompare(nr, msg.msg.ns()) > 0 {
 			xport.slowStart.onAck(xport.config.TxWindowSize)
 			xport.ackQueue = append(xport.ackQueue[:0], xport.ackQueue[1:]...)
 			msg.txComplete(nil)
@@ -533,11 +560,11 @@ func (xport *transport) processAckQueue(recvd controlMessage) (found bool) {
 
 func (xport *transport) down(err error) {
 
-	// Flush rx queue
-	xport.rxQueue = xport.rxQueue[0:0]
-
 	// Flush tx and ack queues: complete these messages to unblock
 	// callers pending on their completion.
+	// Note the rx queue is flushed by the receiver go routine *after*
+	// xport.receiver() has terminated.  We don't do it here since
+	// doing so would represent a data race.
 	for len(xport.txQueue) > 0 {
 		msg := xport.txQueue[0]
 		xport.txQueue = append(xport.txQueue[:0], xport.txQueue[1:]...)
@@ -560,10 +587,10 @@ func (xport *transport) down(err error) {
 		"message", "transport down",
 		"error", err)
 
-	// Unblock recv path
+	// Unblock user code blocking on receive from the transport
 	close(xport.recvChan)
 
-	// Unblock control plane read goroutine
+	// Close the control plane socket, which will cause the receiver goroutine to exit
 	xport.cp.close()
 }
 
@@ -674,7 +701,7 @@ func newTransport(logger log.Logger, cp *controlPlane, cfg transportConfig) (xpo
 		sendChan:   make(chan *xmitMsg),
 		retryChan:  make(chan *xmitMsg),
 		recvChan:   make(chan *recvMsg),
-		cpChan:     make(chan *rawMsg),
+		nrChan:     make(chan []nrInd),
 		rxQueue:    []*recvMsg{},
 		txQueue:    []*xmitMsg{},
 		ackQueue:   []*xmitMsg{},
@@ -682,8 +709,16 @@ func newTransport(logger log.Logger, cp *controlPlane, cfg transportConfig) (xpo
 
 	xport.wg.Add(2)
 	xport.resetHelloTimer()
-	go runTransport(xport, &xport.wg)
-	go cpRead(xport, &xport.wg)
+	go func() {
+		defer xport.wg.Done()
+		xport.sender()
+	}()
+	go func() {
+		defer xport.wg.Done()
+		xport.receiver()
+		// Flush rx queue
+		xport.rxQueue = xport.rxQueue[0:0]
+	}()
 
 	return xport, nil
 }
