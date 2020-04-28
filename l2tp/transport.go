@@ -101,7 +101,8 @@ type transport struct {
 	nrChan               chan []nrInd
 	rxQueue              []*recvMsg
 	txQueue, ackQueue    []*xmitMsg
-	wg                   sync.WaitGroup
+	senderWg             sync.WaitGroup
+	receiverWg           sync.WaitGroup
 }
 
 // Increment transport sequence number by one avoiding overflow
@@ -559,7 +560,35 @@ func (xport *transport) processAckQueue(nr uint16) (found bool) {
 	return
 }
 
+func (xport *transport) closeReceiver() {
+	var drainWg sync.WaitGroup
+	exit := make(chan interface{})
+	drainWg.Add(1)
+
+	go func() {
+		defer drainWg.Done()
+		for {
+			select {
+			case <-exit:
+				return
+			case _, ok := <-xport.recvChan:
+				if !ok {
+					return
+				}
+			case <-xport.nrChan:
+			}
+		}
+	}()
+
+	xport.cp.close()
+	xport.receiverWg.Wait()
+	drainWg.Wait()
+}
+
 func (xport *transport) down(err error) {
+
+	// Shut down the receiver
+	xport.closeReceiver()
 
 	// Flush tx and ack queues: complete these messages to unblock
 	// callers pending on their completion.
@@ -588,11 +617,6 @@ func (xport *transport) down(err error) {
 		"message", "transport down",
 		"error", err)
 
-	// Unblock user code blocking on receive from the transport
-	close(xport.recvChan)
-
-	// Close the control plane socket, which will cause the receiver goroutine to exit
-	xport.cp.close()
 }
 
 func (xport *transport) toggleAckTimer(enable bool) {
@@ -708,17 +732,22 @@ func newTransport(logger log.Logger, cp *controlPlane, cfg transportConfig) (xpo
 		ackQueue:   []*xmitMsg{},
 	}
 
-	xport.wg.Add(2)
 	xport.resetHelloTimer()
+
+	xport.senderWg.Add(1)
 	go func() {
-		defer xport.wg.Done()
+		defer xport.senderWg.Done()
 		xport.sender()
 	}()
+
+	xport.receiverWg.Add(1)
 	go func() {
-		defer xport.wg.Done()
+		defer xport.receiverWg.Done()
 		xport.receiver()
 		// Flush rx queue
 		xport.rxQueue = xport.rxQueue[0:0]
+		// Unblock user code blocking on receive from the transport
+		close(xport.recvChan)
 	}()
 
 	return xport, nil
@@ -768,5 +797,5 @@ func (xport *transport) recv() (msg controlMessage, from unix.Sockaddr, err erro
 // close closes the transport.
 func (xport *transport) close() {
 	close(xport.sendChan)
-	xport.wg.Wait()
+	xport.senderWg.Wait()
 }
