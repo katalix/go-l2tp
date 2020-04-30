@@ -46,6 +46,7 @@ type tunnel interface {
 	getDP() DataPlane
 	getLogger() log.Logger
 	unlinkSession(s session)
+	handleUserEvent(event interface{})
 }
 
 // Session is an interface representing an L2TP session.
@@ -150,6 +151,30 @@ type TunnelDownEvent struct {
 	Tunnel                    Tunnel
 	Config                    *TunnelConfig
 	LocalAddress, PeerAddress unix.Sockaddr
+}
+
+// SessionUpEvent is passed to registered EventHandler instances when a session
+// comes up.  In the case of static or quiescent sessions, this occurs immediately
+// on instantiation of the session.  For dynamic sessions, this occurs on the
+// completion of the L2TP control protocol message exchange with the peer.
+type SessionUpEvent struct {
+	Tunnel        Tunnel
+	TunnelConfig  *TunnelConfig
+	Session       Session
+	SessionConfig *SessionConfig
+	InterfaceName string
+}
+
+// SessionDownEvent is passed to registered EventHandler instances when a session
+// comes up.  In the case of static or quiescent sessions, this occurs immediately
+// on instantiation of the session.  For dynamic sessions, this occurs on the
+// completion of the L2TP control protocol message exchange with the peer.
+type SessionDownEvent struct {
+	Tunnel        Tunnel
+	TunnelConfig  *TunnelConfig
+	Session       Session
+	SessionConfig *SessionConfig
+	InterfaceName string
 }
 
 // LinuxNetlinkDataPlane is a special sentinel value used to indicate
@@ -751,6 +776,10 @@ func (bt *baseTunnel) unlinkSession(s session) {
 	defer bt.sessionLock.Unlock()
 	delete(bt.sessionsByName, s.getName())
 	delete(bt.sessionsByID, s.getCfg().SessionID)
+}
+
+func (bt *baseTunnel) handleUserEvent(event interface{}) {
+	bt.parent.handleUserEvent(event)
 }
 
 func (bt *baseTunnel) findSessionByName(name string) (s session, ok bool) {
