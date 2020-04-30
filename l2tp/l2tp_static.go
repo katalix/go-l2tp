@@ -15,7 +15,8 @@ type staticTunnel struct {
 
 type staticSession struct {
 	*baseSession
-	dp SessionDataPlane
+	dp     SessionDataPlane
+	ifname string
 }
 
 func (st *staticTunnel) NewSession(name string, cfg *SessionConfig) (Session, error) {
@@ -117,11 +118,25 @@ func newStaticSession(name string, parent tunnel, cfg *SessionConfig) (ss *stati
 		return nil, err
 	}
 
+	ss.ifname, err = ss.dp.GetInterfaceName()
+	if err != nil {
+		ss.dp.Down()
+		return nil, err
+	}
+
 	level.Info(ss.logger).Log(
 		"message", "new static session",
 		"session_id", ss.cfg.SessionID,
 		"peer_session_id", ss.cfg.PeerSessionID,
 		"pseudowire", ss.cfg.Pseudowire)
+
+	ss.parent.handleUserEvent(&SessionUpEvent{
+		Tunnel:        ss.parent,
+		TunnelConfig:  ss.parent.getCfg(),
+		Session:       ss,
+		SessionConfig: ss.cfg,
+		InterfaceName: ss.ifname,
+	})
 
 	return
 }
@@ -133,6 +148,15 @@ func (ss *staticSession) Close() {
 			level.Error(ss.logger).Log("message", "dataplane down failed", "error", err)
 		}
 	}
+
+	ss.parent.handleUserEvent(&SessionDownEvent{
+		Tunnel:        ss.parent,
+		TunnelConfig:  ss.parent.getCfg(),
+		Session:       ss,
+		SessionConfig: ss.cfg,
+		InterfaceName: ss.ifname,
+	})
+
 	ss.parent.unlinkSession(ss)
 	level.Info(ss.logger).Log("message", "close")
 }

@@ -9,16 +9,18 @@ import (
 
 type dynamicSession struct {
 	*baseSession
-	isClosed   bool
-	callSerial uint32
-	dt         *dynamicTunnel
-	dp         SessionDataPlane
-	wg         sync.WaitGroup
-	msgRxChan  chan controlMessage
-	eventChan  chan string
-	closeChan  chan interface{}
-	killChan   chan interface{}
-	fsm        fsm
+	isClosed    bool
+	established bool
+	callSerial  uint32
+	ifname      string
+	dt          *dynamicTunnel
+	dp          SessionDataPlane
+	wg          sync.WaitGroup
+	msgRxChan   chan controlMessage
+	eventChan   chan string
+	closeChan   chan interface{}
+	killChan    chan interface{}
+	fsm         fsm
 }
 
 func (ds *dynamicSession) Close() {
@@ -274,9 +276,25 @@ func (ds *dynamicSession) fsmActOnIcrp(args []interface{}) {
 		ds.fsmActClose(nil)
 	}
 
+	ds.ifname, err = ds.dp.GetInterfaceName()
+	if err != nil {
+		level.Error(ds.logger).Log(
+			"message", "failed to retrieve session interface name",
+			"error", err)
+		// TODO: CDN args
+		ds.fsmActClose(nil)
+	}
+
 	level.Info(ds.logger).Log("message", "data plane established")
 
-	// TODO: events
+	ds.established = true
+	ds.parent.handleUserEvent(&SessionUpEvent{
+		Tunnel:        ds.parent,
+		TunnelConfig:  ds.parent.getCfg(),
+		Session:       ds,
+		SessionConfig: ds.cfg,
+		InterfaceName: ds.ifname,
+	})
 }
 
 func (ds *dynamicSession) sendIccn() (err error) {
@@ -304,13 +322,24 @@ func (ds *dynamicSession) sendCdn(rc *resultCode) (err error) {
 }
 
 func (ds *dynamicSession) fsmActClose(args []interface{}) {
-	// TODO: events
 	if ds.dp != nil {
 		err := ds.dp.Down()
 		if err != nil {
 			level.Error(ds.logger).Log("message", "dataplane down failed", "error", err)
 		}
 	}
+
+	if ds.established {
+		ds.established = false
+		ds.parent.handleUserEvent(&SessionDownEvent{
+			Tunnel:        ds.parent,
+			TunnelConfig:  ds.parent.getCfg(),
+			Session:       ds,
+			SessionConfig: ds.cfg,
+			InterfaceName: ds.ifname,
+		})
+	}
+
 	ds.parent.unlinkSession(ds)
 	level.Info(ds.logger).Log("message", "close")
 	ds.isClosed = true
