@@ -42,15 +42,15 @@ func (tec *testEventCounter) getEventCounts() eventCounters {
 	return tec.eventCounters
 }
 
-type testTunnelEventCounterCloser struct {
-	testEventCounter
-	wg sync.WaitGroup
-}
-
 type eventCounterCloser interface {
 	EventHandler
 	getEventCounts() eventCounters
 	wait()
+}
+
+type testTunnelEventCounterCloser struct {
+	testEventCounter
+	wg sync.WaitGroup
 }
 
 func (tecc *testTunnelEventCounterCloser) HandleEvent(event interface{}) {
@@ -67,6 +67,29 @@ func (tecc *testTunnelEventCounterCloser) HandleEvent(event interface{}) {
 
 func (tecc *testTunnelEventCounterCloser) wait() {
 	tecc.wg.Wait()
+}
+
+type testSessionEventCounterCloser struct {
+	testEventCounter
+	wg sync.WaitGroup
+}
+
+func (secc *testSessionEventCounterCloser) HandleEvent(event interface{}) {
+	secc.testEventCounter.HandleEvent(event)
+	if ev, ok := event.(*SessionUpEvent); ok {
+		// Closing the tunnel should close the session, and will also cause the
+		// test LNS instance to shut down
+		t := ev.Tunnel
+		secc.wg.Add(1)
+		go func() {
+			t.Close()
+			secc.wg.Done()
+		}()
+	}
+}
+
+func (secc *testSessionEventCounterCloser) wait() {
+	secc.wg.Wait()
 }
 
 type testLNS struct {
@@ -289,8 +312,15 @@ func TestDynamicClient(t *testing.T) {
 				t.Fatalf("NewContext(): %v", err)
 			}
 
+			// The event counter triggers shutdown when it sees a specific event.
+			// For tests with just a tunnel, close on tunnel establishment.
+			// For tests with a session, close on session establishment.
 			var eventCounter eventCounterCloser
-			eventCounter = &testTunnelEventCounterCloser{}
+			if c.localSessionCfg != nil {
+				eventCounter = &testSessionEventCounterCloser{}
+			} else {
+				eventCounter = &testTunnelEventCounterCloser{}
+			}
 			ctx.RegisterEventHandler(eventCounter)
 
 			tunl, err := ctx.NewDynamicTunnel("t1", c.localTunnelCfg)
@@ -310,7 +340,15 @@ func TestDynamicClient(t *testing.T) {
 			ctx.Close()
 			eventCounter.wait()
 
-			expectEvents := eventCounters{tunnelUp: 1, tunnelDown: 1, sessionUp: 0, sessionDown: 0}
+			// If we bought up tunnel and session we expect up/down events for both.
+			// If we bought up just a tunnel, then we expect up/down events for the tunnel alone.
+			var expectEvents eventCounters
+			if c.localSessionCfg != nil {
+				expectEvents = eventCounters{tunnelUp: 1, tunnelDown: 1, sessionUp: 1, sessionDown: 1}
+			} else {
+				expectEvents = eventCounters{tunnelUp: 1, tunnelDown: 1, sessionUp: 0, sessionDown: 0}
+			}
+
 			gotEvents := eventCounter.getEventCounts()
 			if expectEvents != gotEvents {
 				t.Errorf("event listener: expected %v event, got %v", expectEvents, gotEvents)
