@@ -17,35 +17,56 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-type testTunnelEventCounter struct {
-	tunnelUp   int
-	tunnelDown int
+type eventCounters struct {
+	tunnelUp, tunnelDown, sessionUp, sessionDown int
 }
 
-func (teh *testTunnelEventCounter) HandleEvent(event interface{}) {
+type testEventCounter struct {
+	eventCounters
+}
+
+func (tec *testEventCounter) HandleEvent(event interface{}) {
 	switch event.(type) {
 	case *TunnelUpEvent:
-		teh.tunnelUp++
+		tec.tunnelUp++
 	case *TunnelDownEvent:
-		teh.tunnelDown++
+		tec.tunnelDown++
+	case *SessionUpEvent:
+		tec.sessionUp++
+	case *SessionDownEvent:
+		tec.sessionDown++
 	}
+}
+
+func (tec *testEventCounter) getEventCounts() eventCounters {
+	return tec.eventCounters
 }
 
 type testTunnelEventCounterCloser struct {
-	testTunnelEventCounter
+	testEventCounter
 	wg sync.WaitGroup
 }
 
-func (teh *testTunnelEventCounterCloser) HandleEvent(event interface{}) {
-	teh.testTunnelEventCounter.HandleEvent(event)
+type eventCounterCloser interface {
+	EventHandler
+	getEventCounts() eventCounters
+	wait()
+}
+
+func (tecc *testTunnelEventCounterCloser) HandleEvent(event interface{}) {
+	tecc.testEventCounter.HandleEvent(event)
 	if ev, ok := event.(*TunnelUpEvent); ok {
 		t := ev.Tunnel
-		teh.wg.Add(1)
+		tecc.wg.Add(1)
 		go func() {
 			t.Close()
-			teh.wg.Done()
+			tecc.wg.Done()
 		}()
 	}
+}
+
+func (tecc *testTunnelEventCounterCloser) wait() {
+	tecc.wg.Wait()
 }
 
 type testLNS struct {
@@ -255,11 +276,11 @@ func TestDynamicClient(t *testing.T) {
 				t.Fatalf("newTestLNS: %v", err)
 			}
 
-			var wg sync.WaitGroup
-			wg.Add(1)
+			var lnsWg sync.WaitGroup
+			lnsWg.Add(1)
 			go func() {
 				lns.run(3 * time.Second)
-				wg.Done()
+				lnsWg.Done()
 			}()
 
 			// Bring up the client tunnel.
@@ -268,8 +289,9 @@ func TestDynamicClient(t *testing.T) {
 				t.Fatalf("NewContext(): %v", err)
 			}
 
-			teh := testTunnelEventCounterCloser{}
-			ctx.RegisterEventHandler(&teh)
+			var eventCounter eventCounterCloser
+			eventCounter = &testTunnelEventCounterCloser{}
+			ctx.RegisterEventHandler(eventCounter)
 
 			tunl, err := ctx.NewDynamicTunnel("t1", c.localTunnelCfg)
 			if err != nil {
@@ -284,13 +306,14 @@ func TestDynamicClient(t *testing.T) {
 				}
 			}
 
-			wg.Wait()
+			lnsWg.Wait()
 			ctx.Close()
-			teh.wg.Wait()
+			eventCounter.wait()
 
-			expect := testTunnelEventCounterCloser{testTunnelEventCounter: testTunnelEventCounter{1, 1}}
-			if teh != expect {
-				t.Errorf("event listener: expected %v event, got %v", &expect, &teh)
+			expectEvents := eventCounters{tunnelUp: 1, tunnelDown: 1, sessionUp: 0, sessionDown: 0}
+			gotEvents := eventCounter.getEventCounts()
+			if expectEvents != gotEvents {
+				t.Errorf("event listener: expected %v event, got %v", expectEvents, gotEvents)
 			}
 
 			if lns.tunnelEstablished != true {
