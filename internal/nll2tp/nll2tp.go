@@ -91,6 +91,61 @@ type SessionConfig struct {
 	DebugFlags L2tpDebugFlags
 }
 
+// SessionStatistics includes statistics on dataplane receive and transmit.
+type SessionStatistics struct {
+	// TxPacketCount is the number of data packets the session has transmitted.
+	TxPacketCount uint64
+	// TxBytes is the number of data bytes the session has transmitted.
+	TxBytes uint64
+	// TxErrorCount is the number of transmission errors the session has recorded.
+	TxErrorCount uint64
+	// RxPacketCount is the number of data packets the session has received.
+	RxPacketCount uint64
+	// RxBytes is the number of data bytes the session has received.
+	RxBytes uint64
+	// RxErrorCount is the number of receive errors the session has recorded.
+	RxErrorCount uint64
+	// RxSeqDiscardCount is the number of packets the session has discarded due to sequence errors.
+	// For example, if the session is in LNS mode, has requested sequence numbers, and the client
+	// isn't sending them.
+	RxSeqDiscardCount uint64
+	// RxOOSCount is the number of packets the session has received out of sequence if data packet
+	// reordering is enabled.
+	RxOOSCount uint64
+}
+
+// SessionInfo encapsulates dataplane session information provided by the kernel.
+type SessionInfo struct {
+	// Tid is the host's L2TP ID for the tunnel containing the session.
+	Tid L2tpTunnelID
+	// Ptid is the peer's L2TP ID for the tunnel containing the session.
+	Ptid L2tpTunnelID
+	// Sid is the host's L2TP ID for the session.
+	Sid L2tpSessionID
+	// Psid is the peer's L2TP ID for the session.
+	Psid L2tpSessionID
+	// IfName is the assigned interface name for this session.
+	IfName string
+	// LocalCookie is the RFC3931 cookie for the session.
+	LocalCookie []byte
+	// PeerCookie is the RFC3931 peer cookie for the session.
+	PeerCookie []byte
+	// SendSeq is true if session is sending data packet sequence numbers per RFC2661 section 5.4.
+	SendSeq bool
+	// RecvSeq is true if session is dropping data packets received without sequence numbers.
+	RecvSeq bool
+	// LnsMode is true if the session is running as server.  If running as server
+	// the session will not permit the peer to control data sequence number settings.
+	LnsMode bool
+	// UsingIPSec is true if the session is using IPSec.
+	UsingIPSec bool
+	// ReorderTimeout is the maximum amount of time to hold a data packet in the reorder
+	// queue when sequence numbers are enabled.  This number is defined in milliseconds.
+	ReorderTimeout uint64
+	// Statistics is the current dataplane tx/rx stats.
+	Statistics SessionStatistics
+}
+
 type msgRequest struct {
 	msg    genetlink.Message
 	family uint16
@@ -316,6 +371,128 @@ func (c *Conn) DeleteSession(config *SessionConfig) error {
 
 	_, err = c.execute(req, c.genlFamily.ID, netlink.Request|netlink.Acknowledge)
 	return err
+}
+
+func (stats *SessionStatistics) decode(ad *netlink.AttributeDecoder) error {
+	for ad.Next() {
+		switch ad.Type() {
+		case AttrTxPackets:
+			stats.TxPacketCount = ad.Uint64()
+		case AttrTxBytes:
+			stats.TxBytes = ad.Uint64()
+		case AttrTxErrors:
+			stats.TxErrorCount = ad.Uint64()
+		case AttrRxPackets:
+			stats.RxPacketCount = ad.Uint64()
+		case AttrRxBytes:
+			stats.RxBytes = ad.Uint64()
+		case AttrRxErrors:
+			stats.RxErrorCount = ad.Uint64()
+		case AttrRxSeqDiscards:
+			stats.RxSeqDiscardCount = ad.Uint64()
+		case AttrRxOosPackets:
+			stats.RxOOSCount = ad.Uint64()
+		}
+	}
+	return nil
+}
+
+func sessionInfo_decode(data []byte) (*SessionInfo, error) {
+
+	ad, err := netlink.NewAttributeDecoder(data)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create attribute decoder: %v", err)
+	}
+
+	var info SessionInfo
+	for ad.Next() {
+		switch ad.Type() {
+		case AttrConnId:
+			info.Tid = L2tpTunnelID(ad.Uint32())
+		case AttrPeerConnId:
+			info.Ptid = L2tpTunnelID(ad.Uint32())
+		case AttrSessionId:
+			info.Sid = L2tpSessionID(ad.Uint32())
+		case AttrPeerSessionId:
+			info.Psid = L2tpSessionID(ad.Uint32())
+		case AttrIfname:
+			info.IfName = ad.String()
+		case AttrCookie:
+			info.LocalCookie = ad.Bytes()
+		case AttrPeerCookie:
+			info.PeerCookie = ad.Bytes()
+		case AttrSendSeq:
+			info.SendSeq = ad.Uint8() != 0
+		case AttrRecvSeq:
+			info.RecvSeq = ad.Uint8() != 0
+		case AttrLnsMode:
+			info.LnsMode = ad.Uint8() != 0
+		case AttrUsingIpsec:
+			info.UsingIPSec = ad.Uint8() != 0
+		case AttrRecvTimeout:
+			info.ReorderTimeout = ad.Uint64()
+		case AttrStats:
+			ad.Nested(info.Statistics.decode)
+		}
+	}
+
+	if err = ad.Err(); err != nil {
+		return nil, fmt.Errorf("failed to decode attributes: %v", err)
+	}
+
+	return &info, nil
+}
+
+// GetSessionInfo retrieves dataplane session information from the kernel.
+func (c *Conn) GetSessionInfo(config *SessionConfig) (*SessionInfo, error) {
+	if config == nil {
+		return nil, errors.New("invalid nil session config")
+	}
+
+	b, err := netlink.MarshalAttributes([]netlink.Attribute{
+		{
+			Type: AttrConnId,
+			Data: nlenc.Uint32Bytes(uint32(config.Tid)),
+		},
+		{
+			Type: AttrSessionId,
+			Data: nlenc.Uint32Bytes(uint32(config.Sid)),
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	req := genetlink.Message{
+		Header: genetlink.Header{
+			Command: CmdSessionGet,
+			Version: c.genlFamily.Version,
+		},
+		Data: b,
+	}
+
+	msgs, err := c.execute(req, c.genlFamily.ID, netlink.Request|netlink.Acknowledge)
+	if err != nil {
+		return nil, err
+	}
+
+	info := SessionInfo{}
+	for _, rsp := range msgs {
+		if rsp.Header.Command != CmdSessionGet {
+			continue
+		}
+
+		attributes, err := netlink.UnmarshalAttributes(rsp.Data)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, a := range attributes {
+			switch a.Type {
+			}
+		}
+	}
+	return &info, nil
 }
 
 func (c *Conn) createTunnel(attr []netlink.Attribute) error {
