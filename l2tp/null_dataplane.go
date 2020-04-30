@@ -32,6 +32,14 @@ func (tdp *nullTunnelDataPlane) Down() error {
 	return nil
 }
 
+func (sdp *nullSessionDataPlane) GetStatistics() (*SessionDataPlaneStatistics, error) {
+	return &SessionDataPlaneStatistics{}, nil
+}
+
+func (sdp *nullSessionDataPlane) GetInterfaceName() (string, error) {
+	return "", nil
+}
+
 func (tdp *nullSessionDataPlane) Down() error {
 	return nil
 }

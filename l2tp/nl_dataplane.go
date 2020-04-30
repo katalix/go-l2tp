@@ -21,8 +21,9 @@ type nlTunnelDataPlane struct {
 }
 
 type nlSessionDataPlane struct {
-	f   *nlDataPlane
-	cfg *nll2tp.SessionConfig
+	f             *nlDataPlane
+	cfg           *nll2tp.SessionConfig
+	interfaceName string
 }
 
 func sockaddrAddrPort(sa unix.Sockaddr) (addr []byte, port uint16, err error) {
@@ -136,6 +137,32 @@ func (dpf *nlDataPlane) Close() {
 
 func (tdp *nlTunnelDataPlane) Down() error {
 	return tdp.f.nlconn.DeleteTunnel(tdp.cfg)
+}
+
+func (sdp *nlSessionDataPlane) GetStatistics() (*SessionDataPlaneStatistics, error) {
+	info, err := sdp.f.nlconn.GetSessionInfo(sdp.cfg)
+	if err != nil {
+		return nil, err
+	}
+	return &SessionDataPlaneStatistics{
+		TxPackets: info.Statistics.TxPacketCount,
+		TxBytes:   info.Statistics.TxBytes,
+		TxErrors:  info.Statistics.TxErrorCount,
+		RxPackets: info.Statistics.RxPacketCount,
+		RxBytes:   info.Statistics.RxBytes,
+		RxErrors:  info.Statistics.RxErrorCount,
+	}, nil
+}
+
+func (sdp *nlSessionDataPlane) GetInterfaceName() (string, error) {
+	if sdp.interfaceName == "" {
+		info, err := sdp.f.nlconn.GetSessionInfo(sdp.cfg)
+		if err != nil {
+			return "", err
+		}
+		sdp.interfaceName = info.IfName
+	}
+	return sdp.interfaceName, nil
 }
 
 func (sdp *nlSessionDataPlane) Down() error {
