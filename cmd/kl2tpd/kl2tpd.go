@@ -59,7 +59,34 @@ func newApplication(configPath string, verbose, nullDataplane bool) (*applicatio
 }
 
 func (app *application) HandleEvent(event interface{}) {
-	// TODO
+	switch ev := event.(type) {
+	case *l2tp.SessionUpEvent:
+
+		level.Info(app.logger).Log(
+			"message", "session up",
+			"tunnel_id", ev.TunnelConfig.TunnelID,
+			"session_id", ev.SessionConfig.SessionID,
+			"peer_tunnel_id", ev.TunnelConfig.PeerTunnelID,
+			"peer_session_id", ev.SessionConfig.PeerSessionID)
+
+		pppd, err := newPPPoL2TP(ev.TunnelConfig.TunnelID,
+			ev.SessionConfig.SessionID,
+			ev.TunnelConfig.PeerTunnelID,
+			ev.SessionConfig.PeerSessionID)
+		if err != nil {
+			level.Error(app.logger).Log(
+				"message", "failed to create pppol2tp instance",
+				"error", err)
+			break
+		}
+		err = pppd.run()
+		if err != nil {
+			level.Error(app.logger).Log(
+				"message", "failed to run pppd",
+				"error", err,
+				"stderr", pppd.stderrBuf.String())
+		}
+	}
 }
 
 func (app *application) run() int {
