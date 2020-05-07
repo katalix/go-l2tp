@@ -98,9 +98,6 @@ func newSockaddrPPPoL2TP4(tunnelID, sessionID, peerTunnelID, peerSessionID l2tp.
 	*(*C.__u16)(unsafe.Pointer(&buf[idx])) = C.__u16(peerSessionID)
 	idx += C.sizeof___u16
 
-	fmt.Println(C.sizeof_struct_sockaddr_pppol2tp)
-	fmt.Println(buf)
-
 	return (*C.struct_sockaddr)(unsafe.Pointer(&sa)), C.sizeof_struct_sockaddr_pppol2tp, nil
 }
 
