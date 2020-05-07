@@ -482,7 +482,6 @@ func (cfg *Config) loadTunnels() error {
 		if err != nil {
 			return fmt.Errorf("tunnel %v: %v", name, err)
 		}
-		fmt.Printf("loadTunnels: %s\n", name)
 		cfg.Tunnels = append(cfg.Tunnels, *tcfg)
 	}
 	return nil
