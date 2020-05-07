@@ -111,6 +111,15 @@ func (app *application) run() int {
 
 	// Instantiate tunnels and sessions from the config file
 	for _, tcfg := range app.config.Tunnels {
+
+		// Only support l2tpv2/ppp
+		if tcfg.Config.Version != l2tp.ProtocolVersion2 {
+			level.Error(app.logger).Log(
+				"message", "unsupported tunnel protocol version",
+				"version", tcfg.Config.Version)
+			return 1
+		}
+
 		tunl, err := app.l2tpCtx.NewDynamicTunnel(tcfg.Name, tcfg.Config)
 		if err != nil {
 			level.Error(app.logger).Log(

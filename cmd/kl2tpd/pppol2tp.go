@@ -140,7 +140,3 @@ func newPPPoL2TP(tunnelID, sessionID, peerTunnelID, peerSessionID l2tp.ControlCo
 		stderrBuf: &stderr,
 	}, nil
 }
-
-func (p *pppol2tp) run() error {
-	return p.pppd.Run()
-}
