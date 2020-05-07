@@ -6,6 +6,7 @@ import (
 	stdlog "log"
 	"os"
 	"os/signal"
+	"sync"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -20,6 +21,7 @@ type application struct {
 	l2tpCtx  *l2tp.Context
 	sigChan  chan os.Signal
 	shutdown bool
+	wg       sync.WaitGroup
 }
 
 func newApplication(configPath string, verbose, nullDataplane bool) (*application, error) {
@@ -77,6 +79,7 @@ func (app *application) HandleEvent(event interface{}) {
 			level.Error(app.logger).Log(
 				"message", "failed to create pppol2tp instance",
 				"error", err)
+			app.closeSession(ev.Session)
 			break
 		}
 		err = pppd.run()
@@ -85,8 +88,18 @@ func (app *application) HandleEvent(event interface{}) {
 				"message", "failed to run pppd",
 				"error", err,
 				"stderr", pppd.stderrBuf.String())
+			app.closeSession(ev.Session)
+			break
 		}
 	}
+}
+
+func (app *application) closeSession(s l2tp.Session) {
+	app.wg.Add(1)
+	go func() {
+		defer app.wg.Done()
+		s.Close()
+	}()
 }
 
 func (app *application) run() int {
@@ -126,6 +139,8 @@ func (app *application) run() int {
 			app.shutdown = true
 		}
 	}
+
+	app.wg.Wait()
 
 	return 0
 }
