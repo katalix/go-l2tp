@@ -471,7 +471,7 @@ func (c *Conn) GetSessionInfo(config *SessionConfig) (*SessionInfo, error) {
 		Data: b,
 	}
 
-	msgs, err := c.execute(req, c.genlFamily.ID, netlink.Request|netlink.Acknowledge)
+	msgs, err := c.execute(req, c.genlFamily.ID, netlink.Request)
 	if err != nil {
 		return nil, err
 	}
