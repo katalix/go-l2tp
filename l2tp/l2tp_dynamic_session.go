@@ -289,8 +289,10 @@ func (ds *dynamicSession) fsmActOnIcrp(args []interface{}) {
 
 	ds.established = true
 	ds.parent.handleUserEvent(&SessionUpEvent{
+		TunnelName:    ds.parent.getName(),
 		Tunnel:        ds.parent,
 		TunnelConfig:  ds.parent.getCfg(),
+		SessionName:   ds.getName(),
 		Session:       ds,
 		SessionConfig: ds.cfg,
 		InterfaceName: ds.ifname,
@@ -332,8 +334,10 @@ func (ds *dynamicSession) fsmActClose(args []interface{}) {
 	if ds.established {
 		ds.established = false
 		ds.parent.handleUserEvent(&SessionDownEvent{
+			TunnelName:    ds.parent.getName(),
 			Tunnel:        ds.parent,
 			TunnelConfig:  ds.parent.getCfg(),
+			SessionName:   ds.getName(),
 			Session:       ds,
 			SessionConfig: ds.cfg,
 			InterfaceName: ds.ifname,

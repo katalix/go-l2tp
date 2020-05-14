@@ -137,6 +137,7 @@ type EventHandler interface {
 // occurs on completion of the L2TP control protocol message exchange with
 // the peer.
 type TunnelUpEvent struct {
+	TunnelName                string
 	Tunnel                    Tunnel
 	Config                    *TunnelConfig
 	LocalAddress, PeerAddress unix.Sockaddr
@@ -148,6 +149,7 @@ type TunnelUpEvent struct {
 // occurs on completion of the L2TP control protocol message exchange with
 // the peer.
 type TunnelDownEvent struct {
+	TunnelName                string
 	Tunnel                    Tunnel
 	Config                    *TunnelConfig
 	LocalAddress, PeerAddress unix.Sockaddr
@@ -158,8 +160,10 @@ type TunnelDownEvent struct {
 // on instantiation of the session.  For dynamic sessions, this occurs on the
 // completion of the L2TP control protocol message exchange with the peer.
 type SessionUpEvent struct {
+	TunnelName    string
 	Tunnel        Tunnel
 	TunnelConfig  *TunnelConfig
+	SessionName   string
 	Session       Session
 	SessionConfig *SessionConfig
 	InterfaceName string
@@ -170,8 +174,10 @@ type SessionUpEvent struct {
 // on instantiation of the session.  For dynamic sessions, this occurs on the
 // completion of the L2TP control protocol message exchange with the peer.
 type SessionDownEvent struct {
+	TunnelName    string
 	Tunnel        Tunnel
 	TunnelConfig  *TunnelConfig
+	SessionName   string
 	Session       Session
 	SessionConfig *SessionConfig
 	InterfaceName string

@@ -414,6 +414,7 @@ func (dt *dynamicTunnel) fsmActOnSccrp(args []interface{}) {
 
 	dt.established = true
 	dt.parent.handleUserEvent(&TunnelUpEvent{
+		TunnelName:   dt.getName(),
 		Tunnel:       dt,
 		Config:       dt.cfg,
 		LocalAddress: dt.sal,
@@ -524,6 +525,7 @@ func (dt *dynamicTunnel) fsmActClose(args []interface{}) {
 		if dt.established {
 			dt.established = false
 			dt.parent.handleUserEvent(&TunnelDownEvent{
+				TunnelName:   dt.getName(),
 				Tunnel:       dt,
 				Config:       dt.cfg,
 				LocalAddress: dt.sal,

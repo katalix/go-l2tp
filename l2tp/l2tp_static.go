@@ -131,8 +131,10 @@ func newStaticSession(name string, parent tunnel, cfg *SessionConfig) (ss *stati
 		"pseudowire", ss.cfg.Pseudowire)
 
 	ss.parent.handleUserEvent(&SessionUpEvent{
+		TunnelName:    ss.parent.getName(),
 		Tunnel:        ss.parent,
 		TunnelConfig:  ss.parent.getCfg(),
+		SessionName:   ss.getName(),
 		Session:       ss,
 		SessionConfig: ss.cfg,
 		InterfaceName: ss.ifname,
@@ -150,8 +152,10 @@ func (ss *staticSession) Close() {
 	}
 
 	ss.parent.handleUserEvent(&SessionDownEvent{
+		TunnelName:    ss.parent.getName(),
 		Tunnel:        ss.parent,
 		TunnelConfig:  ss.parent.getCfg(),
+		SessionName:   ss.getName(),
 		Session:       ss,
 		SessionConfig: ss.cfg,
 		InterfaceName: ss.ifname,
