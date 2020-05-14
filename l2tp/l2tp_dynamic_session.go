@@ -13,6 +13,7 @@ type dynamicSession struct {
 	established bool
 	callSerial  uint32
 	ifname      string
+	result      string
 	dt          *dynamicTunnel
 	dp          SessionDataPlane
 	wg          sync.WaitGroup
@@ -122,6 +123,69 @@ func fsmArgsToCdnResult(args []interface{}) *resultCode {
 	}
 
 	return &rc
+}
+
+func cdnResultCodeToString(rc *resultCode) string {
+	var resStr, errStr, errMsg string
+
+	switch rc.result {
+	case avpCDNResultCodeReserved:
+		resStr = "reserved"
+	case avpCDNResultCodeLostCarrier:
+		resStr = "lost carrier"
+	case avpCDNResultCodeGeneralError:
+		resStr = "general error"
+	case avpCDNResultCodeAdminDisconnect:
+		resStr = "admin disconnect"
+	case avpCDNResultCodeNoResources:
+		resStr = "temporary lack of resources"
+	case avpCDNResultCodeNotAvailable:
+		resStr = "permanent lack of resources"
+	case avpCDNResultCodeInvalidDestination:
+		resStr = "invalid destination"
+	case avpCDNResultCodeNoAnswer:
+		resStr = "not carrier detected"
+	case avpCDNResultCodeBusy:
+		resStr = "busy signal detected"
+	case avpCDNResultCodeNoDialTone:
+		resStr = "no dial tone"
+	case avpCDNResultCodeTimeout:
+		resStr = "establish timeout"
+	case avpCDNResultCodeBadTransport:
+		resStr = "no appropriate framing detected"
+	}
+
+	switch rc.errCode {
+	case avpErrorCodeNoError:
+		errStr = "no general error"
+	case avpErrorCodeNoControlConnection:
+		errStr = "no control connection exists yet"
+	case avpErrorCodeBadLength:
+		errStr = "length is wrong"
+	case avpErrorCodeBadValue:
+		errStr = "field out of range or reserved field was non-zero"
+	case avpErrorCodeNoResource:
+		errStr = "insufficient resources to handle this operation now"
+	case avpErrorCodeInvalidSessionID:
+		errStr = "session ID invalid in this context"
+	case avpErrorCodeVendorSpecificError:
+		errStr = "generic vendor-specific error"
+	case avpErrorCodeTryAnother:
+		errStr = "try another LNS"
+	case avpErrorCodeMBitShutdown:
+		errStr = "shut down due to unknown AVP with the M bit set"
+	}
+
+	if rc.errMsg != "" {
+		errMsg = rc.errMsg
+	} else {
+		errMsg = "unset"
+	}
+
+	return fmt.Sprintf("result %d (%s), error %d (%s), message '%s'",
+		rc.result, resStr,
+		rc.errCode, errStr,
+		errMsg)
 }
 
 func (ds *dynamicSession) handleMsg(msg controlMessage) {
@@ -310,6 +374,9 @@ func (ds *dynamicSession) sendIccn() (err error) {
 
 func (ds *dynamicSession) fsmActSendCdn(args []interface{}) {
 	rc := fsmArgsToCdnResult(args)
+	if ds.result == "" {
+		ds.result = cdnResultCodeToString(rc)
+	}
 	_ = ds.sendCdn(rc)
 	ds.fsmActClose(args)
 }
@@ -321,6 +388,17 @@ func (ds *dynamicSession) sendCdn(rc *resultCode) (err error) {
 	}
 	ds.sendMessage(msg)
 	return
+}
+
+func (ds *dynamicSession) fsmActOnCdn(args []interface{}) {
+	msg := fsmArgsToV2Msg(args)
+
+	rc, err := findResultCodeAvp(msg.getAvps(), vendorIDIetf, avpTypeResultCode)
+	if err == nil && ds.result == "" {
+		ds.result = cdnResultCodeToString(rc)
+	}
+
+	ds.fsmActClose(args)
 }
 
 func (ds *dynamicSession) fsmActClose(args []interface{}) {
@@ -341,6 +419,7 @@ func (ds *dynamicSession) fsmActClose(args []interface{}) {
 			Session:       ds,
 			SessionConfig: ds.cfg,
 			InterfaceName: ds.ifname,
+			Result:        ds.result,
 		})
 	}
 
@@ -374,10 +453,11 @@ func newDynamicSession(serial uint32, name string, parent *dynamicTunnel, cfg *S
 			{from: "waittunnel", events: []string{"close"}, cb: ds.fsmActClose, to: "dead"},
 
 			{from: "waitreply", events: []string{"icrp"}, cb: ds.fsmActOnIcrp, to: "established"},
-			{from: "waitreply", events: []string{"cdn", "iccn"}, cb: ds.fsmActClose, to: "dead"},
+			{from: "waitreply", events: []string{"iccn"}, cb: ds.fsmActClose, to: "dead"},
+			{from: "waitreply", events: []string{"cdn"}, cb: ds.fsmActOnCdn, to: "dead"},
 			{from: "waitreply", events: []string{"icrq", "close"}, cb: ds.fsmActSendCdn, to: "dead"},
 
-			{from: "established", events: []string{"cdn"}, cb: ds.fsmActClose, to: "dead"},
+			{from: "established", events: []string{"cdn"}, cb: ds.fsmActOnCdn, to: "dead"},
 			{
 				from: "established",
 				events: []string{

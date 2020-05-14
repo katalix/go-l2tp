@@ -181,6 +181,7 @@ type SessionDownEvent struct {
 	Session       Session
 	SessionConfig *SessionConfig
 	InterfaceName string
+	Result        string
 }
 
 // LinuxNetlinkDataPlane is a special sentinel value used to indicate
