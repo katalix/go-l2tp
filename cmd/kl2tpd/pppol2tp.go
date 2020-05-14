@@ -17,6 +17,7 @@ import (
 type RawSockaddrPPPoL2TP C.struct_sockaddr_pppol2tp
 
 type pppol2tp struct {
+	session   l2tp.Session
 	fd        int
 	file      *os.File
 	pppd      *exec.Cmd
@@ -101,7 +102,7 @@ func newSockaddrPPPoL2TP4(tunnelID, sessionID, peerTunnelID, peerSessionID l2tp.
 	return (*C.struct_sockaddr)(unsafe.Pointer(&sa)), C.sizeof_struct_sockaddr_pppol2tp, nil
 }
 
-func newPPPoL2TP(tunnelID, sessionID, peerTunnelID, peerSessionID l2tp.ControlConnID) (*pppol2tp, error) {
+func newPPPoL2TP(session l2tp.Session, tunnelID, sessionID, peerTunnelID, peerSessionID l2tp.ControlConnID) (*pppol2tp, error) {
 	addr, addrLen, err := newSockaddrPPPoL2TP4(tunnelID, sessionID, peerTunnelID, peerSessionID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build struct sockaddr_pppol2tp: %v", err)
@@ -124,12 +125,14 @@ func newPPPoL2TP(tunnelID, sessionID, peerTunnelID, peerSessionID l2tp.ControlCo
 		"plugin", "pppol2tp.so",
 		"pppol2tp", "3",
 		"pppol2tp_tunnel_id", fmt.Sprintf("%v", tunnelID),
-		"pppol2tp_session_id", fmt.Sprintf("%v", sessionID))
+		"pppol2tp_session_id", fmt.Sprintf("%v", sessionID),
+		"nodetach")
 	pppd.Stdout = &stdout
 	pppd.Stderr = &stderr
 	pppd.ExtraFiles = append(pppd.ExtraFiles, file)
 
 	return &pppol2tp{
+		session:   session,
 		fd:        int(fd),
 		file:      file,
 		pppd:      pppd,

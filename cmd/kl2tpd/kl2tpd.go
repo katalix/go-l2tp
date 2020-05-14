@@ -16,12 +16,15 @@ import (
 )
 
 type application struct {
-	config   *config.Config
-	logger   log.Logger
-	l2tpCtx  *l2tp.Context
-	sigChan  chan os.Signal
-	shutdown bool
-	wg       sync.WaitGroup
+	config  *config.Config
+	logger  log.Logger
+	l2tpCtx *l2tp.Context
+	// sessionPPPoL2TP[tunnel_name][session_name]
+	sessionPPPoL2TP map[string]map[string]*pppol2tp
+	sigChan         chan os.Signal
+	pppCompleteChan chan *pppol2tp
+	closeChan       chan interface{}
+	wg              sync.WaitGroup
 }
 
 func newApplication(configPath string, verbose, nullDataplane bool) (*application, error) {
@@ -53,25 +56,41 @@ func newApplication(configPath string, verbose, nullDataplane bool) (*applicatio
 	}
 
 	return &application{
-		config:  config,
-		logger:  logger,
-		l2tpCtx: l2tpCtx,
-		sigChan: sigChan,
+		config:          config,
+		logger:          logger,
+		l2tpCtx:         l2tpCtx,
+		sessionPPPoL2TP: make(map[string]map[string]*pppol2tp),
+		sigChan:         sigChan,
+		pppCompleteChan: make(chan *pppol2tp),
+		closeChan:       make(chan interface{}),
 	}, nil
 }
 
 func (app *application) HandleEvent(event interface{}) {
 	switch ev := event.(type) {
+	case *l2tp.TunnelUpEvent:
+		if _, ok := app.sessionPPPoL2TP[ev.TunnelName]; !ok {
+			app.sessionPPPoL2TP[ev.TunnelName] = make(map[string]*pppol2tp)
+		}
+
+	case *l2tp.TunnelDownEvent:
+		if _, ok := app.sessionPPPoL2TP[ev.TunnelName]; ok {
+			delete(app.sessionPPPoL2TP, ev.TunnelName)
+		}
+
 	case *l2tp.SessionUpEvent:
 
 		level.Info(app.logger).Log(
 			"message", "session up",
+			"tunnel_name", ev.TunnelName,
+			"session_name", ev.SessionName,
 			"tunnel_id", ev.TunnelConfig.TunnelID,
 			"session_id", ev.SessionConfig.SessionID,
 			"peer_tunnel_id", ev.TunnelConfig.PeerTunnelID,
 			"peer_session_id", ev.SessionConfig.PeerSessionID)
 
-		pppd, err := newPPPoL2TP(ev.TunnelConfig.TunnelID,
+		pppol2tp, err := newPPPoL2TP(ev.Session,
+			ev.TunnelConfig.TunnelID,
 			ev.SessionConfig.SessionID,
 			ev.TunnelConfig.PeerTunnelID,
 			ev.SessionConfig.PeerSessionID)
@@ -82,15 +101,47 @@ func (app *application) HandleEvent(event interface{}) {
 			app.closeSession(ev.Session)
 			break
 		}
-		err = pppd.run()
+
+		err = pppol2tp.pppd.Start()
 		if err != nil {
 			level.Error(app.logger).Log(
-				"message", "failed to run pppd",
+				"message", "pppd failed to start",
 				"error", err,
-				"stderr", pppd.stderrBuf.String())
+				"error_message", pppdExitCodeString(err),
+				"stderr", pppol2tp.stderrBuf.String())
 			app.closeSession(ev.Session)
 			break
 		}
+
+		app.sessionPPPoL2TP[ev.TunnelName][ev.SessionName] = pppol2tp
+
+		app.wg.Add(1)
+		go func() {
+			defer app.wg.Done()
+			err = pppol2tp.pppd.Wait()
+			if err != nil {
+				level.Error(app.logger).Log(
+					"message", "pppd exited with an error code",
+					"error", err,
+					"error_message", pppdExitCodeString(err))
+			}
+			app.pppCompleteChan <- pppol2tp
+		}()
+
+	case *l2tp.SessionDownEvent:
+
+		level.Info(app.logger).Log(
+			"message", "session down",
+			"tunnel_name", ev.TunnelName,
+			"session_name", ev.SessionName,
+			"tunnel_id", ev.TunnelConfig.TunnelID,
+			"session_id", ev.SessionConfig.SessionID,
+			"peer_tunnel_id", ev.TunnelConfig.PeerTunnelID,
+			"peer_session_id", ev.SessionConfig.PeerSessionID)
+
+		level.Info(app.logger).Log("message", "killing pppd")
+		app.sessionPPPoL2TP[ev.TunnelName][ev.SessionName].pppd.Process.Signal(os.Interrupt)
+		delete(app.sessionPPPoL2TP[ev.TunnelName], ev.SessionName)
 	}
 }
 
@@ -103,8 +154,6 @@ func (app *application) closeSession(s l2tp.Session) {
 }
 
 func (app *application) run() int {
-
-	defer app.l2tpCtx.Close()
 
 	// Listen for L2TP events
 	app.l2tpCtx.RegisterEventHandler(app)
@@ -141,17 +190,34 @@ func (app *application) run() int {
 		}
 	}
 
-	for !app.shutdown {
+	var shutdown bool
+	for {
 		select {
 		case <-app.sigChan:
-			level.Info(app.logger).Log("message", "received signal, shutting down")
-			app.shutdown = true
+			if !shutdown {
+				level.Info(app.logger).Log("message", "received signal, shutting down")
+				shutdown = true
+				go func() {
+					app.l2tpCtx.Close()
+					app.wg.Wait()
+					level.Info(app.logger).Log("message", "graceful shutdown complete")
+					close(app.closeChan)
+				}()
+			} else {
+				level.Info(app.logger).Log("message", "pending graceful shutdown")
+			}
+		case pppol2tp, ok := <-app.pppCompleteChan:
+			if !ok {
+				close(app.closeChan)
+			}
+			level.Info(app.logger).Log("message", "pppd terminated")
+			if !shutdown {
+				app.closeSession(pppol2tp.session)
+			}
+		case <-app.closeChan:
+			return 0
 		}
 	}
-
-	app.wg.Wait()
-
-	return 0
 }
 
 func main() {
