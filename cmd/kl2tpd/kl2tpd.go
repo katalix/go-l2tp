@@ -130,6 +130,7 @@ func (app *application) HandleEvent(event interface{}) {
 
 		level.Info(app.logger).Log(
 			"message", "session down",
+			"result", ev.Result,
 			"tunnel_name", ev.TunnelName,
 			"session_name", ev.SessionName,
 			"tunnel_id", ev.TunnelConfig.TunnelID,
