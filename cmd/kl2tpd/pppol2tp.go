@@ -14,8 +14,6 @@ import (
 	"github.com/katalix/go-l2tp/l2tp"
 )
 
-type RawSockaddrPPPoL2TP C.struct_sockaddr_pppol2tp
-
 type pppol2tp struct {
 	session   l2tp.Session
 	fd        int

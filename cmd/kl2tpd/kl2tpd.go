@@ -29,7 +29,7 @@ type application struct {
 
 func newApplication(configPath string, verbose, nullDataplane bool) (*application, error) {
 
-	sigChan := make(chan os.Signal)
+	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, unix.SIGINT, unix.SIGTERM)
 
 	dataplane := l2tp.LinuxNetlinkDataPlane
@@ -74,9 +74,7 @@ func (app *application) HandleEvent(event interface{}) {
 		}
 
 	case *l2tp.TunnelDownEvent:
-		if _, ok := app.sessionPPPoL2TP[ev.TunnelName]; ok {
-			delete(app.sessionPPPoL2TP, ev.TunnelName)
-		}
+		delete(app.sessionPPPoL2TP, ev.TunnelName)
 
 	case *l2tp.SessionUpEvent:
 
