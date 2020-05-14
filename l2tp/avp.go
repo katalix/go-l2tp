@@ -1128,3 +1128,17 @@ func findStringAvp(avps []avp, vendorID avpVendorID, typ avpType) (string, error
 	}
 	return val, nil
 }
+
+// findResultCodeAvp looks up a specific AVP in a slice of AVPs and decodes as a result code.
+// An error will be returned if the AVP isn't present or is of the wrong type.
+func findResultCodeAvp(avps []avp, vendorID avpVendorID, typ avpType) (*resultCode, error) {
+	avp, err := findAvp(avps, vendorID, typ)
+	if err != nil {
+		return nil, err
+	}
+	val, err := avp.decodeResultCode()
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode %v: %v", typ, err)
+	}
+	return &val, nil
+}
