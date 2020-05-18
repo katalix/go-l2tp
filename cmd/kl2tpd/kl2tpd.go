@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
 	stdlog "log"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 
 	"github.com/go-kit/kit/log"
@@ -21,49 +23,110 @@ type application struct {
 	l2tpCtx *l2tp.Context
 	// sessionPPPoL2TP[tunnel_name][session_name]
 	sessionPPPoL2TP map[string]map[string]*pppol2tp
+	// sessionPPPdArgs[tunnel_name][session_name]
+	sessionPPPdArgs map[string]map[string][]string
 	sigChan         chan os.Signal
 	pppCompleteChan chan *pppol2tp
 	closeChan       chan interface{}
 	wg              sync.WaitGroup
 }
 
-func newApplication(configPath string, verbose, nullDataplane bool) (*application, error) {
+func newApplication(configPath string, verbose, nullDataplane bool) (app *application, err error) {
 
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, unix.SIGINT, unix.SIGTERM)
+	app = &application{
+		sigChan:         make(chan os.Signal, 1),
+		sessionPPPoL2TP: make(map[string]map[string]*pppol2tp),
+		sessionPPPdArgs: make(map[string]map[string][]string),
+		pppCompleteChan: make(chan *pppol2tp),
+		closeChan:       make(chan interface{}),
+	}
 
-	dataplane := l2tp.LinuxNetlinkDataPlane
+	signal.Notify(app.sigChan, unix.SIGINT, unix.SIGTERM)
 
-	config, err := config.LoadFile(configPath)
+	app.config, err = config.LoadFileWithCustomParser(configPath, app)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load configuration: %v", err)
 	}
 
 	logger := log.NewLogfmtLogger(os.Stderr)
 	if verbose {
-		logger = level.NewFilter(logger, level.AllowDebug())
+		app.logger = level.NewFilter(logger, level.AllowDebug())
 	} else {
-		logger = level.NewFilter(logger, level.AllowInfo())
+		app.logger = level.NewFilter(logger, level.AllowInfo())
 	}
 
+	dataplane := l2tp.LinuxNetlinkDataPlane
 	if nullDataplane {
 		dataplane = nil
 	}
 
-	l2tpCtx, err := l2tp.NewContext(dataplane, logger)
+	app.l2tpCtx, err = l2tp.NewContext(dataplane, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create L2TP context: %v", err)
 	}
 
-	return &application{
-		config:          config,
-		logger:          logger,
-		l2tpCtx:         l2tpCtx,
-		sessionPPPoL2TP: make(map[string]map[string]*pppol2tp),
-		sigChan:         sigChan,
-		pppCompleteChan: make(chan *pppol2tp),
-		closeChan:       make(chan interface{}),
-	}, nil
+	return app, nil
+}
+
+func readPPPdArgsFile(path string) ([]string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return []string{}, fmt.Errorf("failed to open pppd arguments file %q: %v", path, err)
+	}
+	defer file.Close()
+
+	args := []string{}
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		args = append(args, strings.Split(scanner.Text(), " ")...)
+	}
+	return args, nil
+}
+
+func (app *application) ParseParameter(key string, value interface{}) error {
+	return fmt.Errorf("unrecognised parameter %v", key)
+}
+
+func (app *application) ParseTunnelParameter(tunnel *config.NamedTunnel, key string, value interface{}) error {
+	return fmt.Errorf("unrecognised parameter %v", key)
+}
+
+func (app *application) ParseSessionParameter(tunnel *config.NamedTunnel, session *config.NamedSession, key string, value interface{}) error {
+	switch key {
+	case "pppd_args":
+		path, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("failed to parse pppd_args parameter for session %s as a string", session.Name)
+		}
+		args, err := readPPPdArgsFile(path)
+		if err != nil {
+			return err
+		}
+		if _, ok := app.sessionPPPdArgs[tunnel.Name]; !ok {
+			app.sessionPPPdArgs[tunnel.Name] = make(map[string][]string)
+		}
+		app.sessionPPPdArgs[tunnel.Name][session.Name] = args
+		return nil
+	}
+	return fmt.Errorf("unrecognised parameter %v", key)
+}
+
+func (app *application) getSessionPPPdArgs(tunnelName, sessionName string) (args []string) {
+	_, ok := app.sessionPPPdArgs[tunnelName]
+	if !ok {
+		goto fail
+	}
+	args, ok = app.sessionPPPdArgs[tunnelName][sessionName]
+	if !ok {
+		goto fail
+	}
+	return args
+fail:
+	level.Info(app.logger).Log(
+		"message", "no pppd args specified in session config",
+		"tunnel_name", tunnelName,
+		"session_name", sessionName)
+	return []string{}
 }
 
 func (app *application) HandleEvent(event interface{}) {
@@ -99,6 +162,9 @@ func (app *application) HandleEvent(event interface{}) {
 			app.closeSession(ev.Session)
 			break
 		}
+
+		pppdArgs := app.getSessionPPPdArgs(ev.TunnelName, ev.SessionName)
+		pppol2tp.pppd.Args = append(pppol2tp.pppd.Args, pppdArgs...)
 
 		err = pppol2tp.pppd.Start()
 		if err != nil {
