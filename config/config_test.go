@@ -222,20 +222,13 @@ func TestBadConfig(t *testing.T) {
 			estr: "out of range",
 		},
 		{
-			name: "Malformed (empty)",
-			in:   "",
-			estr: "no tunnel table present",
-		},
-		{
 			name: "Malformed (no tunnel name)",
-			in: `[tunnel]
-				 version = "l2tpv3"`,
+			in:   `[tunnel]`,
 			estr: "tunnel instances must be named",
 		},
 		{
 			name: "Malformed (no tunnel name 2)",
-			in: `tunnel = "t1"
-				 version = "l2tpv3"`,
+			in:   `tunnel = "t1"`,
 			estr: "tunnel instances must be named",
 		},
 		{
