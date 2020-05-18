@@ -156,6 +156,8 @@ type Config struct {
 	Map map[string]interface{}
 	// All the tunnels defined in the configuration.
 	Tunnels []NamedTunnel
+	// Custom parser interface for caller to handle unrecognised key/value pairs.
+	customParser ConfigParser
 }
 
 // NamedTunnel contains L2TP configuration for a tunnel instance,
@@ -175,6 +177,38 @@ type NamedSession struct {
 	Name string
 	// The session L2TP configuration.
 	Config *l2tp.SessionConfig
+}
+
+// ConfigParser allows for parsing of custom config file fields which
+// are not directly implemented by package config.
+//
+// This is useful to allow an application to embed custom configuration
+// into the configuration file.
+type ConfigParser interface {
+	// ParseParameter is called for any unrecognised key/value pair not
+	// within either a tunnel or session block.
+	ParseParameter(key string, value interface{}) error
+	// ParseTunnelParameter is called for an unrecognised key/value pair
+	// within a tunnel block.
+	ParseTunnelParameter(tunnel *NamedTunnel, key string, value interface{}) error
+	// ParseSessionParameter is called for an unrecognised key/value pair
+	// within a session block.
+	ParseSessionParameter(tunnel *NamedTunnel, session *NamedSession, key string, value interface{}) error
+}
+
+type nilCustomParser struct {
+}
+
+func (np *nilCustomParser) ParseParameter(key string, value interface{}) error {
+	return fmt.Errorf("unrecognised parameter %v", key)
+}
+
+func (np *nilCustomParser) ParseTunnelParameter(tunnel *NamedTunnel, key string, value interface{}) error {
+	return fmt.Errorf("unrecognised parameter %v", key)
+}
+
+func (np *nilCustomParser) ParseSessionParameter(tunnel *NamedTunnel, session *NamedSession, key string, value interface{}) error {
+	return fmt.Errorf("unrecognised parameter %v", key)
 }
 
 func toBool(v interface{}) (bool, error) {
@@ -355,40 +389,43 @@ func toBytes(v interface{}) ([]byte, error) {
 	return out, nil
 }
 
-func newSessionConfig(scfg map[string]interface{}) (*l2tp.SessionConfig, error) {
-	sc := l2tp.SessionConfig{}
+func (cfg *Config) newSessionConfig(tunnel *NamedTunnel, name string, scfg map[string]interface{}) (*NamedSession, error) {
+	ns := &NamedSession{
+		Name:   name,
+		Config: &l2tp.SessionConfig{},
+	}
 	for k, v := range scfg {
 		var err error
 		switch k {
 		case "sid":
-			sc.SessionID, err = toCCID(v)
+			ns.Config.SessionID, err = toCCID(v)
 		case "psid":
-			sc.PeerSessionID, err = toCCID(v)
+			ns.Config.PeerSessionID, err = toCCID(v)
 		case "pseudowire":
-			sc.Pseudowire, err = toPseudowireType(v)
+			ns.Config.Pseudowire, err = toPseudowireType(v)
 		case "seqnum":
-			sc.SeqNum, err = toBool(v)
+			ns.Config.SeqNum, err = toBool(v)
 		case "reorder_timeout":
-			sc.ReorderTimeout, err = toDurationMs(v)
+			ns.Config.ReorderTimeout, err = toDurationMs(v)
 		case "cookie":
-			sc.Cookie, err = toBytes(v)
+			ns.Config.Cookie, err = toBytes(v)
 		case "peer_cookie":
-			sc.PeerCookie, err = toBytes(v)
+			ns.Config.PeerCookie, err = toBytes(v)
 		case "interface_name":
-			sc.InterfaceName, err = toString(v)
+			ns.Config.InterfaceName, err = toString(v)
 		case "l2spec_type":
-			sc.L2SpecType, err = toL2SpecType(v)
+			ns.Config.L2SpecType, err = toL2SpecType(v)
 		default:
-			return nil, fmt.Errorf("unrecognised parameter '%v'", k)
+			err = cfg.customParser.ParseSessionParameter(tunnel, ns, k, v)
 		}
 		if err != nil {
 			return nil, fmt.Errorf("failed to process %v: %v", k, err)
 		}
 	}
-	return &sc, nil
+	return ns, nil
 }
 
-func loadSessions(v interface{}) ([]NamedSession, error) {
+func (cfg *Config) loadSessions(tunnel *NamedTunnel, v interface{}) ([]NamedSession, error) {
 	var out []NamedSession
 	sessions, ok := v.(map[string]interface{})
 	if !ok {
@@ -399,19 +436,16 @@ func loadSessions(v interface{}) ([]NamedSession, error) {
 		if !ok {
 			return nil, fmt.Errorf("session instances must be named, e.g. '[tunnel.mytunnel.session.mysession]'")
 		}
-		scfg, err := newSessionConfig(smap)
+		scfg, err := cfg.newSessionConfig(tunnel, name, smap)
 		if err != nil {
 			return nil, fmt.Errorf("session %v: %v", name, err)
 		}
-		out = append(out, NamedSession{
-			Name:   name,
-			Config: scfg,
-		})
+		out = append(out, *scfg)
 	}
 	return out, nil
 }
 
-func newTunnelConfig(name string, tcfg map[string]interface{}) (*NamedTunnel, error) {
+func (cfg *Config) newTunnelConfig(name string, tcfg map[string]interface{}) (*NamedTunnel, error) {
 	nt := &NamedTunnel{
 		Name: name,
 		Config: &l2tp.TunnelConfig{
@@ -448,9 +482,9 @@ func newTunnelConfig(name string, tcfg map[string]interface{}) (*NamedTunnel, er
 		case "framing_caps":
 			nt.Config.FramingCaps, err = toFramingCaps(v)
 		case "session":
-			nt.Sessions, err = loadSessions(v)
+			nt.Sessions, err = cfg.loadSessions(nt, v)
 		default:
-			return nil, fmt.Errorf("unrecognised parameter '%v'", k)
+			err = cfg.customParser.ParseTunnelParameter(nt, k, v)
 		}
 		if err != nil {
 			return nil, fmt.Errorf("failed to process %v: %v", k, err)
@@ -459,57 +493,86 @@ func newTunnelConfig(name string, tcfg map[string]interface{}) (*NamedTunnel, er
 	return nt, nil
 }
 
-func (cfg *Config) loadTunnels() error {
-	var tunnels map[string]interface{}
+func (cfg *Config) loadTunnels(tunnels map[string]interface{}) ([]NamedTunnel, error) {
+	var out []NamedTunnel
 
-	// Extract the tunnel map from the configuration tree
-	if got, ok := cfg.Map["tunnel"]; ok {
-		tunnels, ok = got.(map[string]interface{})
-		if !ok {
-			return fmt.Errorf("tunnel instances must be named, e.g. '[tunnel.mytunnel]'")
-		}
-	} else {
-		return fmt.Errorf("no tunnel table present")
-	}
-
-	// Iterate through the map and build tunnel config instances
 	for name, got := range tunnels {
 		tmap, ok := got.(map[string]interface{})
 		if !ok {
-			return fmt.Errorf("tunnel instances must be named, e.g. '[tunnel.mytunnel]'")
+			return nil, fmt.Errorf("tunnel instances must be named, e.g. '[tunnel.mytunnel]'")
 		}
-		tcfg, err := newTunnelConfig(name, tmap)
+		tcfg, err := cfg.newTunnelConfig(name, tmap)
 		if err != nil {
-			return fmt.Errorf("tunnel %v: %v", name, err)
+			return nil, fmt.Errorf("tunnel %v: %v", name, err)
 		}
-		cfg.Tunnels = append(cfg.Tunnels, *tcfg)
+		out = append(out, *tcfg)
 	}
-	return nil
+	return out, nil
 }
 
-func newConfig(tree *toml.Tree) (*Config, error) {
-	cfg := &Config{Map: tree.ToMap()}
-	err := cfg.loadTunnels()
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse tunnels: %v", err)
+func newConfig(tree *toml.Tree, customParser ConfigParser) (*Config, error) {
+	cfg := &Config{
+		Map:          tree.ToMap(),
+		customParser: customParser,
 	}
+
+	// Walk the parameters, directly parse tunnel tables, defer everything else the custom parser
+	for k, v := range cfg.Map {
+		if k == "tunnel" {
+			tunnels, ok := v.(map[string]interface{})
+			if !ok || len(tunnels) == 0 {
+				return nil, fmt.Errorf("tunnel instances must be named, e.g. '[tunnel.mytunnel]'")
+			}
+			parsedTunnels, err := cfg.loadTunnels(tunnels)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse tunnels: %v", err)
+			}
+			cfg.Tunnels = append(cfg.Tunnels, parsedTunnels...)
+		} else {
+			err := cfg.customParser.ParseParameter(k, v)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
 	return cfg, nil
 }
 
-// LoadFile loads configuration from the specified file.
-func LoadFile(path string) (*Config, error) {
+func newConfigFromFile(path string, customParser ConfigParser) (*Config, error) {
 	tree, err := toml.LoadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load config file: %v", err)
 	}
-	return newConfig(tree)
+	return newConfig(tree, customParser)
 }
 
-// LoadString loads configuration from the specified string.
-func LoadString(content string) (*Config, error) {
+func newConfigFromString(content string, customParser ConfigParser) (*Config, error) {
 	tree, err := toml.Load(content)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load config string: %v", err)
 	}
-	return newConfig(tree)
+	return newConfig(tree, customParser)
+}
+
+// LoadFile loads configuration from the specified file.
+func LoadFile(path string) (*Config, error) {
+	return newConfigFromFile(path, &nilCustomParser{})
+}
+
+// LoadString loads configuration from the specified string.
+func LoadString(content string) (*Config, error) {
+	return newConfigFromString(content, &nilCustomParser{})
+}
+
+// LoadFileWithCustomParser loads configuration from the specified file,
+// calling the ConfigParser interface for unrecognised key/value pairs.
+func LoadFileWithCustomParser(path string, customParser ConfigParser) (*Config, error) {
+	return newConfigFromFile(path, customParser)
+}
+
+// LoadStringWithCustomParser loads configuration from the specified file,
+// calling the ConfigParser interface for unrecognised key/value pairs.
+func LoadStringWithCustomParser(content string, customParser ConfigParser) (*Config, error) {
+	return newConfigFromString(content, customParser)
 }
