@@ -1,3 +1,26 @@
+/*
+The kl2tpd command is a daemon for creating dynamic L2TPv2 tunnels and sessions.
+
+Package l2tp is used for the L2TPv2 control protocol and Linux kernel dataplane
+operations.  For established sessions, kl2tpd spawns pppd(8) instances to run the
+PPP protocol and bring up a network interface.
+
+kl2tpd is driven by a configuration file which describes the tunnel and session
+instances to create.  For more information on the configuration file format please
+refer to package config's documentation.
+
+In addition to the configuration options offered by package config, kl2tpd extends
+the session configuration table to allow for the configuration of pppd:
+
+	[tunnel.t1.session.s1]
+	pppd_args = "/etc/pppd_args.txt"
+
+The pppd_args parameter specifies a file to read for pppd arguments.  These should
+either be whitespace or newline delimited, and should call out pppd command line arguments
+as described in the pppd manpage.  kl2tpd augments the arguments from the command file
+with arguments specific to the establishment of the PPPoL2TP session using the pppd
+pppol2tp plugin.
+*/
 package main
 
 import (

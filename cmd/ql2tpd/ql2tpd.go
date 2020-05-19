@@ -3,7 +3,7 @@ The ql2tpd command is a daemon for creating static L2TPv3 tunnels and sessions.
 
 ql2tpd is driven by a configuration file which describes the tunnel and session
 instances to create.  For more information on the configuration file format please
-refer to package l2tp's documentation.
+refer to package config's documentation.
 
 Run with the -help argument for documentation of the command line arguments.
 
