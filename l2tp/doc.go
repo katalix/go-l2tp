@@ -2,10 +2,12 @@
 Package l2tp is a library for Layer 2 Tunneling Protocol applications
 running on Linux systems.
 
-Currently the L2TPv3 data plane is implemented using the Linux kernel's
-L2TP subsystem.
+Currently the L2TP data plane is implemented using the Linux kernel's
+L2TP subsystem, and the L2TPv2 control plane is implemented for client/LAC
+mode.
 
-In the future we plan to add support for the L2TPv2 and L2TPv3 control plane.
+In the future we plan to add support for the L2TPv3 control plane, and
+server/LNS mode.
 
 L2TP is specified by RFC2661 (L2TPv2) and RFC3931 (L2TPv3).
 
@@ -62,8 +64,7 @@ of the L2TP control protocol to allow keep-alive (HELLO) messages to be sent and
 acknowledged using the L2TP reliable transport algorithm.  This slight extension
 allows for detection of tunnel failure in an otherwise static setup.
 
-The final tunnel type, which is currently unimplemented(!), is the dynamic
-tunnel.  This runs the full L2TP control protocol.
+The final tunnel type is the dynamic tunnel.  This runs the full L2TP control protocol.
 
 Configuration
 
@@ -92,7 +93,6 @@ To disable all logging from package l2tp, pass in a nil logger.
 
 Limitations
 
-	* Dynamic tunnels are not currently supported.
 	* Only Linux systems are supported for the data plane.
 */
 package l2tp
