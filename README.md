@@ -29,7 +29,10 @@ Read on for instructions on coding using the library.
 
 ## Import
 
-    import "github.com/katalix/go-l2tp/l2tp"
+    import (
+        "github.com/katalix/go-l2tp/l2tp"
+        "github.com/katalix/go-l2tp/config"
+    )
 
 ## Usage
 
@@ -37,7 +40,7 @@ Read on for instructions on coding using the library.
     # Refer to the Documentation section below for references
     # on the syntax of this configuration file.
 	# Ignore errors for the purposes of demonstration!
-	config, _ := l2tp.LoadConfigFile("./my-l2tp-config.toml")
+	config, _ := config.LoadFile("./my-l2tp-config.toml")
 
 	# Creation of L2TP instances requires an L2TP context
 	# We're disabling logging and using default context config
@@ -54,8 +57,9 @@ Read on for instructions on coding using the library.
 
 ## Tools
 
-go-l2tp includes a tool, **ql2tpd**, which builds on the library to implement a minimal
-daemon for creating static L2TPv3 sessions.
+go-l2tp includes two tools, **ql2tpd** and **kl2tpd**, which builds on the library.
+
+**ql2tpd** is a minimal daemon for creating static L2TPv3 sessions.
 
 This tool requires root permissions to run, and is driven by a configuration file which
 details the tunnel and session instances to create.
@@ -68,6 +72,26 @@ packet over a minimal implementation of the RFC3931 reliable control message tra
 This allows for the detection of tunnel failure, which will then tear down the sessions
 running in that tunnel.  ***hello_timeout*** should only be enabled if the peer is also
 running **ql2tpd**.
+
+**kl2tpd** is a client/LAC-mode daemon for creating L2TPv2 sessions.  It spawns the standard
+Linux **pppd** for PPP protocol support.
+
+Similar to **ql2tpd**, **kl2tpd** requires root permissions to run, and is driven by a
+configuration file which details the tunnel and session instances to create.
+
+In addition to the configuration parameters documented by package config, **kl2tpd**
+supports an extra session parameter, ***pppd_args*** which calls out an argument file
+for extra **pppd** command line arguments.  Here is an example configuration for establishing
+a single tunnel containing a single session:
+
+    [tunnel.t1]
+    peer = "42.102.77.204:1701"
+    version = "l2tpv2"
+    encap = "udp"
+
+    [tunnel.t1.session.s1]
+    pseudowire = "ppp"
+    pppd_args = "/home/bob/pppd.args"
 
 ## Documentation
 
@@ -86,6 +110,10 @@ You can view documentation of a particular API or type like this:
 Finally, documentation of the **ql2tpd** command can be viewed like this:
 
     go doc cmd/ql2tpd
+
+and the documentation of the **kl2tpd** command can be viewed like this:
+
+    go doc cmd/kl2tpd
 
 ## Testing
 
