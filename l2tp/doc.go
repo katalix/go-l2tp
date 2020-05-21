@@ -2,13 +2,6 @@
 Package l2tp is a library for Layer 2 Tunneling Protocol applications
 running on Linux systems.
 
-Currently the L2TP data plane is implemented using the Linux kernel's
-L2TP subsystem, and the L2TPv2 control plane is implemented for client/LAC
-mode.
-
-In the future we plan to add support for the L2TPv3 control plane, and
-server/LNS mode.
-
 L2TP is specified by RFC2661 (L2TPv2) and RFC3931 (L2TPv3).
 
 L2TPv2 applies only to PPP tunneling, and is widely used in home
@@ -17,15 +10,29 @@ network.  It is also used in conjunction with IPSec in VPN
 implementations.
 
 L2TPv3 extends the protocol in a backward-compatible manner, and
-allows for the tunneling of multiple Layer 2 frames including Ethernet
-and VLAN.
+allows for the tunneling of various additional Layer 2 frames including
+Ethernet and VLAN.
 
 On Linux systems, the kernel natively supports the L2TPv2 and L2TPv3
 data plane.  Tunneled frames are handled entirely by the kernel
 for maximum efficiency.  The more complex control plane for instantiating
 and managing tunnel and session instances is implemented in user space.
 
+Currently package l2tp implements:
+
+ * support for controlling the Linux L2TP data plane for L2TPv2 and
+   L2TPv3 tunnels and sessions,
+ * the L2TPv2 control plane for client/LAC mode.
+
+In the future we plan to add support for the L2TPv3 control plane, and
+server/LNS mode.
+
 Usage
+
+	import (
+		"github.com/katalix/go-l2tp/l2tp"
+		"github.com/katalix/go-l2tp/config"
+	)
 
 	# Note we're ignoring errors for brevity.
 
@@ -34,10 +41,9 @@ Usage
 	# structures if you prefer.
 	config, _ := config.LoadFile("./my-l2tp-config.toml")
 
-	# Creation of L2TP instances requires an L2TP context
-	# We're disabling logging and using default context config
-	# here.
-	l2tpctx, _ := l2tp.NewContext(nil, nil)
+	# Creation of L2TP instances requires an L2TP context.
+	# We're disabling logging and using the default Linux data plane.
+	l2tpctx, _ := l2tp.NewContext(l2tp.LinuxNetlinkDataPlane, nil)
 
 	# Create tunnel and session instances based on the config
 	for _, tcfg := range config.Tunnels {
@@ -91,8 +97,5 @@ instances.
 
 To disable all logging from package l2tp, pass in a nil logger.
 
-Limitations
-
-	* Only Linux systems are supported for the data plane.
 */
 package l2tp
