@@ -6,7 +6,7 @@ on Linux systems.
 
 ## Features
 
-* [L2TPv3 (RFC3931)](https://tools.ietf.org/html/rfc3931) data plane
+* [L2TPv2 (RFC2661)](https://tools.ietf.org/html/rfc2661) and [L2TPv3 (RFC3931)](https://tools.ietf.org/html/rfc3931) data plane via. Linux L2TP subsystem
 * AF_INET and AF_INET6 tunnel addresses
 * UDP and L2TPIP tunnel encapsulation
 * L2TPv2 control plane in client/LAC mode
