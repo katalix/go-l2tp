@@ -4,14 +4,12 @@
 [L2TP](https://en.wikipedia.org/wiki/Layer_2_Tunneling_Protocol) applications
 on Linux systems.
 
-Currently static (or unmanaged) tunnels and sessions are supported, which implement
-the L2TPv3 data plane only.  In the future we plan to add support for the control plane.
-
 ## Features
 
 * [L2TPv3 (RFC3931)](https://tools.ietf.org/html/rfc3931) data plane
 * AF_INET and AF_INET6 tunnel addresses
 * UDP and L2TPIP tunnel encapsulation
+* L2TPv2 control plane in client/LAC mode
 
 ## Installation
 
@@ -36,22 +34,22 @@ Read on for instructions on coding using the library.
 
 ## Usage
 
-	# Read configuration.
-    # Refer to the Documentation section below for references
-    # on the syntax of this configuration file.
-	# Ignore errors for the purposes of demonstration!
+	# Note we're ignoring errors for brevity.
+
+	# Read configuration using the config package.
+	# This is optional: you can build your own configuration
+	# structures if you prefer.
 	config, _ := config.LoadFile("./my-l2tp-config.toml")
 
-	# Creation of L2TP instances requires an L2TP context
-	# We're disabling logging and using default context config
-	# for brevity here.
-	l2tpctx, _ := l2tp.NewContext(nil, nil)
+	# Creation of L2TP instances requires an L2TP context.
+	# We're disabling logging and using the default Linux data plane.
+	l2tpctx, _ := l2tp.NewContext(l2tp.LinuxNetlinkDataPlane, nil)
 
 	# Create tunnel and session instances based on the config
-	for tname, tcfg := range config.GetTunnels() {
-		tunl, _ := l2tpctx.NewStaticTunnel(tname, tcfg)
-		for sname, scfg := range tcfg.Sessions {
-			_, _, := tunl.NewSession(sname, scfg)
+	for _, tcfg := range config.Tunnels {
+		tunl, _ := l2tpctx.NewStaticTunnel(tcfg.Name, tcfg.Config)
+		for _, scfg := range tcfg.Sessions {
+			_, _, := tunl.NewSession(scfg.Name, scfg.Config)
 		}
 	}
 
