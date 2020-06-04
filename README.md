@@ -55,7 +55,7 @@ Read on for instructions on coding using the library.
 
 ## Tools
 
-go-l2tp includes two tools, **ql2tpd** and **kl2tpd**, which builds on the library.
+go-l2tp includes two tools, **ql2tpd** and **kl2tpd**, which build on the library.
 
 **ql2tpd** is a minimal daemon for creating static L2TPv3 sessions.
 
