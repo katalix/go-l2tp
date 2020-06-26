@@ -17,7 +17,7 @@ type PPPoEPacket struct {
 	DstHWAddr [6]byte
 	Code      PPPoECode
 	SessionID PPPoESessionID
-	Data      []byte
+	TagList   []*PPPoETag
 }
 
 func (code PPPoECode) String() string {
@@ -66,19 +66,22 @@ func (typ PPPoETagType) String() string {
 func (tag *PPPoETag) String() string {
 	// Render string tag payloads as strings
 	switch tag.Type {
-	case PPPoETagTypeServiceName:
-	case PPPoETagTypeACName:
-	case PPPoETagTypeServiceNameError:
-	case PPPoETagTypeACSystemError:
-	case PPPoETagTypeGenericError:
-		return fmt.Sprintf("Tag type \"%v\": \"%s\"", tag.Type, string(tag.Data))
+	case PPPoETagTypeServiceName,
+		PPPoETagTypeACName,
+		PPPoETagTypeServiceNameError,
+		PPPoETagTypeACSystemError,
+		PPPoETagTypeGenericError:
+		return fmt.Sprintf("%v: \"%s\"", tag.Type, string(tag.Data))
 	}
-	return fmt.Sprintf("Tag type \"%v\": \"%v\"", tag.Type, tag.Data)
+	return fmt.Sprintf("%v: %#v", tag.Type, tag.Data)
 }
 
 func (packet *PPPoEPacket) String() string {
-	s := fmt.Sprintf("%s: src %v, dst %v, session %v, tags: ",
+	s := fmt.Sprintf("%s: src %v, dst %v, session %v, tags:",
 		packet.Code, packet.SrcHWAddr, packet.DstHWAddr, packet.SessionID)
+	for _, tag := range packet.TagList {
+		s += fmt.Sprintf(" %s,", tag)
+	}
 	return s
 }
 
@@ -222,11 +225,6 @@ func (packet *PPPoEPacket) validate() (err error) {
 		}
 	}
 
-	tags, err = packet.Tags()
-	if err != nil {
-		return fmt.Errorf("failed to parse packet tags: %v", err)
-	}
-
 	if spec.zeroSessionID {
 		if packet.SessionID != 0 {
 			return fmt.Errorf("nonzero session ID in %v; must have zero", packet.Code)
@@ -237,18 +235,48 @@ func (packet *PPPoEPacket) validate() (err error) {
 		}
 	}
 
-	if len(tags) < len(spec.mandatoryTags) {
+	if len(packet.TagList) < len(spec.mandatoryTags) {
 		return fmt.Errorf("expect minimum of %d tags in %v; only got %d",
 			len(spec.mandatoryTags), packet.Code, len(tags))
 	}
 
 	for _, tagType := range spec.mandatoryTags {
-		_, err := findTag(tagType, tags)
+		_, err := findTag(tagType, packet.TagList)
 		if err != nil {
 			return fmt.Errorf("missing mandatory tag %v in %v", tagType, packet.Code)
 		}
 	}
 	return nil
+}
+
+func newTagListFromBuffer(buf []byte) (tags []*PPPoETag, err error) {
+	r := bytes.NewReader(buf)
+	for r.Len() >= pppoeTagMinLength {
+		var cursor int64
+		var hdr pppoeTagHeader
+
+		if cursor, err = r.Seek(0, io.SeekCurrent); err != nil {
+			return nil, fmt.Errorf("failed to determine tag buffer offset: %v", err)
+		}
+
+		if err = binary.Read(r, binary.BigEndian, &hdr); err != nil {
+			return nil, err
+		}
+
+		if int(hdr.Length) > r.Len() {
+			return nil, fmt.Errorf("malformed tag: length %d exceeds buffer bounds of %d", hdr.Length, r.Len())
+		}
+
+		tags = append(tags, &PPPoETag{
+			Type: hdr.Type,
+			Data: buf[cursor+pppoeTagMinLength : cursor+pppoeTagMinLength+int64(hdr.Length)],
+		})
+
+		if _, err := r.Seek(int64(hdr.Length), io.SeekCurrent); err != nil {
+			return nil, fmt.Errorf("malformed tag buffer: invalid length for current tag")
+		}
+	}
+	return
 }
 
 func newPacketFromBuffer(hdr *pppoeHeader, payload []byte) (packet *PPPoEPacket, err error) {
@@ -264,12 +292,17 @@ func newPacketFromBuffer(hdr *pppoeHeader, payload []byte) (packet *PPPoEPacket,
 		return nil, fmt.Errorf("unrecognised packet code %x", hdr.Code)
 	}
 
+	taglist, err := newTagListFromBuffer(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse packet tags: %v", err)
+	}
+
 	packet = &PPPoEPacket{
 		SrcHWAddr: hdr.SrcHWAddr,
 		DstHWAddr: hdr.DstHWAddr,
 		Code:      PPPoECode(hdr.Code),
 		SessionID: PPPoESessionID(hdr.SessionID),
-		Data:      payload,
+		TagList:   taglist,
 	}
 
 	err = packet.validate()
@@ -278,6 +311,10 @@ func newPacketFromBuffer(hdr *pppoeHeader, payload []byte) (packet *PPPoEPacket,
 	}
 
 	return
+}
+
+func ParsePacketBuffer(b []byte) (packets []*PPPoEPacket, err error) {
+	return parsePacketBuffer(b)
 }
 
 func parsePacketBuffer(b []byte) (packets []*PPPoEPacket, err error) {
@@ -321,21 +358,26 @@ func newTag(typ PPPoETagType, length int, data []byte) *PPPoETag {
 	}
 }
 
-func (packet *PPPoEPacket) appendTag(tag *PPPoETag) (err error) {
+func (tag *PPPoETag) toBytes() (encoded []byte, err error) {
 	encBuf := new(bytes.Buffer)
 
 	err = binary.Write(encBuf, binary.BigEndian, tag.Type)
 	if err != nil {
-		return fmt.Errorf("unable to write tag type: %v", err)
+		return nil, fmt.Errorf("unable to write tag type: %v", err)
 	}
 
 	err = binary.Write(encBuf, binary.BigEndian, uint16(len(tag.Data)))
 	if err != nil {
-		return fmt.Errorf("unable to write tag length: %v", err)
+		return nil, fmt.Errorf("unable to write tag length: %v", err)
 	}
 
-	b := append(encBuf.Bytes(), tag.Data...)
-	packet.Data = append(packet.Data, b...)
+	_, _ = encBuf.Write(tag.Data)
+
+	return encBuf.Bytes(), nil
+}
+
+func (packet *PPPoEPacket) appendTag(tag *PPPoETag) (err error) {
+	packet.TagList = append(packet.TagList, tag)
 	return
 }
 
@@ -371,8 +413,25 @@ func (packet *PPPoEPacket) AddTag(typ PPPoETagType, data []byte) (err error) {
 	return packet.appendTag(newTag(typ, len(data), data))
 }
 
+func (packet *PPPoEPacket) tagListBytes() (encoded []byte, err error) {
+	encBuf := new(bytes.Buffer)
+	for _, tag := range packet.TagList {
+		encodedTag, err := tag.toBytes()
+		if err != nil {
+			return nil, fmt.Errorf("failed to encode tag %v: %v", tag, err)
+		}
+		_, _ = encBuf.Write(encodedTag)
+	}
+	return encBuf.Bytes(), nil
+}
+
 func (packet *PPPoEPacket) ToBytes() (encoded []byte, err error) {
 	encBuf := new(bytes.Buffer)
+
+	encodedTags, err := packet.tagListBytes()
+	if err != nil {
+		return nil, err
+	}
 
 	// bytes.Buffer.Write always returns a nil error
 
@@ -388,11 +447,11 @@ func (packet *PPPoEPacket) ToBytes() (encoded []byte, err error) {
 	if err != nil {
 		return nil, fmt.Errorf("unable to write session ID: %v", err)
 	}
-	err = binary.Write(encBuf, binary.BigEndian, uint16(len(packet.Data)))
+	err = binary.Write(encBuf, binary.BigEndian, uint16(len(encodedTags)))
 	if err != nil {
 		return nil, fmt.Errorf("unable to write data length: %v", err)
 	}
-	_, _ = encBuf.Write(packet.Data)
+	_, _ = encBuf.Write(encodedTags)
 
 	return encBuf.Bytes(), nil
 }
@@ -403,31 +462,5 @@ type pppoeTagHeader struct {
 }
 
 func (packet *PPPoEPacket) Tags() (tags []*PPPoETag, err error) {
-	r := bytes.NewReader(packet.Data)
-	for r.Len() >= pppoeTagMinLength {
-		var cursor int64
-		var hdr pppoeTagHeader
-
-		if cursor, err = r.Seek(0, io.SeekCurrent); err != nil {
-			return nil, fmt.Errorf("failed to determine tag buffer offset: %v", err)
-		}
-
-		if err = binary.Read(r, binary.BigEndian, &hdr); err != nil {
-			return nil, err
-		}
-
-		if int(hdr.Length) > r.Len() {
-			return nil, fmt.Errorf("malformed tag: length %d exceeds buffer bounds of %d", hdr.Length, r.Len())
-		}
-
-		tags = append(tags, &PPPoETag{
-			Type: hdr.Type,
-			Data: packet.Data[cursor+pppoeTagMinLength : cursor+pppoeTagMinLength+int64(hdr.Length)],
-		})
-
-		if _, err := r.Seek(int64(hdr.Length), io.SeekCurrent); err != nil {
-			return nil, fmt.Errorf("malformed tag buffer: invalid length for current tag")
-		}
-	}
-	return
+	return packet.TagList, nil
 }
