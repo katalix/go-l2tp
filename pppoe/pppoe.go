@@ -20,6 +20,22 @@ type PPPoEPacket struct {
 	Data      []byte
 }
 
+func (code PPPoECode) String() string {
+	switch code {
+	case PPPoECodePADI:
+		return "PADI"
+	case PPPoECodePADO:
+		return "PADO"
+	case PPPoECodePADR:
+		return "PADR"
+	case PPPoECodePADS:
+		return "PADS"
+	case PPPoECodePADT:
+		return "PADT"
+	}
+	return "???"
+}
+
 func (typ PPPoETagType) String() string {
 	switch typ {
 	case PPPoETagTypeEOL:
@@ -58,6 +74,12 @@ func (tag *PPPoETag) String() string {
 		return fmt.Sprintf("Tag type \"%v\": \"%s\"", tag.Type, string(tag.Data))
 	}
 	return fmt.Sprintf("Tag type \"%v\": \"%v\"", tag.Type, tag.Data)
+}
+
+func (packet *PPPoEPacket) String() string {
+	s := fmt.Sprintf("%s: src %v, dst %v, session %v, tags: ",
+		packet.Code, packet.SrcHWAddr, packet.DstHWAddr, packet.SessionID)
+	return s
 }
 
 func NewPADI(sourceHWAddr [6]byte, serviceName string) (packet *PPPoEPacket, err error) {
