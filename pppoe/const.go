@@ -4,6 +4,9 @@ type PPPoECode uint8
 type PPPoESessionID uint16
 type PPPoETagType uint16
 
+const EthTypePPPoEDiscovery = 0x8863
+
+// discovery packet types
 const (
 	PPPoECodePADI PPPoECode = 0x09
 	PPPoECodePADO PPPoECode = 0x07
@@ -12,6 +15,7 @@ const (
 	PPPoECodePADT PPPoECode = 0xa7
 )
 
+// tag types
 const (
 	PPPoETagTypeEOL              PPPoETagType = 0x0000
 	PPPoETagTypeServiceName      PPPoETagType = 0x0101
@@ -25,8 +29,8 @@ const (
 	PPPoETagTypeGenericError     PPPoETagType = 0x0203
 )
 
+// internal constants
 const (
-	ethTypePPPoEDiscovery = 0x8863
-	pppoePacketMinLength  = 20 // raw packet: 14 bytes Ethernet header, 6 bytes PPPoE header
-	pppoeTagMinLength     = 4  // bytes: 2 for type, 2 for length
+	pppoePacketMinLength = 20 // raw packet: 14 bytes Ethernet header, 6 bytes PPPoE header
+	pppoeTagMinLength    = 4  // bytes: 2 for type, 2 for length
 )

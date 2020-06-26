@@ -314,10 +314,6 @@ func newPacketFromBuffer(hdr *pppoeHeader, payload []byte) (packet *PPPoEPacket,
 }
 
 func ParsePacketBuffer(b []byte) (packets []*PPPoEPacket, err error) {
-	return parsePacketBuffer(b)
-}
-
-func parsePacketBuffer(b []byte) (packets []*PPPoEPacket, err error) {
 	r := bytes.NewReader(b)
 	for r.Len() >= pppoePacketMinLength {
 		var cursor int64
@@ -336,7 +332,7 @@ func parsePacketBuffer(b []byte) (packets []*PPPoEPacket, err error) {
 		}
 
 		// Silently ignore packets which are not PPPoE discovery packets
-		if hdr.EtherType == ethTypePPPoEDiscovery {
+		if hdr.EtherType == EthTypePPPoEDiscovery {
 			packet, err := newPacketFromBuffer(&hdr, b[cursor+pppoePacketMinLength:cursor+pppoePacketMinLength+int64(hdr.Length)])
 			if err != nil {
 				return nil, fmt.Errorf("failed to parse packet: %v", err)

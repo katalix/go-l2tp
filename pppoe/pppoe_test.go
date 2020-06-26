@@ -271,9 +271,9 @@ func TestPacketRenderAndParse(t *testing.T) {
 			if err != nil {
 				t.Fatalf("ToBytes: %v", err)
 			}
-			parsed, err := parsePacketBuffer(encoded)
+			parsed, err := ParsePacketBuffer(encoded)
 			if err != nil {
-				t.Fatalf("parsePacketBuffer(%x): %v", encoded, err)
+				t.Fatalf("ParsePacketBuffer(%x): %v", encoded, err)
 			}
 			if len(parsed) != 1 {
 				t.Fatalf("expected 1 parsed packet, got %d", len(parsed))
@@ -318,13 +318,13 @@ func deleteTestVethPair() (err error) {
 func testConnSendRecv(t *testing.T) {
 	recvBuf := make([]byte, 1500)
 
-	conn0, err := NewPPPoEConnection(testVeth0, ethTypePPPoEDiscovery)
+	conn0, err := NewPPPoEConnection(testVeth0, EthTypePPPoEDiscovery)
 	if err != nil {
 		t.Fatalf("NewPPPoEConnection: %v", err)
 	}
 	defer conn0.Close()
 
-	conn1, err := NewPPPoEConnection(testVeth1, ethTypePPPoEDiscovery)
+	conn1, err := NewPPPoEConnection(testVeth1, EthTypePPPoEDiscovery)
 	if err != nil {
 		t.Fatalf("NewPPPoEConnection: %v", err)
 	}
@@ -360,9 +360,9 @@ func testConnSendRecv(t *testing.T) {
 
 	endWg.Wait()
 
-	parsed, err := parsePacketBuffer(recvBuf)
+	parsed, err := ParsePacketBuffer(recvBuf)
 	if err != nil {
-		t.Fatalf("parsePacketBuffer(%x): %v", recvBuf, err)
+		t.Fatalf("ParsePacketBuffer(%x): %v", recvBuf, err)
 	}
 
 	if len(parsed) != 1 {
