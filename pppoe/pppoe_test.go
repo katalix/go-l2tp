@@ -2,8 +2,16 @@ package pppoe
 
 import (
 	"fmt"
+	"os/exec"
+	"os/user"
 	"reflect"
+	"sync"
 	"testing"
+)
+
+const (
+	testVeth0 = "vetest0"
+	testVeth1 = "vetest1"
 )
 
 func TestTagRenderAndParse(t *testing.T) {
@@ -270,5 +278,131 @@ func TestPacketRenderAndParse(t *testing.T) {
 				t.Errorf("Expect: %v, got: %v", packet, parsed[0])
 			}
 		})
+	}
+}
+
+func createTestVethPair() (err error) {
+	cmd := exec.Command("sudo", "ip", "link", "add", "dev", testVeth0, "type", "veth", "peer", "name", testVeth1)
+	err = cmd.Run()
+	if err != nil {
+		return fmt.Errorf("unable to create veth pair: %v", err)
+	}
+
+	cmd = exec.Command("sudo", "ip", "link", "set", testVeth0, "up")
+	err = cmd.Run()
+	if err != nil {
+		return fmt.Errorf("unable to set %s up: %v", testVeth0, err)
+	}
+
+	cmd = exec.Command("sudo", "ip", "link", "set", testVeth1, "up")
+	err = cmd.Run()
+	if err != nil {
+		return fmt.Errorf("unable to set %s up: %v", testVeth1, err)
+	}
+	return nil
+}
+
+func deleteTestVethPair() (err error) {
+	cmd := exec.Command("sudo", "ip", "link", "delete", "dev", testVeth0)
+	err = cmd.Run()
+	if err != nil {
+		return fmt.Errorf("failed to delete veth interface %s: %v", testVeth0, err)
+	}
+	return nil
+}
+
+func testConnSendRecv(t *testing.T) {
+	recvBuf := make([]byte, 1500)
+
+	conn0, err := NewPPPoEConnection(testVeth0, ethTypePPPoEDiscovery)
+	if err != nil {
+		t.Fatalf("NewPPPoEConnection: %v", err)
+	}
+	defer conn0.Close()
+
+	conn1, err := NewPPPoEConnection(testVeth1, ethTypePPPoEDiscovery)
+	if err != nil {
+		t.Fatalf("NewPPPoEConnection: %v", err)
+	}
+	defer conn1.Close()
+
+	var startWg, endWg sync.WaitGroup
+	startWg.Add(1)
+	endWg.Add(1)
+	go func() {
+		startWg.Done()
+		_, err = conn1.Recv(recvBuf)
+		if err != nil {
+			t.Errorf("Recv: %v", err)
+		}
+		endWg.Done()
+	}()
+	startWg.Wait()
+
+	pkt, err := NewPADI(conn0.HWAddr(), "BobsService")
+	if err != nil {
+		t.Fatalf("NewPADI: %v", err)
+	}
+
+	b, err := pkt.ToBytes()
+	if err != nil {
+		t.Fatalf("ToBytes: %v", err)
+	}
+
+	_, err = conn0.Send(b)
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+
+	endWg.Wait()
+
+	parsed, err := parsePacketBuffer(recvBuf)
+	if err != nil {
+		t.Fatalf("parsePacketBuffer(%x): %v", recvBuf, err)
+	}
+
+	if len(parsed) != 1 {
+		t.Fatalf("expected 1 parsed packet, got %d", len(parsed))
+	}
+	if !reflect.DeepEqual(parsed[0], pkt) {
+		t.Errorf("Expect: %v, got: %v", pkt, parsed[0])
+	}
+}
+
+func TestRequiresRoot(t *testing.T) {
+
+	// These tests need root permissions, so verify we have those first of all
+	user, err := user.Current()
+	if err != nil {
+		t.Errorf("Unable to obtain current user: %q", err)
+	}
+	if user.Uid != "0" {
+		t.Skip("skipping test because we don't have root permissions")
+	}
+
+	// Set up veth pair to use for connection tests
+	err = createTestVethPair()
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+
+	tests := []struct {
+		name   string
+		testFn func(t *testing.T)
+	}{
+		{
+			name:   "conn send/recv",
+			testFn: testConnSendRecv,
+		},
+	}
+
+	for _, sub := range tests {
+		t.Run(sub.name, sub.testFn)
+	}
+
+	// Tear down veth pair
+	err = deleteTestVethPair()
+	if err != nil {
+		t.Errorf("%v", err)
 	}
 }
