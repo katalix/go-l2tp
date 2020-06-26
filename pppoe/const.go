@@ -4,8 +4,6 @@ type PPPoECode uint8
 type PPPoESessionID uint16
 type PPPoETagType uint16
 
-const EthTypePPPoEDiscovery = 0x8863
-
 // discovery packet types
 const (
 	PPPoECodePADI PPPoECode = 0x09

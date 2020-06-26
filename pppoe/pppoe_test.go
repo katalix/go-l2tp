@@ -318,15 +318,15 @@ func deleteTestVethPair() (err error) {
 func testConnSendRecv(t *testing.T) {
 	recvBuf := make([]byte, 1500)
 
-	conn0, err := NewPPPoEConnection(testVeth0, EthTypePPPoEDiscovery)
+	conn0, err := NewDiscoveryConnection(testVeth0)
 	if err != nil {
-		t.Fatalf("NewPPPoEConnection: %v", err)
+		t.Fatalf("NewDiscoveryConnection: %v", err)
 	}
 	defer conn0.Close()
 
-	conn1, err := NewPPPoEConnection(testVeth1, EthTypePPPoEDiscovery)
+	conn1, err := NewDiscoveryConnection(testVeth1)
 	if err != nil {
-		t.Fatalf("NewPPPoEConnection: %v", err)
+		t.Fatalf("NewDiscoveryConnection: %v", err)
 	}
 	defer conn1.Close()
 

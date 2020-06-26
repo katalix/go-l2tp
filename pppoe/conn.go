@@ -5,7 +5,6 @@ import (
 	"net"
 	"os"
 	"syscall"
-	"unsafe"
 
 	"golang.org/x/sys/unix"
 )
@@ -54,26 +53,21 @@ func newRawSocket(protocol int) (fd int, err error) {
 	return
 }
 
-func NewPPPoEConnection(ifname string, protocol int) (conn *PPPoEConn, err error) {
-
-	// convert protocol to network byte order
-	var protoN uint16
-	pp := (*[2]byte)(unsafe.Pointer(&protocol))
-	protoN = uint16(int(pp[0])<<8 + int(pp[1]))
+func NewDiscoveryConnection(ifname string) (conn *PPPoEConn, err error) {
 
 	iface, err := net.InterfaceByName(ifname)
 	if err != nil {
 		return nil, fmt.Errorf("failed to obtain details of interface \"%s\": %v", ifname, err)
 	}
 
-	fd, err := newRawSocket(int(protoN))
+	fd, err := newRawSocket(int(ethTypeDiscoveryNetUint16()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create raw socket: %v", err)
 	}
 
 	// bind to the interface specified
 	sa := unix.SockaddrLinklayer{
-		Protocol: protoN,
+		Protocol: ethTypeDiscoveryNetUint16(),
 		Ifindex:  iface.Index,
 	}
 	err = unix.Bind(fd, &sa)

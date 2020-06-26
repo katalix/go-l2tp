@@ -85,6 +85,21 @@ func (packet *PPPoEPacket) String() string {
 	return s
 }
 
+func ethTypeDiscovery() uint16 {
+	return 0x8863
+}
+
+func ethTypeDiscoveryNetBytes() []byte {
+	ethType := make([]byte, 2)
+	binary.BigEndian.PutUint16(ethType, ethTypeDiscovery())
+	return ethType
+}
+
+func ethTypeDiscoveryNetUint16() uint16 {
+	b := ethTypeDiscoveryNetBytes()
+	return uint16(b[1])<<8 + uint16(b[0])
+}
+
 func NewPADI(sourceHWAddr [6]byte, serviceName string) (packet *PPPoEPacket, err error) {
 	packet = &PPPoEPacket{
 		SrcHWAddr: sourceHWAddr,
@@ -332,7 +347,7 @@ func ParsePacketBuffer(b []byte) (packets []*PPPoEPacket, err error) {
 		}
 
 		// Silently ignore packets which are not PPPoE discovery packets
-		if hdr.EtherType == EthTypePPPoEDiscovery {
+		if hdr.EtherType == ethTypeDiscovery() {
 			packet, err := newPacketFromBuffer(&hdr, b[cursor+pppoePacketMinLength:cursor+pppoePacketMinLength+int64(hdr.Length)])
 			if err != nil {
 				return nil, fmt.Errorf("failed to parse packet: %v", err)
@@ -434,7 +449,7 @@ func (packet *PPPoEPacket) ToBytes() (encoded []byte, err error) {
 	// Ethernet header: dst, src, type
 	_, _ = encBuf.Write(packet.DstHWAddr[:])
 	_, _ = encBuf.Write(packet.SrcHWAddr[:])
-	_, _ = encBuf.Write([]byte{0x88, 0x63})
+	_, _ = encBuf.Write(ethTypeDiscoveryNetBytes())
 
 	// PPPoE header: VerType, code, session ID, length, payload
 	_, _ = encBuf.Write([]byte{0x11})
