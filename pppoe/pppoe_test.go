@@ -122,12 +122,16 @@ func TestTagRenderAndParse(t *testing.T) {
 					t.Fatalf("AddTag(%v): %v", tag, err)
 				}
 			}
-			got, err := pkt.Tags()
+			b, err := pkt.tagListBytes()
 			if err != nil {
-				t.Fatalf("Tags(): %v", err)
+				t.Fatalf("tagListBytes: %v", err)
 			}
-			if !reflect.DeepEqual(got, c.tags) {
-				t.Errorf("Expect: %v, got: %v", c.tags, got)
+			tags, err := newTagListFromBuffer(b)
+			if err != nil {
+				t.Fatalf("newTagListFromBuffer(%q): %v", tags, err)
+			}
+			if !reflect.DeepEqual(tags, c.tags) {
+				t.Errorf("Expect: %v, got: %v", c.tags, tags)
 			}
 		})
 	}
