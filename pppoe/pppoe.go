@@ -71,14 +71,29 @@ func (tag *PPPoETag) String() string {
 		PPPoETagTypeServiceNameError,
 		PPPoETagTypeACSystemError,
 		PPPoETagTypeGenericError:
-		return fmt.Sprintf("%v: \"%s\"", tag.Type, string(tag.Data))
+		return fmt.Sprintf("%v: '%s'", tag.Type, string(tag.Data))
 	}
 	return fmt.Sprintf("%v: %#v", tag.Type, tag.Data)
 }
 
 func (packet *PPPoEPacket) String() string {
-	s := fmt.Sprintf("%s: src %v, dst %v, session %v, tags:",
-		packet.Code, packet.SrcHWAddr, packet.DstHWAddr, packet.SessionID)
+	s := fmt.Sprintf("%s: src %s, dst %s, session %v, tags:",
+		packet.Code,
+		fmt.Sprintf("0x%02x:%02x:%02x:%02x:%02x:%02x",
+			packet.SrcHWAddr[0],
+			packet.SrcHWAddr[1],
+			packet.SrcHWAddr[2],
+			packet.SrcHWAddr[3],
+			packet.SrcHWAddr[4],
+			packet.SrcHWAddr[5]),
+		fmt.Sprintf("0x%02x:%02x:%02x:%02x:%02x:%02x",
+			packet.DstHWAddr[0],
+			packet.DstHWAddr[1],
+			packet.DstHWAddr[2],
+			packet.DstHWAddr[3],
+			packet.DstHWAddr[4],
+			packet.DstHWAddr[5]),
+		packet.SessionID)
 	for _, tag := range packet.Tags {
 		s += fmt.Sprintf(" %s,", tag)
 	}
