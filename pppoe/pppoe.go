@@ -210,7 +210,7 @@ type packetSpec struct {
 	mandatoryTags []PPPoETagType
 }
 
-func (packet *PPPoEPacket) validate() (err error) {
+func (packet *PPPoEPacket) Validate() (err error) {
 	specMap := map[PPPoECode]*packetSpec{
 		PPPoECodePADI: &packetSpec{
 			zeroSessionID: true,
@@ -335,7 +335,7 @@ func newPacketFromBuffer(hdr *pppoeHeader, payload []byte) (packet *PPPoEPacket,
 		Tags:      tags,
 	}
 
-	err = packet.validate()
+	err = packet.Validate()
 	if err != nil {
 		return nil, fmt.Errorf("failed to validate packet: %v", err)
 	}
@@ -405,6 +405,10 @@ func (tag *PPPoETag) toBytes() (encoded []byte, err error) {
 func (packet *PPPoEPacket) appendTag(tag *PPPoETag) (err error) {
 	packet.Tags = append(packet.Tags, tag)
 	return
+}
+
+func (packet *PPPoEPacket) GetTag(typ PPPoETagType) (tag *PPPoETag, err error) {
+	return findTag(typ, packet.Tags)
 }
 
 func (packet *PPPoEPacket) AddServiceNameTag(name string) (err error) {
