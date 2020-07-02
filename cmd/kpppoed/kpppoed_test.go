@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/katalix/go-l2tp/config"
 	"github.com/katalix/go-l2tp/pppoe"
 )
 
@@ -314,5 +315,35 @@ func TestRequiresRoot(t *testing.T) {
 	err = deleteTestVethPair()
 	if err != nil {
 		t.Errorf("%v", err)
+	}
+}
+
+func TestConfigParser(t *testing.T) {
+	cases := []struct {
+		in         string
+		expectFail bool
+		out        *kpppoedConfig
+	}{
+		{
+			in: `ac_name = "wombles"
+			 interface_name = "eth0"
+			 services = [ "DeathStar", "tatoonie" ]
+			 `,
+			out: &kpppoedConfig{
+				acName:   "wombles",
+				ifName:   "eth0",
+				services: []string{"DeathStar", "tatoonie"},
+			},
+		},
+	}
+	for _, c := range cases {
+		cfg := &kpppoedConfig{}
+		_, err := config.LoadStringWithCustomParser(c.in, cfg)
+		if err != nil {
+			t.Fatalf("LoadStringWithCustomParser: %v", err)
+		}
+		if !reflect.DeepEqual(cfg, c.out) {
+			t.Fatalf("expect %v, got %v", c.out, cfg)
+		}
 	}
 }
