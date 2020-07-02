@@ -150,14 +150,64 @@ func checkRspIsPADO(pkt *pppoe.PPPoEPacket, t *testing.T) {
 	checkPktType(pkt, pppoe.PPPoECodePADO, t)
 }
 
-func checkTagData(pkt *pppoe.PPPoEPacket, t *testing.T, typ pppoe.PPPoETagType, data []byte) {
+func checkRspIsPADS(pkt *pppoe.PPPoEPacket, t *testing.T) {
+	checkPktType(pkt, pppoe.PPPoECodePADS, t)
+}
+
+func checkHasTag(pkt *pppoe.PPPoEPacket, t *testing.T, typ pppoe.PPPoETagType) (tag *pppoe.PPPoETag) {
 	tag, err := pkt.GetTag(typ)
 	if err != nil {
 		t.Fatalf("no tag %s", typ)
 	}
+	return
+}
+
+func checkTagData(pkt *pppoe.PPPoEPacket, t *testing.T, typ pppoe.PPPoETagType, data []byte) {
+	tag := checkHasTag(pkt, t, typ)
 	if !reflect.DeepEqual(tag.Data, data) {
 		t.Fatalf("expected %s to contain %q, got %q", typ, data, tag.Data)
 	}
+}
+
+func checkAddTags(pkt *pppoe.PPPoEPacket, tags []testTagIn, t *testing.T) {
+	for _, tag := range tags {
+		err := pkt.AddTag(tag.id, tag.data)
+		if err != nil {
+			t.Fatalf("AddTag: %v", err)
+		}
+	}
+}
+
+func checkSendRecv(client *testClient,
+	pkt *pppoe.PPPoEPacket,
+	timeout time.Duration,
+	expectSilence bool,
+	checkRsp func(pkt *pppoe.PPPoEPacket, t *testing.T),
+	t *testing.T) (rsp *pppoe.PPPoEPacket) {
+
+	err := client.sendPacket(pkt)
+	if err != nil {
+		t.Fatalf("sendPacket: %v", err)
+	}
+
+	rsp, err = client.recvPacket(timeout)
+
+	if expectSilence {
+		if err == nil {
+			t.Errorf("recvPacket: expect timeout error but didn't get one")
+		}
+		if rsp != nil {
+			t.Errorf("recvPacket: expected no reply, but got packet: %v", rsp)
+		}
+	} else {
+		if err != nil {
+			t.Fatalf("recvPacket: %v", err)
+		}
+		if checkRsp != nil {
+			checkRsp(rsp, t)
+		}
+	}
+	return
 }
 
 func testPADI(t *testing.T) {
@@ -270,34 +320,189 @@ func testPADI(t *testing.T) {
 				t.Fatalf("NewPADI: %v", err)
 			}
 
-			for _, tag := range c.tags {
-				err = padi.AddTag(tag.id, tag.data)
-				if err != nil {
-					t.Fatalf("AddTag: %v", err)
-				}
-			}
+			checkAddTags(padi, c.tags, t)
 
-			err = client.sendPacket(padi)
+			_ = checkSendRecv(client, padi, 250*time.Millisecond, c.expectSilence, c.checkRsp, t)
+		})
+	}
+}
+
+type testPktIn struct {
+	service       string
+	tags          []testTagIn
+	expectSilence bool
+	checkRsp      func(pkt *pppoe.PPPoEPacket, t *testing.T)
+}
+
+func testPADR(t *testing.T) {
+
+	service0 := "Super_Internet_03A"
+	service1 := "MyMagicalService2001"
+	service2 := "transx.world.com.gateway"
+
+	hostUniq0 := []byte{0x42, 0x12, 0xee, 0xf4, 0x91, 0x00, 0x72}
+
+	relaySessionID0 := []byte{
+		0x01, 0x02, 0x03, 0x04,
+		0x11, 0x12, 0x13, 0x14,
+		0xa1, 0xa2, 0xa3, 0xa4,
+	}
+
+	dfltCfg := &kpppoedConfig{
+		acName:   "bobby",
+		services: []string{service1, service2, service0},
+		ifName:   testVeth0,
+	}
+
+	cases := []struct {
+		name string
+		padi *testPktIn
+		padr *testPktIn
+	}{
+		{
+			name: "establish0",
+			padi: &testPktIn{
+				service: service2,
+				tags: []testTagIn{
+					{
+						id:   pppoe.PPPoETagTypeHostUniq,
+						data: hostUniq0,
+					},
+				},
+				checkRsp: func(pkt *pppoe.PPPoEPacket, t *testing.T) {
+					checkRspIsPADO(pkt, t)
+					checkTagData(pkt, t, pppoe.PPPoETagTypeHostUniq, hostUniq0)
+				},
+			},
+			padr: &testPktIn{
+				service: service2,
+				tags: []testTagIn{
+					{
+						id:   pppoe.PPPoETagTypeHostUniq,
+						data: hostUniq0,
+					},
+				},
+				checkRsp: func(pkt *pppoe.PPPoEPacket, t *testing.T) {
+					checkRspIsPADS(pkt, t)
+					checkTagData(pkt, t, pppoe.PPPoETagTypeHostUniq, hostUniq0)
+					if pkt.SessionID == 0 {
+						t.Errorf("expect non-zero session ID")
+					}
+				},
+			},
+		},
+		{
+			name: "establish1",
+			padi: &testPktIn{
+				service: service1,
+				tags: []testTagIn{
+					{
+						id:   pppoe.PPPoETagTypeHostUniq,
+						data: hostUniq0,
+					},
+					{
+						id:   pppoe.PPPoETagTypeRelaySessionID,
+						data: relaySessionID0,
+					},
+				},
+				checkRsp: func(pkt *pppoe.PPPoEPacket, t *testing.T) {
+					checkRspIsPADO(pkt, t)
+					checkTagData(pkt, t, pppoe.PPPoETagTypeHostUniq, hostUniq0)
+					checkTagData(pkt, t, pppoe.PPPoETagTypeRelaySessionID, relaySessionID0)
+				},
+			},
+			padr: &testPktIn{
+				service: service1,
+				tags: []testTagIn{
+					{
+						id:   pppoe.PPPoETagTypeHostUniq,
+						data: hostUniq0,
+					},
+					{
+						id:   pppoe.PPPoETagTypeRelaySessionID,
+						data: relaySessionID0,
+					},
+				},
+				checkRsp: func(pkt *pppoe.PPPoEPacket, t *testing.T) {
+					checkRspIsPADS(pkt, t)
+					checkTagData(pkt, t, pppoe.PPPoETagTypeHostUniq, hostUniq0)
+					checkTagData(pkt, t, pppoe.PPPoETagTypeRelaySessionID, relaySessionID0)
+					if pkt.SessionID == 0 {
+						t.Errorf("expect non-zero session ID")
+					}
+				},
+			},
+		},
+		{
+			name: "badservice",
+			padi: &testPktIn{
+				service:  service1,
+				checkRsp: checkRspIsPADO,
+			},
+			padr: &testPktIn{
+				service: "badservice",
+				tags: []testTagIn{
+					{
+						id:   pppoe.PPPoETagTypeHostUniq,
+						data: hostUniq0,
+					},
+					{
+						id:   pppoe.PPPoETagTypeRelaySessionID,
+						data: relaySessionID0,
+					},
+				},
+				checkRsp: func(pkt *pppoe.PPPoEPacket, t *testing.T) {
+					checkRspIsPADS(pkt, t)
+					checkTagData(pkt, t, pppoe.PPPoETagTypeHostUniq, hostUniq0)
+					checkTagData(pkt, t, pppoe.PPPoETagTypeRelaySessionID, relaySessionID0)
+					if pkt.SessionID != 0 {
+						t.Errorf("expect zero session ID")
+					}
+					checkHasTag(pkt, t, pppoe.PPPoETagTypeServiceNameError)
+				},
+			},
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+
+			app, err := newKpppoedTestApp(dfltCfg)
 			if err != nil {
-				t.Fatalf("sendPacket: %v", err)
+				t.Fatalf("newKpppoedTestApp: %v", err)
 			}
+			defer app.Close()
 
-			rsp, err := client.recvPacket(250 * time.Millisecond)
+			client, err := newTestClient(testVeth1)
+			if err != nil {
+				t.Fatalf("newTestClient: %v", err)
+			}
+			defer client.Close()
 
-			if c.expectSilence {
-				if err == nil {
-					t.Errorf("recvPacket: expect timeout error but didn't get one")
-				}
-				if rsp != nil {
-					t.Errorf("recvPacket: expected no reply, but got packet: %v", rsp)
-				}
-			} else {
+			padi, err := pppoe.NewPADI(client.conn.HWAddr(), c.padi.service)
+			if err != nil {
+				t.Fatalf("NewPADI: %v", err)
+			}
+			checkAddTags(padi, c.padi.tags, t)
+			pado := checkSendRecv(client,
+				padi,
+				250*time.Millisecond,
+				c.padi.expectSilence,
+				c.padi.checkRsp,
+				t)
+
+			if c.padr != nil {
+				padr, err := pppoe.NewPADR(client.conn.HWAddr(), pado.SrcHWAddr, c.padr.service)
 				if err != nil {
-					t.Fatalf("recvPacket: %v", err)
+					t.Fatalf("NewPADR: %v", err)
 				}
-				if c.checkRsp != nil {
-					c.checkRsp(rsp, t)
+				checkAddTags(padr, c.padr.tags, t)
+
+				acCookieTag, err := pado.GetTag(pppoe.PPPoETagTypeACCookie)
+				if err == nil {
+					checkAddTags(padr, []testTagIn{{id: acCookieTag.Type, data: acCookieTag.Data}}, t)
 				}
+				checkSendRecv(client, padr, 250*time.Millisecond, c.padr.expectSilence, c.padr.checkRsp, t)
 			}
 		})
 	}
@@ -327,6 +532,10 @@ func TestRequiresRoot(t *testing.T) {
 		{
 			name:   "PADI",
 			testFn: testPADI,
+		},
+		{
+			name:   "PADR",
+			testFn: testPADR,
 		},
 	}
 

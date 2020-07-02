@@ -4,9 +4,11 @@ import (
 	"flag"
 	"fmt"
 	stdlog "log"
+	"math/rand"
 	"os"
 	"os/signal"
 	"sync"
+	"time"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -21,10 +23,15 @@ type kpppoedConfig struct {
 	services []string
 }
 
+type pppoeSession struct {
+	peerHWAddr [6]byte
+}
+
 type application struct {
 	config    *kpppoedConfig
 	logger    log.Logger
 	conn      *pppoe.PPPoEConn
+	sessions  map[pppoe.PPPoESessionID]*pppoeSession
 	sigChan   chan os.Signal
 	rxChan    chan []byte
 	closeChan chan interface{}
@@ -96,12 +103,15 @@ func (cfg *kpppoedConfig) ParseSessionParameter(tunnel *config.NamedTunnel, sess
 func newApplication(cfg *kpppoedConfig, verbose bool) (app *application, err error) {
 	app = &application{
 		config:    cfg,
+		sessions:  make(map[pppoe.PPPoESessionID]*pppoeSession),
 		sigChan:   make(chan os.Signal, 1),
 		rxChan:    make(chan []byte),
 		closeChan: make(chan interface{}),
 	}
 
 	signal.Notify(app.sigChan, unix.SIGINT, unix.SIGTERM)
+
+	rand.Seed(time.Now().UnixNano())
 
 	logger := log.NewLogfmtLogger(os.Stderr)
 	if verbose {
@@ -145,18 +155,58 @@ func (app *application) mapServiceName(requested string) (got string, err error)
 			return requested, nil
 		}
 	}
-	return "", fmt.Errorf("requested service \"%s\" not available", requested)
+	return requested, fmt.Errorf("requested service \"%s\" not available", requested)
+}
+
+func (app *application) getPacketServiceName(pkt *pppoe.PPPoEPacket) (sn string, err error) {
+	serviceNameTag, err := pkt.GetTag(pppoe.PPPoETagTypeServiceName)
+	if err != nil {
+		// Don't expect this to occur since service name is mandatory and
+		// pppoe.Validate() is done as a part of parsing incoming messages.
+		// TODO: panic?
+		return
+	}
+	return app.mapServiceName(string(serviceNameTag.Data))
+}
+
+func (app *application) appendEchoedTags(in, out *pppoe.PPPoEPacket) (err error) {
+	hostUniqTag, err := in.GetTag(pppoe.PPPoETagTypeHostUniq)
+	if err == nil {
+		err = out.AddHostUniqTag(hostUniqTag.Data)
+		if err != nil {
+			return fmt.Errorf("failed to add host uniq tag to %s: %v", out.Code, err)
+		}
+	}
+
+	relaySessionIDTag, err := in.GetTag(pppoe.PPPoETagTypeRelaySessionID)
+	if err == nil {
+		err = out.AddTag(pppoe.PPPoETagTypeRelaySessionID, relaySessionIDTag.Data)
+		if err != nil {
+			return fmt.Errorf("failed to add relay session ID tag to %s: %v", out.Code, err)
+		}
+	}
+
+	return nil
+}
+
+func (app *application) genSessionID() (sid pppoe.PPPoESessionID, err error) {
+	for i := 0; i < 100; i++ {
+		// session ID is a 16 bit number, but 0 is not a valid ID
+		sid = pppoe.PPPoESessionID(1 + rand.Intn(65534))
+
+		// don't duplicate an existing session ID
+		if _, ok := app.sessions[sid]; !ok {
+			return
+		}
+	}
+	return pppoe.PPPoESessionID(0), fmt.Errorf("exhausted session ID space")
 }
 
 func (app *application) handlePADI(pkt *pppoe.PPPoEPacket) (err error) {
 
-	serviceNameTag, err := pkt.GetTag(pppoe.PPPoETagTypeServiceName)
+	serviceName, err := app.getPacketServiceName(pkt)
 	if err != nil {
-		return
-	}
-
-	serviceName, err := app.mapServiceName(string(serviceNameTag.Data))
-	if err != nil {
+		// We don't like the service name, so just ignore the request.
 		return
 	}
 
@@ -169,31 +219,83 @@ func (app *application) handlePADI(pkt *pppoe.PPPoEPacket) (err error) {
 		return fmt.Errorf("failed to build PADO: %v", err)
 	}
 
-	hostUniqTag, err := pkt.GetTag(pppoe.PPPoETagTypeHostUniq)
-	if err == nil {
-		err = pado.AddHostUniqTag(hostUniqTag.Data)
-		if err != nil {
-			return fmt.Errorf("failed to add host uniq tag to PADO: %v", err)
-		}
+	err = app.appendEchoedTags(pkt, pado)
+	if err != nil {
+		return
 	}
 
-	relaySessionIDTag, err := pkt.GetTag(pppoe.PPPoETagTypeRelaySessionID)
-	if err == nil {
-		err = pado.AddTag(pppoe.PPPoETagTypeRelaySessionID, relaySessionIDTag.Data)
-		if err != nil {
-			return fmt.Errorf("failed to add relay session ID tag to PADO: %v", err)
-		}
-	}
+	/* TODO: AC cookie */
 
 	return app.sendPacket(pado)
 }
 
 func (app *application) handlePADR(pkt *pppoe.PPPoEPacket) (err error) {
-	return fmt.Errorf("handlePacket not implemented")
+	sessionID := pppoe.PPPoESessionID(0)
+	errorReason := ""
+
+	// If we don't like the service name or fail to allocate resources,
+	// we need to send a PADS indicating the error condition.
+	serviceName, err := app.getPacketServiceName(pkt)
+	if err != nil {
+		errorReason = err.Error()
+	}
+
+	if errorReason == "" {
+		sessionID, err = app.genSessionID()
+		if err != nil {
+			errorReason = fmt.Sprintf("failed to allocate session ID: %v", err)
+		}
+	}
+
+	// If we fail to build the PADS or send it, there's not much we can
+	// do to let the peer know, so just fail silently.
+	pads, err := pppoe.NewPADS(
+		app.conn.HWAddr(),
+		pkt.SrcHWAddr,
+		serviceName,
+		sessionID)
+	if err != nil {
+		return
+	}
+
+	err = app.appendEchoedTags(pkt, pads)
+	if err != nil {
+		return
+	}
+
+	if errorReason != "" {
+		err = pads.AddServiceNameErrorTag(errorReason)
+		if err != nil {
+			return
+		}
+	}
+
+	err = app.sendPacket(pads)
+	if err != nil {
+		return
+	}
+
+	// Keep track of the session now
+	app.sessions[sessionID] = &pppoeSession{
+		peerHWAddr: pkt.SrcHWAddr,
+	}
+
+	return
 }
 
 func (app *application) handlePADT(pkt *pppoe.PPPoEPacket) (err error) {
-	return fmt.Errorf("handlePacket not implemented")
+
+	session, ok := app.sessions[pkt.SessionID]
+	if !ok {
+		return fmt.Errorf("unrecognised session ID %v", pkt.SessionID)
+	}
+
+	// TODO: tear down session instance
+	_ = session
+
+	delete(app.sessions, pkt.SessionID)
+
+	return
 }
 
 func (app *application) handlePacket(pkt *pppoe.PPPoEPacket) (err error) {
