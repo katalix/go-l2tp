@@ -15,8 +15,14 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+type kpppoedConfig struct {
+	acName   string
+	ifName   string
+	services []string
+}
+
 type application struct {
-	config    *config.Config
+	config    *kpppoedConfig
 	logger    log.Logger
 	conn      *pppoe.PPPoEConn
 	sigChan   chan os.Signal
@@ -24,8 +30,72 @@ type application struct {
 	closeChan chan interface{}
 }
 
-func newApplication(configPath string, verbose bool) (app *application, err error) {
+func ifaceToString(key string, v interface{}) (s string, err error) {
+	s, ok := v.(string)
+	if !ok {
+		return "", fmt.Errorf("failed to parse %s as a string", key)
+	}
+	return
+}
+
+func ifaceToStringList(key string, v interface{}) (sl []string, err error) {
+	l, ok := v.([]interface{})
+	if !ok {
+		return nil, fmt.Errorf("failed to parse %s as an array", key)
+	}
+	for _, vv := range l {
+		s, err := ifaceToString(fmt.Sprintf("%v in %s", vv, key), vv)
+		if err != nil {
+			return nil, err
+		}
+		sl = append(sl, s)
+	}
+	return
+}
+
+func (cfg *kpppoedConfig) ParseParameter(key string, value interface{}) (err error) {
+	var n string
+	switch key {
+	case "ac_name":
+		n, err = ifaceToString(key, value)
+		if err != nil {
+			return
+		}
+		if cfg.acName != "" {
+			return fmt.Errorf("cannot specify ac_name multiple times in configuration")
+		}
+		cfg.acName = n
+	case "interface_name":
+		n, err = ifaceToString(key, value)
+		if err != nil {
+			return
+		}
+		if cfg.ifName != "" {
+			return fmt.Errorf("cannot specify interface_name multiple times in configuration")
+		}
+		cfg.ifName = n
+	case "services":
+		cfg.services, err = ifaceToStringList(key, value)
+		if err != nil {
+			return
+		}
+	default:
+		return fmt.Errorf("unrecognised parameter %v", key)
+	}
+	return nil
+}
+
+func (cfg *kpppoedConfig) ParseTunnelParameter(tunnel *config.NamedTunnel, key string, value interface{}) error {
+	return fmt.Errorf("unrecognised parameter %v", key)
+}
+
+func (cfg *kpppoedConfig) ParseSessionParameter(tunnel *config.NamedTunnel, session *config.NamedSession, key string, value interface{}) error {
+	return fmt.Errorf("unrecognised parameter %v", key)
+}
+
+func newApplication(cfg *kpppoedConfig, verbose bool) (app *application, err error) {
 	app = &application{
+		config:    cfg,
 		sigChan:   make(chan os.Signal, 1),
 		rxChan:    make(chan []byte),
 		closeChan: make(chan interface{}),
@@ -40,7 +110,7 @@ func newApplication(configPath string, verbose bool) (app *application, err erro
 		app.logger = level.NewFilter(logger, level.AllowInfo())
 	}
 
-	app.conn, err = pppoe.NewDiscoveryConnection("veth1")
+	app.conn, err = pppoe.NewDiscoveryConnection(app.config.ifName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create PPPoE connection: %v", err)
 	}
@@ -107,11 +177,28 @@ func (app *application) run() int {
 }
 
 func main() {
+	cfg := kpppoedConfig{
+		acName: "kpppoed",
+	}
+
 	cfgPathPtr := flag.String("config", "/etc/kpppoed/kpppoed.toml", "specify configuration file path")
 	verbosePtr := flag.Bool("verbose", false, "toggle verbose log output")
 	flag.Parse()
 
-	app, err := newApplication(*cfgPathPtr, *verbosePtr)
+	_, err := config.LoadFileWithCustomParser(*cfgPathPtr, &cfg)
+	if err != nil {
+		stdlog.Fatalf("failed to load configuration: %v", err)
+	}
+
+	if len(cfg.services) == 0 {
+		stdlog.Fatalf("no services called out in the configuration file")
+	}
+
+	if cfg.ifName == "" {
+		stdlog.Fatalf("no interface name called out in the configuration file")
+	}
+
+	app, err := newApplication(&cfg, *verbosePtr)
 	if err != nil {
 		stdlog.Fatalf("failed to instantiate application: %v", err)
 	}
