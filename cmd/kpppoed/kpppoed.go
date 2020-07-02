@@ -118,9 +118,90 @@ func newApplication(cfg *kpppoedConfig, verbose bool) (app *application, err err
 	return
 }
 
-func (app *application) handlePacket(pkt *pppoe.PPPoEPacket) (err error) {
-	fmt.Printf("recv: %v\n", pkt)
+func (app *application) sendPacket(pkt *pppoe.PPPoEPacket) (err error) {
+	err = pkt.Validate()
+	if err != nil {
+		return fmt.Errorf("failed to validate %s: %v", pkt.Code, err)
+	}
+
+	b, err := pkt.ToBytes()
+	if err != nil {
+		return fmt.Errorf("unable to encode %s: %v", pkt.Code, err)
+	}
+
+	level.Debug(app.logger).Log("message", "send", "packet", pkt)
+
+	_, err = app.conn.Send(b)
+	return
+}
+
+func (app *application) mapServiceName(requested string) (got string, err error) {
+	// empty service name is a wildcard, so anything will do
+	if requested == "" {
+		return requested, nil
+	}
+	for _, sn := range app.config.services {
+		if sn == requested {
+			return requested, nil
+		}
+	}
+	return "", fmt.Errorf("requested service \"%s\" not available", requested)
+}
+
+func (app *application) handlePADI(pkt *pppoe.PPPoEPacket) (err error) {
+
+	serviceNameTag, err := pkt.GetTag(pppoe.PPPoETagTypeServiceName)
+	if err != nil {
+		return
+	}
+
+	serviceName, err := app.mapServiceName(string(serviceNameTag.Data))
+	if err != nil {
+		return
+	}
+
+	pado, err := pppoe.NewPADO(
+		app.conn.HWAddr(),
+		pkt.SrcHWAddr,
+		serviceName,
+		app.config.acName)
+	if err != nil {
+		return fmt.Errorf("failed to build PADO: %v", err)
+	}
+
+	hostUniqTag, err := pkt.GetTag(pppoe.PPPoETagTypeHostUniq)
+	if err == nil {
+		err = pado.AddHostUniqTag(hostUniqTag.Data)
+		if err != nil {
+			return fmt.Errorf("failed to add host uniq tag to PADO: %v", err)
+		}
+	}
+
+	return app.sendPacket(pado)
+}
+
+func (app *application) handlePADR(pkt *pppoe.PPPoEPacket) (err error) {
 	return fmt.Errorf("handlePacket not implemented")
+}
+
+func (app *application) handlePADT(pkt *pppoe.PPPoEPacket) (err error) {
+	return fmt.Errorf("handlePacket not implemented")
+}
+
+func (app *application) handlePacket(pkt *pppoe.PPPoEPacket) (err error) {
+	level.Debug(app.logger).Log("message", "recv", "packet", pkt)
+	switch pkt.Code {
+	case pppoe.PPPoECodePADI:
+		return app.handlePADI(pkt)
+	case pppoe.PPPoECodePADR:
+		return app.handlePADR(pkt)
+	case pppoe.PPPoECodePADT:
+		return app.handlePADT(pkt)
+	case pppoe.PPPoECodePADO,
+		pppoe.PPPoECodePADS:
+		return fmt.Errorf("unexpected PPPoE %v packet", pkt.Code)
+	}
+	return fmt.Errorf("unhandled PPPoE code %v", pkt.Code)
 }
 
 func (app *application) run() int {
