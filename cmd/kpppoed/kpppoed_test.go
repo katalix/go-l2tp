@@ -140,30 +140,39 @@ type testTagIn struct {
 	data []byte
 }
 
+func checkPktType(pkt *pppoe.PPPoEPacket, typ pppoe.PPPoECode, t *testing.T) {
+	if pkt.Code != typ {
+		t.Errorf("received %s, expected %s", pkt.Code, typ)
+	}
+}
+
 func checkRspIsPADO(pkt *pppoe.PPPoEPacket, t *testing.T) {
-	if pkt.Code != pppoe.PPPoECodePADO {
-		t.Errorf("received %s, expected %s", pkt.Code, pppoe.PPPoECodePADO)
-	}
+	checkPktType(pkt, pppoe.PPPoECodePADO, t)
 }
 
-func checkRspHostUniq(pkt *pppoe.PPPoEPacket, t *testing.T, hostUniq []byte) {
-	tag, err := pkt.GetTag(pppoe.PPPoETagTypeHostUniq)
+func checkTagData(pkt *pppoe.PPPoEPacket, t *testing.T, typ pppoe.PPPoETagType, data []byte) {
+	tag, err := pkt.GetTag(typ)
 	if err != nil {
-		t.Fatalf("no tag %s", pppoe.PPPoETagTypeHostUniq)
+		t.Fatalf("no tag %s", typ)
 	}
-
-	if !reflect.DeepEqual(tag.Data, hostUniq) {
-		t.Fatalf("expected %q, got %q", hostUniq, tag.Data)
+	if !reflect.DeepEqual(tag.Data, data) {
+		t.Fatalf("expected %s to contain %q, got %q", typ, data, tag.Data)
 	}
 }
 
-func testPadiHostUniq(t *testing.T) {
+func testPADI(t *testing.T) {
 	service0 := "Super_Internet_03A"
 	service1 := "MyMagicalService2001"
 	service2 := "transx.world.com.gateway"
 
 	hostUniq0 := []byte{0x42, 0x12, 0xee, 0xf4, 0x91, 0x00, 0x72}
 	hostUniq1 := []byte{}
+
+	relaySessionID0 := []byte{
+		0x01, 0x02, 0x03, 0x04,
+		0x11, 0x12, 0x13, 0x14,
+		0xa1, 0xa2, 0xa3, 0xa4,
+	}
 
 	dfltCfg := &kpppoedConfig{
 		acName:   "bobby",
@@ -209,7 +218,7 @@ func testPadiHostUniq(t *testing.T) {
 			},
 			checkRsp: func(pkt *pppoe.PPPoEPacket, t *testing.T) {
 				checkRspIsPADO(pkt, t)
-				checkRspHostUniq(pkt, t, hostUniq0)
+				checkTagData(pkt, t, pppoe.PPPoETagTypeHostUniq, hostUniq0)
 			},
 		},
 		{
@@ -223,7 +232,21 @@ func testPadiHostUniq(t *testing.T) {
 			},
 			checkRsp: func(pkt *pppoe.PPPoEPacket, t *testing.T) {
 				checkRspIsPADO(pkt, t)
-				checkRspHostUniq(pkt, t, hostUniq1)
+				checkTagData(pkt, t, pppoe.PPPoETagTypeHostUniq, hostUniq1)
+			},
+		},
+		{
+			name:    "relaySessionID0",
+			service: service0,
+			tags: []testTagIn{
+				{
+					id:   pppoe.PPPoETagTypeRelaySessionID,
+					data: relaySessionID0,
+				},
+			},
+			checkRsp: func(pkt *pppoe.PPPoEPacket, t *testing.T) {
+				checkRspIsPADO(pkt, t)
+				checkTagData(pkt, t, pppoe.PPPoETagTypeRelaySessionID, relaySessionID0)
 			},
 		},
 	}
@@ -302,8 +325,8 @@ func TestRequiresRoot(t *testing.T) {
 		testFn func(t *testing.T)
 	}{
 		{
-			name:   "PADI host uniq",
-			testFn: testPadiHostUniq,
+			name:   "PADI",
+			testFn: testPADI,
 		},
 	}
 

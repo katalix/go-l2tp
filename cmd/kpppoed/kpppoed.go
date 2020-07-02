@@ -177,6 +177,14 @@ func (app *application) handlePADI(pkt *pppoe.PPPoEPacket) (err error) {
 		}
 	}
 
+	relaySessionIDTag, err := pkt.GetTag(pppoe.PPPoETagTypeRelaySessionID)
+	if err == nil {
+		err = pado.AddTag(pppoe.PPPoETagTypeRelaySessionID, relaySessionIDTag.Data)
+		if err != nil {
+			return fmt.Errorf("failed to add relay session ID tag to PADO: %v", err)
+		}
+	}
+
 	return app.sendPacket(pado)
 }
 
