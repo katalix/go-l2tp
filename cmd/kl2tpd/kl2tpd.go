@@ -166,22 +166,23 @@ func newApplication(cfg *kl2tpdConfig, verbose, nullDataplane bool) (app *applic
 
 	return app, nil
 }
-func (app *application) getSessionPPPdArgs(tunnelName, sessionName string) (args []string) {
+
+func (app *application) getSessionPPPArgs(tunnelName, sessionName string) (args *sessionPPPArgs) {
 	_, ok := app.cfg.pppArgs[tunnelName]
 	if !ok {
 		goto fail
 	}
-	_, ok = app.cfg.pppArgs[tunnelName][sessionName]
+	args, ok = app.cfg.pppArgs[tunnelName][sessionName]
 	if !ok {
 		goto fail
 	}
-	return app.cfg.pppArgs[tunnelName][sessionName].pppdArgs
+	return
 fail:
 	level.Info(app.logger).Log(
 		"message", "no pppd args specified in session config",
 		"tunnel_name", tunnelName,
 		"session_name", sessionName)
-	return []string{}
+	return &sessionPPPArgs{}
 }
 
 func (app *application) HandleEvent(event interface{}) {
@@ -205,6 +206,14 @@ func (app *application) HandleEvent(event interface{}) {
 			"peer_tunnel_id", ev.TunnelConfig.PeerTunnelID,
 			"peer_session_id", ev.SessionConfig.PeerSessionID)
 
+		pppArgs := app.getSessionPPPArgs(ev.TunnelName, ev.SessionName)
+		if pppArgs.pppAC {
+			level.Info(app.logger).Log("message", "session running as AC, don't bring up pppd")
+			// cf. handling of l2tp.SessionDownEvent
+			app.sessionPPPoL2TP[ev.TunnelName][ev.SessionName] = nil
+			break
+		}
+
 		pppol2tp, err := newPPPoL2TP(ev.Session,
 			ev.TunnelConfig.TunnelID,
 			ev.SessionConfig.SessionID,
@@ -218,8 +227,7 @@ func (app *application) HandleEvent(event interface{}) {
 			break
 		}
 
-		pppdArgs := app.getSessionPPPdArgs(ev.TunnelName, ev.SessionName)
-		pppol2tp.pppd.Args = append(pppol2tp.pppd.Args, pppdArgs...)
+		pppol2tp.pppd.Args = append(pppol2tp.pppd.Args, pppArgs.pppdArgs...)
 
 		err = pppol2tp.pppd.Start()
 		if err != nil {
@@ -259,9 +267,12 @@ func (app *application) HandleEvent(event interface{}) {
 			"peer_tunnel_id", ev.TunnelConfig.PeerTunnelID,
 			"peer_session_id", ev.SessionConfig.PeerSessionID)
 
-		level.Info(app.logger).Log("message", "killing pppd")
-		app.sessionPPPoL2TP[ev.TunnelName][ev.SessionName].pppd.Process.Signal(os.Interrupt)
-		delete(app.sessionPPPoL2TP[ev.TunnelName], ev.SessionName)
+		// if the session is running in AC mode, there won't be a local pppd
+		if app.sessionPPPoL2TP[ev.TunnelName][ev.SessionName] != nil {
+			level.Info(app.logger).Log("message", "killing pppd")
+			app.sessionPPPoL2TP[ev.TunnelName][ev.SessionName].pppd.Process.Signal(os.Interrupt)
+			delete(app.sessionPPPoL2TP[ev.TunnelName], ev.SessionName)
+		}
 	}
 }
 
