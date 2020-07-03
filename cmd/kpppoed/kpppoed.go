@@ -368,9 +368,7 @@ func (app *application) run() int {
 }
 
 func main() {
-	cfg := kpppoedConfig{
-		acName: "kpppoed",
-	}
+	cfg := kpppoedConfig{}
 
 	cfgPathPtr := flag.String("config", "/etc/kpppoed/kpppoed.toml", "specify configuration file path")
 	verbosePtr := flag.Bool("verbose", false, "toggle verbose log output")
@@ -387,6 +385,10 @@ func main() {
 
 	if cfg.ifName == "" {
 		stdlog.Fatalf("no interface name called out in the configuration file")
+	}
+
+	if cfg.acName == "" {
+		cfg.acName = "kpppoed"
 	}
 
 	app, err := newApplication(&cfg, *verbosePtr)
