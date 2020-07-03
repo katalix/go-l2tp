@@ -24,17 +24,23 @@ type kpppoedConfig struct {
 }
 
 type pppoeSession struct {
+	lock       *sync.Mutex
+	isOpen     bool
+	sid        pppoe.PPPoESessionID
 	peerHWAddr [6]byte
+	pppoeol2tp *pppoeoL2TP
 }
 
 type application struct {
-	config    *kpppoedConfig
-	logger    log.Logger
-	conn      *pppoe.PPPoEConn
-	sessions  map[pppoe.PPPoESessionID]*pppoeSession
-	sigChan   chan os.Signal
-	rxChan    chan []byte
-	closeChan chan interface{}
+	wg               sync.WaitGroup
+	config           *kpppoedConfig
+	logger           log.Logger
+	conn             *pppoe.PPPoEConn
+	sessions         map[pppoe.PPPoESessionID]*pppoeSession
+	sigChan          chan os.Signal
+	rxChan           chan []byte
+	closeChan        chan interface{}
+	l2tpCompleteChan chan *pppoeSession
 }
 
 func ifaceToString(key string, v interface{}) (s string, err error) {
@@ -102,11 +108,12 @@ func (cfg *kpppoedConfig) ParseSessionParameter(tunnel *config.NamedTunnel, sess
 
 func newApplication(cfg *kpppoedConfig, verbose bool) (app *application, err error) {
 	app = &application{
-		config:    cfg,
-		sessions:  make(map[pppoe.PPPoESessionID]*pppoeSession),
-		sigChan:   make(chan os.Signal, 1),
-		rxChan:    make(chan []byte),
-		closeChan: make(chan interface{}),
+		config:           cfg,
+		sessions:         make(map[pppoe.PPPoESessionID]*pppoeSession),
+		sigChan:          make(chan os.Signal, 1),
+		rxChan:           make(chan []byte),
+		closeChan:        make(chan interface{}),
+		l2tpCompleteChan: make(chan *pppoeSession),
 	}
 
 	signal.Notify(app.sigChan, unix.SIGINT, unix.SIGTERM)
@@ -247,6 +254,17 @@ func (app *application) handlePADR(pkt *pppoe.PPPoEPacket) (err error) {
 		}
 	}
 
+	// Spawn a kl2tpd instance to bring up the L2TP tunnel and sessions
+	pppoeol2tp, err := newPPPoEoL2TP("10.0.0.1:9000", app.logger, nil)
+	if err != nil {
+		errorReason = fmt.Sprintf("failed to instantiate L2TP daemon: %v", err)
+	}
+
+	err = pppoeol2tp.kl2tpd.Start()
+	if err != nil {
+		errorReason = fmt.Sprintf("failed to start L2TP daemon: %v", err)
+	}
+
 	// If we fail to build the PADS or send it, there's not much we can
 	// do to let the peer know, so just fail silently.
 	pads, err := pppoe.NewPADS(
@@ -276,24 +294,39 @@ func (app *application) handlePADR(pkt *pppoe.PPPoEPacket) (err error) {
 	}
 
 	// Keep track of the session now
-	app.sessions[sessionID] = &pppoeSession{
+	sess := &pppoeSession{
+		lock:       &sync.Mutex{},
+		isOpen:     true,
+		sid:        sessionID,
 		peerHWAddr: pkt.SrcHWAddr,
+		pppoeol2tp: pppoeol2tp,
 	}
+
+	app.sessions[sessionID] = sess
+
+	app.wg.Add(1)
+	go func() {
+		defer app.wg.Done()
+		err = pppoeol2tp.kl2tpd.Wait()
+		if err != nil {
+			level.Error(app.logger).Log(
+				"message", "kl2tpd exited with an error code",
+				"error", err)
+		}
+		app.l2tpCompleteChan <- sess
+	}()
 
 	return
 }
 
 func (app *application) handlePADT(pkt *pppoe.PPPoEPacket) (err error) {
 
-	session, ok := app.sessions[pkt.SessionID]
+	_, ok := app.sessions[pkt.SessionID]
 	if !ok {
 		return fmt.Errorf("unrecognised session ID %v", pkt.SessionID)
 	}
 
-	// TODO: tear down session instance
-	_ = session
-
-	delete(app.sessions, pkt.SessionID)
+	app.closePPPoESession(pkt.SessionID, "peer sent PADT", false)
 
 	return
 }
@@ -314,55 +347,139 @@ func (app *application) handlePacket(pkt *pppoe.PPPoEPacket) (err error) {
 	return fmt.Errorf("unhandled PPPoE code %v", pkt.Code)
 }
 
-func (app *application) run() int {
-	var wg sync.WaitGroup
+func (app *application) closePPPoESession(sid pppoe.PPPoESessionID,
+	reason string,
+	sendPADT bool) {
 
-	wg.Add(1)
+	var req string
+	if sendPADT {
+		req = "local"
+	} else {
+		req = "network"
+	}
+
+	level.Info(app.logger).Log(
+		"message", "close pppoe session",
+		"session_id", sid,
+		"request_origin", req,
+		"shutdown_reason", reason)
+
+	sess, ok := app.sessions[sid]
+	if !ok {
+		level.Warn(app.logger).Log(
+			"message", "attempted to close unrecognised session",
+			"session_id", sid)
+		return
+	}
+
+	doShutdown := false
+	sess.lock.Lock()
+	doShutdown = sess.isOpen
+	sess.isOpen = false
+	sess.lock.Unlock()
+
+	// Send PADT to the peer
+	if doShutdown {
+		if sendPADT {
+			padt, err := pppoe.NewPADT(app.conn.HWAddr(),
+				sess.peerHWAddr,
+				sid)
+			if err != nil {
+				level.Error(app.logger).Log("message", "failed to build PADT",
+					"session_id", sid,
+					"error", err)
+			} else {
+				err = app.sendPacket(padt)
+				if err != nil {
+					level.Error(app.logger).Log("message", "failed to send PADT",
+						"session_id", sid,
+						"error", err)
+				}
+			}
+		}
+
+		// Kill off kl2tpd
+		level.Info(app.logger).Log("message", "signal kl2tpd")
+		sess.pppoeol2tp.kl2tpd.Process.Signal(os.Interrupt)
+	}
+}
+
+// pppoeol2tp event handler
+func (app *application) handleEvent(ev interface{}) {
+	switch e := ev.(type) {
+	case *sessionUpEvent:
+		level.Info(app.logger).Log(
+			"message", "l2tp session up",
+			"tunnel_id", e.tunnelID,
+			"session_id", e.sessionID)
+	case *sessionDownEvent:
+		level.Info(app.logger).Log(
+			"message", "l2tp session down",
+			"tunnel_id", e.tunnelID,
+			"session_id", e.sessionID)
+	}
+}
+
+func (app *application) run() int {
+
+	app.wg.Add(1)
 	go func() {
-		defer wg.Done()
+		defer app.wg.Done()
 		for {
 			buf := make([]byte, 1500)
 			_, err := app.conn.Recv(buf)
 			if err != nil {
 				level.Error(app.logger).Log("message", "recv on PPPoE discovery connection failed", "error", err)
-				close(app.rxChan)
 				break
 			}
 			app.rxChan <- buf
 		}
 	}()
 
+	var shutdown bool
 	for {
 		select {
 		case <-app.sigChan:
-			level.Info(app.logger).Log("message", "received signal, shutting down")
-			// TODO
-			close(app.closeChan)
-		case <-app.closeChan:
-			app.conn.Close()
-			wg.Wait()
-			return 0
+			if !shutdown {
+				level.Info(app.logger).Log("message", "received signal, shutting down")
+				shutdown = true
+				go func() {
+					app.conn.Close()
+					for sid, _ := range app.sessions {
+						app.closePPPoESession(sid, "application shutdown due to signal", true)
+					}
+					app.wg.Wait()
+					level.Info(app.logger).Log("message", "graceful shutdown complete")
+					close(app.closeChan)
+				}()
+			} else {
+				level.Info(app.logger).Log("message", "pending graceful shutdown")
+			}
+		case sess, ok := <-app.l2tpCompleteChan:
+			if ok {
+				level.Info(app.logger).Log("message", "l2tp daemon exited")
+				app.closePPPoESession(sess.sid, "l2tp daemon exited", true)
+				delete(app.sessions, sess.sid)
+			}
 		case rx, ok := <-app.rxChan:
-			if !ok {
-				close(app.closeChan)
-				break
-			}
-
-			pkts, err := pppoe.ParsePacketBuffer(rx)
-			if err != nil {
-				level.Error(app.logger).Log("message", "failed to parse received message(s)", "error", err)
-				continue
-			}
-
-			for _, pkt := range pkts {
-				err = app.handlePacket(pkt)
+			if ok {
+				pkts, err := pppoe.ParsePacketBuffer(rx)
 				if err != nil {
-					level.Error(app.logger).Log("message", "failed to handle message",
-						"type", pkt.Code,
-						"error", err)
+					level.Error(app.logger).Log("message", "failed to parse received message(s)", "error", err)
+					continue
+				}
+
+				for _, pkt := range pkts {
+					err = app.handlePacket(pkt)
+					if err != nil {
+						level.Error(app.logger).Log("message", "failed to handle message",
+							"type", pkt.Code,
+							"error", err)
+					}
 				}
 			}
-
+		case <-app.closeChan:
+			return 0
 		}
 	}
 }
