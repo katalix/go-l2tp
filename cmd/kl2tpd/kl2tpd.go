@@ -40,36 +40,112 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+type sessionPPPArgs struct {
+	pppdArgs []string
+	pppAC    bool
+}
+
+type kl2tpdConfig struct {
+	config *config.Config
+	// pppArgs[tunnel_name][session_name]
+	pppArgs map[string]map[string]*sessionPPPArgs
+}
+
 type application struct {
-	config  *config.Config
+	cfg     *kl2tpdConfig
 	logger  log.Logger
 	l2tpCtx *l2tp.Context
 	// sessionPPPoL2TP[tunnel_name][session_name]
 	sessionPPPoL2TP map[string]map[string]*pppol2tp
-	// sessionPPPdArgs[tunnel_name][session_name]
-	sessionPPPdArgs map[string]map[string][]string
 	sigChan         chan os.Signal
 	pppCompleteChan chan *pppol2tp
 	closeChan       chan interface{}
 	wg              sync.WaitGroup
 }
 
-func newApplication(configPath string, verbose, nullDataplane bool) (app *application, err error) {
+func newKl2tpdConfig() (cfg *kl2tpdConfig) {
+	return &kl2tpdConfig{
+		pppArgs: make(map[string]map[string]*sessionPPPArgs),
+	}
+}
+
+func (cfg *kl2tpdConfig) readPPPdArgsFile(path string) ([]string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return []string{}, fmt.Errorf("failed to open pppd arguments file %q: %v", path, err)
+	}
+	defer file.Close()
+
+	args := []string{}
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		args = append(args, strings.Split(scanner.Text(), " ")...)
+	}
+	return args, nil
+}
+
+func (cfg *kl2tpdConfig) addSession(tunnelName, sessionName string) {
+	if _, ok := cfg.pppArgs[tunnelName]; !ok {
+		cfg.pppArgs[tunnelName] = make(map[string]*sessionPPPArgs)
+	}
+	if _, ok := cfg.pppArgs[tunnelName][sessionName]; !ok {
+		cfg.pppArgs[tunnelName][sessionName] = &sessionPPPArgs{}
+	}
+}
+
+func (cfg *kl2tpdConfig) setSessionPPPdArgs(tunnelName, sessionName string, args []string) {
+	cfg.addSession(tunnelName, sessionName)
+	cfg.pppArgs[tunnelName][sessionName].pppdArgs = args
+}
+
+func (cfg *kl2tpdConfig) setSessionPPPAC(tunnelName, sessionName string, on bool) {
+	cfg.addSession(tunnelName, sessionName)
+	cfg.pppArgs[tunnelName][sessionName].pppAC = on
+}
+
+func (cfg *kl2tpdConfig) ParseParameter(key string, value interface{}) error {
+	return fmt.Errorf("unrecognised parameter %v", key)
+}
+
+func (cfg *kl2tpdConfig) ParseTunnelParameter(tunnel *config.NamedTunnel, key string, value interface{}) error {
+	return fmt.Errorf("unrecognised parameter %v", key)
+}
+
+func (cfg *kl2tpdConfig) ParseSessionParameter(tunnel *config.NamedTunnel, session *config.NamedSession, key string, value interface{}) error {
+	switch key {
+	case "pppd_args":
+		path, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("failed to parse pppd_args parameter for session %s as a string", session.Name)
+		}
+		args, err := cfg.readPPPdArgsFile(path)
+		if err != nil {
+			return err
+		}
+		cfg.setSessionPPPdArgs(tunnel.Name, session.Name, args)
+		return nil
+	case "ppp_ac":
+		on, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("failed to parse ppp_ac parameter for session %s as a boolean", session.Name)
+		}
+		cfg.setSessionPPPAC(tunnel.Name, session.Name, on)
+		return nil
+	}
+	return fmt.Errorf("unrecognised parameter %v", key)
+}
+
+func newApplication(cfg *kl2tpdConfig, verbose, nullDataplane bool) (app *application, err error) {
 
 	app = &application{
+		cfg:             cfg,
 		sigChan:         make(chan os.Signal, 1),
 		sessionPPPoL2TP: make(map[string]map[string]*pppol2tp),
-		sessionPPPdArgs: make(map[string]map[string][]string),
 		pppCompleteChan: make(chan *pppol2tp),
 		closeChan:       make(chan interface{}),
 	}
 
 	signal.Notify(app.sigChan, unix.SIGINT, unix.SIGTERM)
-
-	app.config, err = config.LoadFileWithCustomParser(configPath, app)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load configuration: %v", err)
-	}
 
 	logger := log.NewLogfmtLogger(os.Stderr)
 	if verbose {
@@ -90,60 +166,16 @@ func newApplication(configPath string, verbose, nullDataplane bool) (app *applic
 
 	return app, nil
 }
-
-func readPPPdArgsFile(path string) ([]string, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return []string{}, fmt.Errorf("failed to open pppd arguments file %q: %v", path, err)
-	}
-	defer file.Close()
-
-	args := []string{}
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		args = append(args, strings.Split(scanner.Text(), " ")...)
-	}
-	return args, nil
-}
-
-func (app *application) ParseParameter(key string, value interface{}) error {
-	return fmt.Errorf("unrecognised parameter %v", key)
-}
-
-func (app *application) ParseTunnelParameter(tunnel *config.NamedTunnel, key string, value interface{}) error {
-	return fmt.Errorf("unrecognised parameter %v", key)
-}
-
-func (app *application) ParseSessionParameter(tunnel *config.NamedTunnel, session *config.NamedSession, key string, value interface{}) error {
-	switch key {
-	case "pppd_args":
-		path, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("failed to parse pppd_args parameter for session %s as a string", session.Name)
-		}
-		args, err := readPPPdArgsFile(path)
-		if err != nil {
-			return err
-		}
-		if _, ok := app.sessionPPPdArgs[tunnel.Name]; !ok {
-			app.sessionPPPdArgs[tunnel.Name] = make(map[string][]string)
-		}
-		app.sessionPPPdArgs[tunnel.Name][session.Name] = args
-		return nil
-	}
-	return fmt.Errorf("unrecognised parameter %v", key)
-}
-
 func (app *application) getSessionPPPdArgs(tunnelName, sessionName string) (args []string) {
-	_, ok := app.sessionPPPdArgs[tunnelName]
+	_, ok := app.cfg.pppArgs[tunnelName]
 	if !ok {
 		goto fail
 	}
-	args, ok = app.sessionPPPdArgs[tunnelName][sessionName]
+	_, ok = app.cfg.pppArgs[tunnelName][sessionName]
 	if !ok {
 		goto fail
 	}
-	return args
+	return app.cfg.pppArgs[tunnelName][sessionName].pppdArgs
 fail:
 	level.Info(app.logger).Log(
 		"message", "no pppd args specified in session config",
@@ -247,7 +279,7 @@ func (app *application) run() int {
 	app.l2tpCtx.RegisterEventHandler(app)
 
 	// Instantiate tunnels and sessions from the config file
-	for _, tcfg := range app.config.Tunnels {
+	for _, tcfg := range app.cfg.config.Tunnels {
 
 		// Only support l2tpv2/ppp
 		if tcfg.Config.Version != l2tp.ProtocolVersion2 {
@@ -309,12 +341,19 @@ func (app *application) run() int {
 }
 
 func main() {
+	mycfg := newKl2tpdConfig()
 	cfgPathPtr := flag.String("config", "/etc/kl2tpd/kl2tpd.toml", "specify configuration file path")
 	verbosePtr := flag.Bool("verbose", false, "toggle verbose log output")
 	nullDataPlanePtr := flag.Bool("null", false, "toggle null data plane")
 	flag.Parse()
 
-	app, err := newApplication(*cfgPathPtr, *verbosePtr, *nullDataPlanePtr)
+	config, err := config.LoadFileWithCustomParser(*cfgPathPtr, mycfg)
+	if err != nil {
+		stdlog.Fatalf("failed to load configuration: %v", err)
+	}
+	mycfg.config = config
+
+	app, err := newApplication(mycfg, *verbosePtr, *nullDataPlanePtr)
 	if err != nil {
 		stdlog.Fatalf("failed to instantiate application: %v", err)
 	}
