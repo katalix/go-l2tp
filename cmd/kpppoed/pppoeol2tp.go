@@ -48,14 +48,21 @@ type pppoeoL2TP struct {
 }
 
 func genkl2tpdCfg(peerIPAddr string, out *os.File) (err error) {
-	cfg := fmt.Sprintf(`[tunnel.t1]
-		peer = "%s"
-		version = "l2tpv2"
-		encap = "udp"
-		[tunnel.t1.session.s1]
-		pseudowire = "ppp"
-		ppp_ac = true`, peerIPAddr)
-	_, err = out.WriteString(cfg)
+	cfg := []string{
+		`[tunnel.t1]`,
+		fmt.Sprintf(`peer = "%s"`, peerIPAddr),
+		`version = "l2tpv2"`,
+		`encap = "udp"`,
+		`[tunnel.t1.session.s1]`,
+		`pseudowire = "ppp"`,
+		`ppp_ac = true`,
+	}
+	for _, s := range cfg {
+		_, err = out.WriteString(fmt.Sprintf("%s\n", s))
+		if err != nil {
+			break
+		}
+	}
 	return
 }
 
@@ -112,6 +119,7 @@ func newPPPoEoL2TP(peerIPAddr string, logger log.Logger, eventHandler pppoeoL2TP
 	pppoeol2tp.wg.Add(1)
 	go func() {
 		defer pppoeol2tp.wg.Done()
+		defer os.Remove(cfgFile.Name())
 		pppoeol2tp.scanLog(stderrPipe)
 	}()
 
