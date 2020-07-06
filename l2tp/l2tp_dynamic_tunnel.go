@@ -22,6 +22,7 @@ type eventArgs struct {
 
 type dynamicTunnel struct {
 	*baseTunnel
+	closingLock sync.Mutex
 	isClosing   bool
 	established bool
 	sal, sap    unix.Sockaddr
@@ -47,6 +48,13 @@ func (dt *dynamicTunnel) NewSession(name string, cfg *SessionConfig) (sess Sessi
 	if _, ok := dt.findSessionByName(name); ok {
 		return nil, fmt.Errorf("already have session %q", name)
 	}
+
+	dt.closingLock.Lock()
+	if dt.isClosing {
+		dt.closingLock.Unlock()
+		return nil, fmt.Errorf("tunnel is closing")
+	}
+	dt.closingLock.Unlock()
 
 	// Duplicate the configuration so we don't modify the user's copy
 	myCfg := *cfg
@@ -500,6 +508,9 @@ func (dt *dynamicTunnel) fsmActForwardSessionMsg(args []interface{}) {
 // because the transport recv channel will have been closed.
 func (dt *dynamicTunnel) fsmActClose(args []interface{}) {
 	if dt != nil {
+
+		dt.closingLock.Lock()
+		defer dt.closingLock.Unlock()
 
 		if dt.isClosing {
 			return
