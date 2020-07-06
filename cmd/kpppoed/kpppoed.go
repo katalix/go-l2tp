@@ -18,9 +18,10 @@ import (
 )
 
 type kpppoedConfig struct {
-	acName   string
-	ifName   string
-	services []string
+	acName    string
+	ifName    string
+	services  []string
+	lnsIPAddr string
 }
 
 type pppoeSession struct {
@@ -89,6 +90,11 @@ func (cfg *kpppoedConfig) ParseParameter(key string, value interface{}) (err err
 		cfg.ifName = n
 	case "services":
 		cfg.services, err = ifaceToStringList(key, value)
+		if err != nil {
+			return
+		}
+	case "lns_ipaddr":
+		cfg.lnsIPAddr, err = ifaceToString(key, value)
 		if err != nil {
 			return
 		}
@@ -502,6 +508,10 @@ func main() {
 
 	if cfg.ifName == "" {
 		stdlog.Fatalf("no interface name called out in the configuration file")
+	}
+
+	if cfg.lnsIPAddr == "" {
+		stdlog.Fatalf("no LNS IP address called out in the configuration file")
 	}
 
 	if cfg.acName == "" {

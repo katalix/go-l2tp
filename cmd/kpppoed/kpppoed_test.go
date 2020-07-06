@@ -560,11 +560,13 @@ func TestConfigParser(t *testing.T) {
 			in: `ac_name = "wombles"
 			 interface_name = "eth0"
 			 services = [ "DeathStar", "tatoonie" ]
+			 lns_ipaddr = "192.168.21.12:1701"
 			 `,
 			out: &kpppoedConfig{
-				acName:   "wombles",
-				ifName:   "eth0",
-				services: []string{"DeathStar", "tatoonie"},
+				acName:    "wombles",
+				ifName:    "eth0",
+				services:  []string{"DeathStar", "tatoonie"},
+				lnsIPAddr: "192.168.21.12:1701",
 			},
 		},
 	}
