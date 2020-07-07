@@ -30,11 +30,13 @@ type pppoeoL2TPEventHandler interface {
 }
 
 type sessionUpEvent struct {
+	session   *pppoeoL2TP
 	tunnelID  int
 	sessionID int
 }
 
 type sessionDownEvent struct {
+	session   *pppoeoL2TP
 	tunnelID  int
 	sessionID int
 }
@@ -176,6 +178,7 @@ func (pppoeol2tp *pppoeoL2TP) scanLog(stderrPipe io.ReadCloser) {
 				if pppoeol2tp.eventHandler != nil {
 					pppoeol2tp.eventHandler.handleEvent(
 						&sessionUpEvent{
+							session:   pppoeol2tp,
 							tunnelID:  l2tpTunnelID,
 							sessionID: l2tpSessionID,
 						})
@@ -188,6 +191,7 @@ func (pppoeol2tp *pppoeoL2TP) scanLog(stderrPipe io.ReadCloser) {
 				if pppoeol2tp.eventHandler != nil {
 					pppoeol2tp.eventHandler.handleEvent(
 						&sessionDownEvent{
+							session:   pppoeol2tp,
 							tunnelID:  l2tpTunnelID,
 							sessionID: l2tpSessionID,
 						})
