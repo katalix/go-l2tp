@@ -40,6 +40,7 @@ type application struct {
 	sessions         map[pppoe.PPPoESessionID]*pppoeSession
 	sigChan          chan os.Signal
 	rxChan           chan []byte
+	evtChan          chan interface{}
 	closeChan        chan interface{}
 	l2tpCompleteChan chan *pppoeSession
 }
@@ -118,6 +119,7 @@ func newApplication(cfg *kpppoedConfig, verbose bool) (app *application, err err
 		sessions:         make(map[pppoe.PPPoESessionID]*pppoeSession),
 		sigChan:          make(chan os.Signal, 1),
 		rxChan:           make(chan []byte),
+		evtChan:          make(chan interface{}),
 		closeChan:        make(chan interface{}),
 		l2tpCompleteChan: make(chan *pppoeSession),
 	}
@@ -412,18 +414,7 @@ func (app *application) closePPPoESession(sid pppoe.PPPoESessionID,
 
 // pppoeol2tp event handler
 func (app *application) handleEvent(ev interface{}) {
-	switch e := ev.(type) {
-	case *sessionUpEvent:
-		level.Info(app.logger).Log(
-			"message", "l2tp session up",
-			"tunnel_id", e.tunnelID,
-			"session_id", e.sessionID)
-	case *sessionDownEvent:
-		level.Info(app.logger).Log(
-			"message", "l2tp session down",
-			"tunnel_id", e.tunnelID,
-			"session_id", e.sessionID)
-	}
+	app.evtChan <- ev
 }
 
 func (app *application) run() int {
@@ -481,6 +472,29 @@ func (app *application) run() int {
 						level.Error(app.logger).Log("message", "failed to handle message",
 							"type", pkt.Code,
 							"error", err)
+					}
+				}
+			}
+		case ev, ok := <-app.evtChan:
+			if ok {
+				switch e := ev.(type) {
+				case *sessionUpEvent:
+					level.Info(app.logger).Log(
+						"message", "l2tp session up",
+						"tunnel_id", e.tunnelID,
+						"session_id", e.sessionID)
+					if session, got := app.sessions[e.session.sid]; got {
+						// TODO
+						_ = session
+					}
+				case *sessionDownEvent:
+					level.Info(app.logger).Log(
+						"message", "l2tp session down",
+						"tunnel_id", e.tunnelID,
+						"session_id", e.sessionID)
+					if session, got := app.sessions[e.session.sid]; got {
+						// TODO
+						_ = session
 					}
 				}
 			}
