@@ -261,7 +261,7 @@ func (app *application) handlePADR(pkt *pppoe.PPPoEPacket) (err error) {
 	}
 
 	// Spawn a kl2tpd instance to bring up the L2TP tunnel and sessions
-	pppoeol2tp, err := newPPPoEoL2TP(app.config.lnsIPAddr, app.logger, app)
+	pppoeol2tp, err := newPPPoEoL2TP(sessionID, app.config.lnsIPAddr, app.logger, app)
 	if err != nil {
 		errorReason = fmt.Sprintf("failed to instantiate L2TP daemon: %v", err)
 	}

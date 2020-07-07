@@ -13,6 +13,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/katalix/go-l2tp/pppoe"
 )
 
 type kl2tpEvent int
@@ -42,6 +43,7 @@ type sessionDownEvent struct {
 }
 
 type pppoeoL2TP struct {
+	sid          pppoe.PPPoESessionID
 	logRegexp    map[kl2tpEvent]*regexp.Regexp
 	wg           sync.WaitGroup
 	kl2tpd       *exec.Cmd
@@ -68,9 +70,11 @@ func genkl2tpdCfg(peerIPAddr string, out *os.File) (err error) {
 	return
 }
 
-func newPPPoEoL2TP(peerIPAddr string, logger log.Logger, eventHandler pppoeoL2TPEventHandler) (pppoeol2tp *pppoeoL2TP, err error) {
+func newPPPoEoL2TP(sessionID pppoe.PPPoESessionID, peerIPAddr string, logger log.Logger,
+	eventHandler pppoeoL2TPEventHandler) (pppoeol2tp *pppoeoL2TP, err error) {
 
 	pppoeol2tp = &pppoeoL2TP{
+		sid:          sessionID,
 		logRegexp:    make(map[kl2tpEvent]*regexp.Regexp),
 		logger:       logger,
 		eventHandler: eventHandler,
