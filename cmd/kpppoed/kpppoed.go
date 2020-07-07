@@ -13,6 +13,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/katalix/go-l2tp/config"
+	"github.com/katalix/go-l2tp/internal/nlacpppoe"
 	"github.com/katalix/go-l2tp/pppoe"
 	"golang.org/x/sys/unix"
 )
@@ -25,17 +26,20 @@ type kpppoedConfig struct {
 }
 
 type pppoeSession struct {
-	lock       *sync.Mutex
-	isOpen     bool
-	sid        pppoe.PPPoESessionID
-	peerHWAddr [6]byte
-	pppoeol2tp *pppoeoL2TP
+	lock             *sync.Mutex
+	isOpen           bool
+	hasACRoute       bool
+	l2tpTid, l2tpSid int
+	sid              pppoe.PPPoESessionID
+	peerHWAddr       [6]byte
+	pppoeol2tp       *pppoeoL2TP
 }
 
 type application struct {
 	wg               sync.WaitGroup
 	config           *kpppoedConfig
 	logger           log.Logger
+	nl               *nlacpppoe.Conn
 	conn             *pppoe.PPPoEConn
 	sessions         map[pppoe.PPPoESessionID]*pppoeSession
 	sigChan          chan os.Signal
@@ -138,6 +142,11 @@ func newApplication(cfg *kpppoedConfig, verbose bool) (app *application, err err
 	app.conn, err = pppoe.NewDiscoveryConnection(app.config.ifName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create PPPoE connection: %v", err)
+	}
+
+	app.nl, err = nlacpppoe.Dial()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create AC/PPPoE netlink connection: %v", err)
 	}
 
 	return
@@ -305,6 +314,7 @@ func (app *application) handlePADR(pkt *pppoe.PPPoEPacket) (err error) {
 	sess := &pppoeSession{
 		lock:       &sync.Mutex{},
 		isOpen:     true,
+		hasACRoute: false,
 		sid:        sessionID,
 		peerHWAddr: pkt.SrcHWAddr,
 		pppoeol2tp: pppoeol2tp,
@@ -380,14 +390,17 @@ func (app *application) closePPPoESession(sid pppoe.PPPoESessionID,
 		return
 	}
 
-	doShutdown := false
+	isOpen := false
+	hasACRoute := false
 	sess.lock.Lock()
-	doShutdown = sess.isOpen
+	isOpen = sess.isOpen
+	hasACRoute = sess.hasACRoute
 	sess.isOpen = false
+	sess.hasACRoute = false
 	sess.lock.Unlock()
 
 	// Send PADT to the peer
-	if doShutdown {
+	if isOpen {
 		if sendPADT {
 			padt, err := pppoe.NewPADT(app.conn.HWAddr(),
 				sess.peerHWAddr,
@@ -409,12 +422,31 @@ func (app *application) closePPPoESession(sid pppoe.PPPoESessionID,
 		// Kill off kl2tpd
 		level.Info(app.logger).Log("message", "signal kl2tpd")
 		sess.pppoeol2tp.kl2tpd.Process.Signal(os.Interrupt)
+
+		// Delete AC route
+		if hasACRoute {
+			_ = app.delRoute(sess)
+		}
 	}
 }
 
 // pppoeol2tp event handler
 func (app *application) handleEvent(ev interface{}) {
 	app.evtChan <- ev
+}
+
+func (app *application) addRoute(session *pppoeSession) (err error) {
+	// Fun fact: the l2tp_ac_pppoe driver wants a value for peer session ID
+	// sending in the netlink add route command, but doesn't actually do anything
+	// with it.  Send zero to make it happy.
+	return app.nl.AddRoute(uint32(session.l2tpTid), uint32(session.l2tpSid), 0, uint16(session.sid), app.config.ifName)
+}
+
+func (app *application) delRoute(session *pppoeSession) (err error) {
+	// Fun fact: the l2tp_ac_pppoe driver wants a value for peer session ID
+	// sending in the netlink del route command, but doesn't actually do anything
+	// with it.  Send zero to make it happy.
+	return app.nl.DelRoute(uint32(session.l2tpTid), uint32(session.l2tpSid), 0, uint16(session.sid), app.config.ifName)
 }
 
 func (app *application) run() int {
@@ -484,18 +516,29 @@ func (app *application) run() int {
 						"tunnel_id", e.tunnelID,
 						"session_id", e.sessionID)
 					if session, got := app.sessions[e.session.sid]; got {
-						// TODO
-						_ = session
+						session.l2tpTid = e.tunnelID
+						session.l2tpSid = e.sessionID
+						err := app.addRoute(session)
+						if err != nil {
+							level.Error(app.logger).Log(
+								"message", "failed to instantiate ac kernel route",
+								"error", err)
+							app.closePPPoESession(session.sid, "failed to add kernel route", true)
+						} else {
+							level.Info(app.logger).Log("message", "kernel AC route established")
+							session.lock.Lock()
+							session.hasACRoute = true
+							session.lock.Unlock()
+						}
 					}
 				case *sessionDownEvent:
+					// We don't need to do anything to close the pppoe session here.
+					// kl2tpd will be terminated on the l2tp session going down and we'll
+					// tear down the pppoe session via. l2tpCompleteChan when kl2tpd exits.
 					level.Info(app.logger).Log(
 						"message", "l2tp session down",
 						"tunnel_id", e.tunnelID,
 						"session_id", e.sessionID)
-					if session, got := app.sessions[e.session.sid]; got {
-						// TODO
-						_ = session
-					}
 				}
 			}
 		case <-app.closeChan:
