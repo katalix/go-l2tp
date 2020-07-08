@@ -65,6 +65,8 @@ const (
 	PseudowireTypePPP = nll2tp.PwtypePpp
 	// PseudowireTypeEth specifies an Ethernet pseudowire
 	PseudowireTypeEth = nll2tp.PwtypeEth
+	// PseudowireTypePPPAC specifies an Access Concentrator PPP pseudowire
+	PseudowireTypePPPAC = nll2tp.PwtypePppAc
 )
 
 // DebugFlags is used for kernel-space tunnel and session logging control.
