@@ -13,7 +13,6 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/katalix/go-l2tp/config"
-	"github.com/katalix/go-l2tp/internal/nlacpppoe"
 	"github.com/katalix/go-l2tp/pppoe"
 	"golang.org/x/sys/unix"
 )
@@ -39,7 +38,7 @@ type application struct {
 	wg               sync.WaitGroup
 	config           *kpppoedConfig
 	logger           log.Logger
-	nl               *nlacpppoe.Conn
+	nl               acNetlinkConn
 	conn             *pppoe.PPPoEConn
 	l2tpdRunner      l2tpdRunner
 	sessions         map[pppoe.PPPoESessionID]*pppoeSession
@@ -118,7 +117,7 @@ func (cfg *kpppoedConfig) ParseSessionParameter(tunnel *config.NamedTunnel, sess
 	return fmt.Errorf("unrecognised parameter %v", key)
 }
 
-func newApplication(l2tpdRunner l2tpdRunner, cfg *kpppoedConfig, verbose bool) (app *application, err error) {
+func newApplication(acNL acNetlink, l2tpdRunner l2tpdRunner, cfg *kpppoedConfig, verbose bool) (app *application, err error) {
 	app = &application{
 		l2tpdRunner:      l2tpdRunner,
 		config:           cfg,
@@ -130,6 +129,9 @@ func newApplication(l2tpdRunner l2tpdRunner, cfg *kpppoedConfig, verbose bool) (
 		l2tpCompleteChan: make(chan *pppoeSession),
 	}
 
+	if acNL == nil {
+		return nil, fmt.Errorf("must have AC netlink implementation")
+	}
 	if l2tpdRunner == nil {
 		return nil, fmt.Errorf("must have l2tpd runner")
 	}
@@ -153,7 +155,7 @@ func newApplication(l2tpdRunner l2tpdRunner, cfg *kpppoedConfig, verbose bool) (
 		return nil, fmt.Errorf("failed to create PPPoE connection: %v", err)
 	}
 
-	app.nl, err = nlacpppoe.Dial()
+	app.nl, err = acNL.Dial()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create AC/PPPoE netlink connection: %v", err)
 	}
@@ -443,17 +445,11 @@ func (app *application) handleEvent(ev interface{}) {
 }
 
 func (app *application) addRoute(session *pppoeSession) (err error) {
-	// Fun fact: the l2tp_ac_pppoe driver wants a value for peer session ID
-	// sending in the netlink add route command, but doesn't actually do anything
-	// with it.  Send zero to make it happy.
-	return app.nl.AddRoute(uint32(session.l2tpTid), uint32(session.l2tpSid), 0, uint16(session.sid), app.config.ifName)
+	return app.nl.addACRoute(session.l2tpTid, session.l2tpSid, uint16(session.sid), app.config.ifName)
 }
 
 func (app *application) delRoute(session *pppoeSession) (err error) {
-	// Fun fact: the l2tp_ac_pppoe driver wants a value for peer session ID
-	// sending in the netlink del route command, but doesn't actually do anything
-	// with it.  Send zero to make it happy.
-	return app.nl.DelRoute(uint32(session.l2tpTid), uint32(session.l2tpSid), 0, uint16(session.sid), app.config.ifName)
+	return app.nl.delACRoute(session.l2tpTid, session.l2tpSid, uint16(session.sid), app.config.ifName)
 }
 
 func (app *application) run() int {
@@ -588,7 +584,7 @@ func main() {
 		stdlog.Fatalf("failed to instantiate kl2tpd runner: %v", err)
 	}
 
-	app, err := newApplication(l2tpdRunner, &cfg, *verbosePtr)
+	app, err := newApplication(&acpppoeNL{}, l2tpdRunner, &cfg, *verbosePtr)
 	if err != nil {
 		stdlog.Fatalf("failed to instantiate application: %v", err)
 	}
