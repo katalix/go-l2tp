@@ -42,7 +42,6 @@ import (
 
 type sessionPPPArgs struct {
 	pppdArgs []string
-	pppAC    bool
 }
 
 type kl2tpdConfig struct {
@@ -98,11 +97,6 @@ func (cfg *kl2tpdConfig) setSessionPPPdArgs(tunnelName, sessionName string, args
 	cfg.pppArgs[tunnelName][sessionName].pppdArgs = args
 }
 
-func (cfg *kl2tpdConfig) setSessionPPPAC(tunnelName, sessionName string, on bool) {
-	cfg.addSession(tunnelName, sessionName)
-	cfg.pppArgs[tunnelName][sessionName].pppAC = on
-}
-
 func (cfg *kl2tpdConfig) ParseParameter(key string, value interface{}) error {
 	return fmt.Errorf("unrecognised parameter %v", key)
 }
@@ -123,13 +117,6 @@ func (cfg *kl2tpdConfig) ParseSessionParameter(tunnel *config.NamedTunnel, sessi
 			return err
 		}
 		cfg.setSessionPPPdArgs(tunnel.Name, session.Name, args)
-		return nil
-	case "ppp_ac":
-		on, ok := value.(bool)
-		if !ok {
-			return fmt.Errorf("failed to parse ppp_ac parameter for session %s as a boolean", session.Name)
-		}
-		cfg.setSessionPPPAC(tunnel.Name, session.Name, on)
 		return nil
 	}
 	return fmt.Errorf("unrecognised parameter %v", key)
@@ -206,8 +193,7 @@ func (app *application) HandleEvent(event interface{}) {
 			"peer_tunnel_id", ev.TunnelConfig.PeerTunnelID,
 			"peer_session_id", ev.SessionConfig.PeerSessionID)
 
-		pppArgs := app.getSessionPPPArgs(ev.TunnelName, ev.SessionName)
-		if pppArgs.pppAC {
+		if ev.SessionConfig.Pseudowire == l2tp.PseudowireTypePPPAC {
 			level.Info(app.logger).Log("message", "session running as AC, don't bring up pppd")
 			// cf. handling of l2tp.SessionDownEvent
 			app.sessionPPPoL2TP[ev.TunnelName][ev.SessionName] = nil
@@ -227,6 +213,7 @@ func (app *application) HandleEvent(event interface{}) {
 			break
 		}
 
+		pppArgs := app.getSessionPPPArgs(ev.TunnelName, ev.SessionName)
 		pppol2tp.pppd.Args = append(pppol2tp.pppd.Args, pppArgs.pppdArgs...)
 
 		err = pppol2tp.pppd.Start()

@@ -10,17 +10,6 @@ import (
 	"github.com/katalix/go-l2tp/config"
 )
 
-/*
-[tunnel.t1]
-peer = "127.0.0.1:9000"
-version = "l2tpv2"
-encap = "udp"
-
-[tunnel.t1.session.s1]
-pseudowire = "ppp"
-pppd_args = "/home/tom/src/go-l2tp/pppd.args"
-*/
-
 func TestConfigParser(t *testing.T) {
 	pppdArgsPath := "/tmp/test.pppd.args"
 	pppdArgs := "noauth 10.42.0.1:10.42.0.2"
@@ -75,15 +64,9 @@ func TestConfigParser(t *testing.T) {
 
 				 [tunnel.t1.session.s1]
 				 pseudowire = "ppp"
-				 ppp_ac = true`,
+				 `,
 			out: &kl2tpdConfig{
-				pppArgs: map[string]map[string]*sessionPPPArgs{
-					"t1": map[string]*sessionPPPArgs{
-						"s1": &sessionPPPArgs{
-							pppAC: true,
-						},
-					},
-				},
+				pppArgs: map[string]map[string]*sessionPPPArgs{},
 			},
 		},
 	}
