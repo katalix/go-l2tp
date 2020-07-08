@@ -55,7 +55,7 @@ type kpppoedTestApp struct {
 
 func newKpppoedTestApp(cfg *kpppoedConfig) (testApp *kpppoedTestApp, err error) {
 	testApp = &kpppoedTestApp{}
-	testApp.app, err = newApplication(&nilL2tpdRunner{}, cfg, true)
+	testApp.app, err = newApplication(&nilNL{}, &nilL2tpdRunner{}, cfg, true)
 	if err != nil {
 		return nil, err
 	}
@@ -80,7 +80,7 @@ type testClient struct {
 
 func newTestClient(ifName string) (tc *testClient, err error) {
 	tc = &testClient{
-		rxChan: make(chan []byte),
+		rxChan: make(chan []byte, 5),
 	}
 	tc.conn, err = pppoe.NewDiscoveryConnection(ifName)
 	if err != nil {
