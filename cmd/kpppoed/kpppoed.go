@@ -477,7 +477,7 @@ func (app *application) run() int {
 				shutdown = true
 				go func() {
 					app.conn.Close()
-					for sid, _ := range app.sessions {
+					for sid := range app.sessions {
 						app.closePPPoESession(sid, "application shutdown due to signal", true)
 					}
 					app.wg.Wait()
