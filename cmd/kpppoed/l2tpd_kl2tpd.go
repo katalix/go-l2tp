@@ -55,8 +55,7 @@ func (runner *kl2tpdRunner) genCfg(peerIPAddr string, out *os.File) (err error) 
 		`version = "l2tpv2"`,
 		`encap = "udp"`,
 		`[tunnel.t1.session.s1]`,
-		`pseudowire = "ppp"`,
-		`ppp_ac = true`,
+		`pseudowire = "pppac"`,
 	}
 	for _, s := range cfg {
 		_, err = out.WriteString(fmt.Sprintf("%s\n", s))
