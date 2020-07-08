@@ -343,8 +343,10 @@ func toPseudowireType(v interface{}) (l2tp.PseudowireType, error) {
 			return l2tp.PseudowireTypePPP, nil
 		case "eth":
 			return l2tp.PseudowireTypeEth, nil
+		case "pppac":
+			return l2tp.PseudowireTypePPPAC, nil
 		}
-		return 0, fmt.Errorf("expect 'ppp' or 'eth'")
+		return 0, fmt.Errorf("expect 'ppp', 'eth', or 'ppp_ac'")
 	}
 	return 0, err
 }

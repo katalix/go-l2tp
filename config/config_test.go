@@ -193,7 +193,7 @@ func TestBadConfig(t *testing.T) {
 			in: `[tunnel.t1]
 				 [tunnel.t1.session.s1]
 				 pseudowire = "monkey"`,
-			estr: "expect 'ppp' or 'eth'",
+			estr: "expect 'ppp', 'eth', or 'ppp_ac'",
 		},
 		{
 			name: "Bad value (unrecognised L2SpecType)",
