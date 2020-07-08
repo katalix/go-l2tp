@@ -29,10 +29,10 @@ type pppoeSession struct {
 	lock             *sync.Mutex
 	isOpen           bool
 	hasACRoute       bool
-	l2tpTid, l2tpSid int
+	l2tpTid, l2tpSid uint32
 	sid              pppoe.PPPoESessionID
 	peerHWAddr       [6]byte
-	pppoeol2tp       *pppoeoL2TP
+	l2tpd            l2tpd
 }
 
 type application struct {
@@ -41,10 +41,11 @@ type application struct {
 	logger           log.Logger
 	nl               *nlacpppoe.Conn
 	conn             *pppoe.PPPoEConn
+	l2tpdRunner      l2tpdRunner
 	sessions         map[pppoe.PPPoESessionID]*pppoeSession
 	sigChan          chan os.Signal
 	rxChan           chan []byte
-	evtChan          chan interface{}
+	l2tpdEvtChan     chan interface{}
 	closeChan        chan interface{}
 	l2tpCompleteChan chan *pppoeSession
 }
@@ -117,15 +118,23 @@ func (cfg *kpppoedConfig) ParseSessionParameter(tunnel *config.NamedTunnel, sess
 	return fmt.Errorf("unrecognised parameter %v", key)
 }
 
-func newApplication(cfg *kpppoedConfig, verbose bool) (app *application, err error) {
+func newApplication(l2tpdRunner l2tpdRunner, cfg *kpppoedConfig, verbose bool) (app *application, err error) {
 	app = &application{
+		l2tpdRunner:      l2tpdRunner,
 		config:           cfg,
 		sessions:         make(map[pppoe.PPPoESessionID]*pppoeSession),
 		sigChan:          make(chan os.Signal, 1),
 		rxChan:           make(chan []byte),
-		evtChan:          make(chan interface{}),
+		l2tpdEvtChan:     make(chan interface{}),
 		closeChan:        make(chan interface{}),
 		l2tpCompleteChan: make(chan *pppoeSession),
+	}
+
+	if l2tpdRunner == nil {
+		return nil, fmt.Errorf("must have l2tpd runner")
+	}
+	if cfg == nil {
+		return nil, fmt.Errorf("must have application configuration")
 	}
 
 	signal.Notify(app.sigChan, unix.SIGINT, unix.SIGTERM)
@@ -271,15 +280,13 @@ func (app *application) handlePADR(pkt *pppoe.PPPoEPacket) (err error) {
 		}
 	}
 
-	// Spawn a kl2tpd instance to bring up the L2TP tunnel and sessions
-	pppoeol2tp, err := newPPPoEoL2TP(sessionID, app.config.lnsIPAddr, app.logger, app)
+	// Spawn an l2tpd instance to bring up the L2TP tunnel and sessions
+	l2tpd, err := app.l2tpdRunner.spawn(sessionID,
+		app.config.lnsIPAddr,
+		app.logger,
+		app)
 	if err != nil {
 		errorReason = fmt.Sprintf("failed to instantiate L2TP daemon: %v", err)
-	}
-
-	err = pppoeol2tp.kl2tpd.Start()
-	if err != nil {
-		errorReason = fmt.Sprintf("failed to start L2TP daemon: %v", err)
 	}
 
 	// If we fail to build the PADS or send it, there's not much we can
@@ -317,7 +324,7 @@ func (app *application) handlePADR(pkt *pppoe.PPPoEPacket) (err error) {
 		hasACRoute: false,
 		sid:        sessionID,
 		peerHWAddr: pkt.SrcHWAddr,
-		pppoeol2tp: pppoeol2tp,
+		l2tpd:      l2tpd,
 	}
 
 	app.sessions[sessionID] = sess
@@ -325,10 +332,10 @@ func (app *application) handlePADR(pkt *pppoe.PPPoEPacket) (err error) {
 	app.wg.Add(1)
 	go func() {
 		defer app.wg.Done()
-		err = pppoeol2tp.kl2tpd.Wait()
+		err = sess.l2tpd.wait()
 		if err != nil {
 			level.Error(app.logger).Log(
-				"message", "kl2tpd exited with an error code",
+				"message", "l2tp daemon exited with an error code",
 				"error", err)
 		}
 		app.l2tpCompleteChan <- sess
@@ -419,9 +426,9 @@ func (app *application) closePPPoESession(sid pppoe.PPPoESessionID,
 			}
 		}
 
-		// Kill off kl2tpd
-		level.Info(app.logger).Log("message", "signal kl2tpd")
-		sess.pppoeol2tp.kl2tpd.Process.Signal(os.Interrupt)
+		// Kill off l2tpd
+		level.Info(app.logger).Log("message", "terminate l2tpd")
+		sess.l2tpd.terminate()
 
 		// Delete AC route
 		if hasACRoute {
@@ -430,9 +437,9 @@ func (app *application) closePPPoESession(sid pppoe.PPPoESessionID,
 	}
 }
 
-// pppoeol2tp event handler
+// l2tpd event handler
 func (app *application) handleEvent(ev interface{}) {
-	app.evtChan <- ev
+	app.l2tpdEvtChan <- ev
 }
 
 func (app *application) addRoute(session *pppoeSession) (err error) {
@@ -507,17 +514,17 @@ func (app *application) run() int {
 					}
 				}
 			}
-		case ev, ok := <-app.evtChan:
+		case ev, ok := <-app.l2tpdEvtChan:
 			if ok {
-				switch e := ev.(type) {
-				case *sessionUpEvent:
+				switch event := ev.(type) {
+				case *l2tpSessionUp:
 					level.Info(app.logger).Log(
 						"message", "l2tp session up",
-						"tunnel_id", e.tunnelID,
-						"session_id", e.sessionID)
-					if session, got := app.sessions[e.session.sid]; got {
-						session.l2tpTid = e.tunnelID
-						session.l2tpSid = e.sessionID
+						"tunnel_id", event.l2tpTunnelID,
+						"session_id", event.l2tpSessionID)
+					if session, got := app.sessions[event.pppoeSessionID]; got {
+						session.l2tpTid = event.l2tpTunnelID
+						session.l2tpSid = event.l2tpSessionID
 						err := app.addRoute(session)
 						if err != nil {
 							level.Error(app.logger).Log(
@@ -531,14 +538,15 @@ func (app *application) run() int {
 							session.lock.Unlock()
 						}
 					}
-				case *sessionDownEvent:
+				case *l2tpSessionDown:
 					// We don't need to do anything to close the pppoe session here.
-					// kl2tpd will be terminated on the l2tp session going down and we'll
-					// tear down the pppoe session via. l2tpCompleteChan when kl2tpd exits.
+					// The l2tpd implementation will terminate the daemon on the session
+					// going down and we'll tear down the pppoe session via. l2tpCompleteChan
+					// once the daemon exits.
 					level.Info(app.logger).Log(
 						"message", "l2tp session down",
-						"tunnel_id", e.tunnelID,
-						"session_id", e.sessionID)
+						"tunnel_id", event.l2tpTunnelID,
+						"session_id", event.l2tpSessionID)
 				}
 			}
 		case <-app.closeChan:
@@ -575,7 +583,7 @@ func main() {
 		cfg.acName = "kpppoed"
 	}
 
-	app, err := newApplication(&cfg, *verbosePtr)
+	app, err := newApplication(nil, &cfg, *verbosePtr)
 	if err != nil {
 		stdlog.Fatalf("failed to instantiate application: %v", err)
 	}
