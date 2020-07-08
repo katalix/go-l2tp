@@ -583,7 +583,12 @@ func main() {
 		cfg.acName = "kpppoed"
 	}
 
-	app, err := newApplication(nil, &cfg, *verbosePtr)
+	l2tpdRunner, err := newKl2tpdRunner()
+	if err != nil {
+		stdlog.Fatalf("failed to instantiate kl2tpd runner: %v", err)
+	}
+
+	app, err := newApplication(l2tpdRunner, &cfg, *verbosePtr)
 	if err != nil {
 		stdlog.Fatalf("failed to instantiate application: %v", err)
 	}

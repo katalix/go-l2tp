@@ -16,6 +16,9 @@ import (
 	"github.com/katalix/go-l2tp/pppoe"
 )
 
+var _ l2tpdRunner = (*kl2tpdRunner)(nil)
+var _ l2tpd = (*kl2tpd)(nil)
+
 type kl2tpEvent int
 
 const (
@@ -66,14 +69,15 @@ func (runner *kl2tpdRunner) genCfg(peerIPAddr string, out *os.File) (err error) 
 func (runner *kl2tpdRunner) spawn(sessionID pppoe.PPPoESessionID,
 	lnsIPAddr string,
 	logger log.Logger,
-	eventHandler l2tpEventHandler) (daemon *kl2tpd, err error) {
+	eventHandler l2tpEventHandler) (daemon l2tpd, err error) {
 
-	daemon = &kl2tpd{
+	d := &kl2tpd{
 		sid:          sessionID,
 		logRegexp:    make(map[kl2tpEvent]*regexp.Regexp),
 		logger:       logger,
 		eventHandler: eventHandler,
 	}
+	daemon = d
 
 	/* Regular expressions for kl2tpd logging to derive events.
 	   To keep things simple we're relying on the fact that we
@@ -83,15 +87,15 @@ func (runner *kl2tpdRunner) spawn(sessionID pppoe.PPPoESessionID,
 	   If kl2tpd logging changes, or the configuration file changes,
 	   these expressions may need to be updated accordingly!
 	*/
-	daemon.logRegexp[kl2tpdTunnelCreated] = regexp.MustCompile(
+	d.logRegexp[kl2tpdTunnelCreated] = regexp.MustCompile(
 		"^.*new dynamic tunnel.* tunnel_id=([0-9]+)")
-	daemon.logRegexp[kl2tpdSessionCreated] = regexp.MustCompile(
+	d.logRegexp[kl2tpdSessionCreated] = regexp.MustCompile(
 		"^.*new dynamic session.* session_id=([0-9]+)")
-	daemon.logRegexp[kl2tpdSessionEstablished] = regexp.MustCompile(
+	d.logRegexp[kl2tpdSessionEstablished] = regexp.MustCompile(
 		"^.*session_name=s1 message=\"data plane established\"")
-	daemon.logRegexp[kl2tpdSessionDestroyed] = regexp.MustCompile(
+	d.logRegexp[kl2tpdSessionDestroyed] = regexp.MustCompile(
 		"^.*session_name=s1 message=close")
-	daemon.logRegexp[kl2tpdTunnelDestroyed] = regexp.MustCompile(
+	d.logRegexp[kl2tpdTunnelDestroyed] = regexp.MustCompile(
 		"^.*tunnel_name=t1 message=close")
 
 	cfgFile, err := ioutil.TempFile(os.TempDir(), "kpppoed.kl2tpd.")
@@ -105,27 +109,27 @@ func (runner *kl2tpdRunner) spawn(sessionID pppoe.PPPoESessionID,
 		return nil, fmt.Errorf("failed to generate kl2tpd configuration: %v", err)
 	}
 
-	daemon.kl2tpd = exec.Command(
+	d.kl2tpd = exec.Command(
 		"/usr/local/sbin/kl2tpd",
 		"-config", cfgFile.Name(),
 	)
-	stderrPipe, err := daemon.kl2tpd.StderrPipe()
+	stderrPipe, err := d.kl2tpd.StderrPipe()
 	if err != nil {
 		os.Remove(cfgFile.Name())
 		return nil, fmt.Errorf("failed to create kl2tpd log stream pipe: %v", err)
 	}
 
-	daemon.wg.Add(1)
+	d.wg.Add(1)
 	go func() {
-		defer daemon.wg.Done()
+		defer d.wg.Done()
 		defer os.Remove(cfgFile.Name())
-		daemon.scanLog(stderrPipe)
+		d.scanLog(stderrPipe)
 	}()
 
-	err = daemon.kl2tpd.Start()
+	err = d.kl2tpd.Start()
 	if err != nil {
 		// wait for the goroutine
-		daemon.terminate()
+		d.terminate()
 		return nil, fmt.Errorf("failed to start kl2tpd: %v", err)
 	}
 	return
