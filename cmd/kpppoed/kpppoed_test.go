@@ -520,6 +520,7 @@ func TestRequiresRoot(t *testing.T) {
 	}
 
 	// Set up veth pair to use for connection tests
+	_ = deleteTestVethPair()
 	err = createTestVethPair()
 	if err != nil {
 		t.Fatalf("%v", err)
