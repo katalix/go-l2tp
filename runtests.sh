@@ -1,8 +1,15 @@
 #!/bin/bash -x
 
-rm -f cover_nonroot.out cover_root.out coverage.out coverage.html
+SUBDIRS=$(find . -name "*_test.go" | xargs grep -rl TestRequiresRoot | { while read l; do dirname $l; done } | sort | uniq)
 
-go test -coverprofile cover_nonroot.out -v && \
-    go test -exec sudo -run TestRequiresRoot -coverprofile cover_root.out -v && \
-    cat cover_nonroot.out <(grep -v "^mode" cover_root.out) > coverage.out && \
-    go tool cover -html=coverage.out -o coverage.html
+rm -f coverage.out coverage.html
+
+go test -coverprofile coverage.out -v ./... || exit 1
+for sub in $SUBDIRS; do
+    go test -exec sudo -run TestRequiresRoot -coverprofile coverage.tmp $sub && \
+        grep -v "^mode" coverage.tmp >> coverage.out && \
+        rm coverage.tmp || \
+        exit 1
+done
+
+go tool cover -html=coverage.out -o coverage.html
