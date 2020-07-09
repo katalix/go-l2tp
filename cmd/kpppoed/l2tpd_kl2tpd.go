@@ -44,6 +44,7 @@ type kl2tpd struct {
 
 func newKl2tpdRunner() (runner *kl2tpdRunner, err error) {
 	return &kl2tpdRunner{
+		// TODO: could search likely candidates to find kl2tpd
 		execPath: "/usr/sbin/kl2tpd",
 	}, nil
 }
@@ -109,7 +110,7 @@ func (runner *kl2tpdRunner) spawn(sessionID pppoe.PPPoESessionID,
 	}
 
 	d.kl2tpd = exec.Command(
-		"/usr/local/sbin/kl2tpd",
+		runner.execPath,
 		"-config", cfgFile.Name(),
 	)
 	stderrPipe, err := d.kl2tpd.StderrPipe()
