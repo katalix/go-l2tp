@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"syscall"
 
 	"golang.org/x/sys/unix"
 )
@@ -18,7 +17,6 @@ type PPPoEConn struct {
 	iface *net.Interface
 	fd    int
 	file  *os.File
-	rc    syscall.RawConn
 }
 
 func newRawSocket(protocol int) (fd int, err error) {
@@ -85,17 +83,11 @@ func NewDiscoveryConnection(ifname string) (conn *PPPoEConn, err error) {
 
 	// register the socket with the runtime
 	file := os.NewFile(uintptr(fd), "pppoe")
-	rc, err := file.SyscallConn()
-	if err != nil {
-		unix.Close(fd)
-		return nil, err
-	}
 
 	return &PPPoEConn{
 		iface: iface,
 		fd:    fd,
 		file:  file,
-		rc:    rc,
 	}, nil
 }
 
