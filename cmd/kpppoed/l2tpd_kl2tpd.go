@@ -44,7 +44,7 @@ type kl2tpd struct {
 
 func newKl2tpdRunner() (runner *kl2tpdRunner, err error) {
 	return &kl2tpdRunner{
-		execPath: "/usr/local/sbin/kl2tpd",
+		execPath: "/usr/sbin/kl2tpd",
 	}, nil
 }
 
