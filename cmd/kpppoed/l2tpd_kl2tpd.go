@@ -160,9 +160,12 @@ func (daemon *kl2tpd) scanLog(stderrPipe io.ReadCloser) {
 	for scanner.Scan() {
 		line := scanner.Text()
 
-		level.Debug(daemon.logger).Log(
-			"message", "kl2tpd log line received",
-			"log", line)
+		// This is a bit verbose for normal usage, but handy for debugging
+		/*
+			level.Debug(daemon.logger).Log(
+				"message", "kl2tpd log line received",
+				"log", line)
+		*/
 
 		for et, re := range daemon.logRegexp {
 			if re == nil {
