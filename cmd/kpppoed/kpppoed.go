@@ -124,7 +124,7 @@ func newApplication(acNL acNetlink, l2tpdRunner l2tpdRunner, cfg *kpppoedConfig,
 		sessions:         make(map[pppoe.PPPoESessionID]*pppoeSession),
 		sigChan:          make(chan os.Signal, 1),
 		rxChan:           make(chan []byte),
-		l2tpdEvtChan:     make(chan interface{}),
+		l2tpdEvtChan:     make(chan interface{}, 5),
 		closeChan:        make(chan interface{}),
 		l2tpCompleteChan: make(chan *pppoeSession),
 	}
