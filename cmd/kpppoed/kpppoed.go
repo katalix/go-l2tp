@@ -1,3 +1,32 @@
+/*
+The kpppoed command is a PPPoE Access Concentrator daemon for switching PPPoE
+sessions into L2TPv2 sessions.
+
+Package pppoe is used for managing a PPPoE connection, and for building and
+parsing PPPoE discovery protocol messages.
+
+Management of the L2TP protocol is via. the kl2tpd daemon, which must be installed
+at the well-known path /usr/sbin/kl2tpd.
+
+kpppoed is configured using a simple TOML file.  This example configuration
+shows the parameters that are accepted:
+
+	# ac_name is the name that kpppoed will use in the PPPoE AC Name tag sent
+	# in PADO packets.  If not specified it will default to "kpppoed".
+	ac_name = "MyAccessConcentrator.2000"
+
+	# interface_name is the name of the network interface that kpppoed will listen
+	# on for PPPoE discovery packets.  It must be specified.
+	interface_name = "eth0"
+
+	# services is a list of service names that kpppoed will advertise in PADO packets
+	# At least one service must be specified.
+	services = [ "serviceA", "serviceB", "serviceC" ]
+
+	# lns_ipaddr is the IP address and port of the L2TP server to tunnel
+	# pppoe sessions to.  The LNS address must be specified.
+	lns_ipaddr = "3.22.1.9:1701"
+*/
 package main
 
 import (
