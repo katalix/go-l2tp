@@ -7,19 +7,29 @@ import (
 	"io"
 )
 
+// PPPoETag represents the TLV data structures which make up
+// the data payload of PPPoE discovery packets.
 type PPPoETag struct {
 	Type PPPoETagType
 	Data []byte
 }
 
+// PPPoEPacket represents a PPPoE discovery packet.
 type PPPoEPacket struct {
+	// SrcHWAddr is the Ethernet address of the sender of the packet.
 	SrcHWAddr [6]byte
+	// DstHWAddr is the Ethernet address of the receiver of the packet.
 	DstHWAddr [6]byte
-	Code      PPPoECode
+	// Code is the code per RFC2516 which identifes the packet.
+	Code PPPoECode
+	// SessionID is the allocated session ID, once it has been set.
+	// Up until that point in the discovery sequence the ID is zero.
 	SessionID PPPoESessionID
-	Tags      []*PPPoETag
+	// Tags is the data payload of the packet.
+	Tags []*PPPoETag
 }
 
+// String provides a human-readable representation of PPPoECode.
 func (code PPPoECode) String() string {
 	switch code {
 	case PPPoECodePADI:
@@ -36,6 +46,7 @@ func (code PPPoECode) String() string {
 	return "???"
 }
 
+// String provides a human-readable representation of PPPoETagType.
 func (typ PPPoETagType) String() string {
 	switch typ {
 	case PPPoETagTypeEOL:
@@ -63,6 +74,11 @@ func (typ PPPoETagType) String() string {
 	}
 }
 
+// String provides a human-readable representation of PPPoETag.
+//
+// For tags specified by the RFC to contain strings, a string representation
+// of the tag data is rendered.  For all other tags a dump of the raw hex bytes
+// is provided.
 func (tag *PPPoETag) String() string {
 	// Render string tag payloads as strings
 	switch tag.Type {
@@ -76,6 +92,7 @@ func (tag *PPPoETag) String() string {
 	return fmt.Sprintf("%v: %#v", tag.Type, tag.Data)
 }
 
+// String provides a human-readable representation of PPPoEPacket.
 func (packet *PPPoEPacket) String() string {
 	s := fmt.Sprintf("%s: src %s, dst %s, session %v, tags:",
 		packet.Code,
@@ -100,21 +117,38 @@ func (packet *PPPoEPacket) String() string {
 	return s
 }
 
+// ethTypeDiscovery returns the Ethernet type for PPPoE
+// discovery packets in host byte order.
 func ethTypeDiscovery() uint16 {
 	return 0x8863
 }
 
+// ethTypeDiscoveryNetBytes returns the Ethernet type for
+// PPPoE discovery packets as a network byte order byte slice.
 func ethTypeDiscoveryNetBytes() []byte {
 	ethType := make([]byte, 2)
 	binary.BigEndian.PutUint16(ethType, ethTypeDiscovery())
 	return ethType
 }
 
+// ethTypeDiscoveryNetUint16 returns the Ethernet type for
+// PPPoE discovery packets in network byte order.
 func ethTypeDiscoveryNetUint16() uint16 {
 	b := ethTypeDiscoveryNetBytes()
 	return uint16(b[1])<<8 + uint16(b[0])
 }
 
+// NewPADI returns a PADI packet with the RFC-mandated service name
+// tag included.
+//
+// PADI packets are used by the client to initiate the PPPoE discovery
+// sequence.
+//
+// Clients which wish to use any service available should pass an empty
+// string.
+//
+// PADI packets are sent to the Ethernet broadcast address, so only the
+// source address must be specified.
 func NewPADI(sourceHWAddr [6]byte, serviceName string) (packet *PPPoEPacket, err error) {
 	packet = &PPPoEPacket{
 		SrcHWAddr: sourceHWAddr,
@@ -129,6 +163,10 @@ func NewPADI(sourceHWAddr [6]byte, serviceName string) (packet *PPPoEPacket, err
 	return
 }
 
+// NewPADO returns a PADO packet with the RFC-mandated service name and
+// AC name tags included.
+//
+// PADO packets are used by the server respond to a client's PADI.
 func NewPADO(sourceHWAddr [6]byte, destHWAddr [6]byte, serviceName string, acName string) (packet *PPPoEPacket, err error) {
 	packet = &PPPoEPacket{
 		SrcHWAddr: sourceHWAddr,
@@ -147,6 +185,14 @@ func NewPADO(sourceHWAddr [6]byte, destHWAddr [6]byte, serviceName string, acNam
 	return
 }
 
+// NewPADR returns a PADR packet with the RFC-mandated service name
+// tag included.
+//
+// PADR packets are used by the client to request a specific service from
+// a server, based on a server's PADO.
+//
+// The service name tag should be derived from the PADO packet received
+// from the server.
 func NewPADR(sourceHWAddr [6]byte, destHWAddr [6]byte, serviceName string) (packet *PPPoEPacket, err error) {
 	packet = &PPPoEPacket{
 		SrcHWAddr: sourceHWAddr,
@@ -161,6 +207,18 @@ func NewPADR(sourceHWAddr [6]byte, destHWAddr [6]byte, serviceName string) (pack
 	return
 }
 
+// NewPADS returns a PADS packet including an allocated session ID and the
+// RFC-mandated service name tag.
+//
+// PADS packets are used by the server to respond to a client's PADR.  They
+// represent the completion of the PPPoE discovery sequence, and may indicate
+// either success or failure to establish the connection.
+//
+// If the PADS packet indicates success, the session ID should be a non-zero
+// value which is unique for the PPPoE peers.
+//
+// If the PADS packet indicates failure, the session ID should be zero, and
+// the packet should have the PPPoETagTypeServiceNameError tag appended.
 func NewPADS(sourceHWAddr [6]byte, destHWAddr [6]byte, serviceName string, sid PPPoESessionID) (packet *PPPoEPacket, err error) {
 	packet = &PPPoEPacket{
 		SrcHWAddr: sourceHWAddr,
@@ -175,6 +233,10 @@ func NewPADS(sourceHWAddr [6]byte, destHWAddr [6]byte, serviceName string, sid P
 	return
 }
 
+// NewPADT returns a PADT packet for the specified session ID.
+//
+// PADT packets are used by either client or server to terminate the PPPoE
+// connection once established.
 func NewPADT(sourceHWAddr [6]byte, destHWAddr [6]byte, sid PPPoESessionID) (packet *PPPoEPacket, err error) {
 	return &PPPoEPacket{
 		SrcHWAddr: sourceHWAddr,
@@ -184,6 +246,8 @@ func NewPADT(sourceHWAddr [6]byte, destHWAddr [6]byte, sid PPPoESessionID) (pack
 	}, nil
 }
 
+// pppoeHeader is the on-the-wire structure which we use for parsing
+// raw data buffers received on a connection.
 type pppoeHeader struct {
 	// Ethernet header
 	DstHWAddr [6]byte
@@ -205,11 +269,16 @@ func findTag(typ PPPoETagType, tags []*PPPoETag) (tag *PPPoETag, err error) {
 	return nil, fmt.Errorf("no tag %v found", typ)
 }
 
+// packetSpec is used to define the requirements of each PPPoE packet
+// as per RFC2516, allowing packets to be validated on receipt and prior
+// to transmission.
 type packetSpec struct {
 	zeroSessionID bool
 	mandatoryTags []PPPoETagType
 }
 
+// Validate validates a packet meets the requirements of RFC2516, checking
+// the mandatory tags are included and the session ID is set correctly.
 func (packet *PPPoEPacket) Validate() (err error) {
 	specMap := map[PPPoECode]*packetSpec{
 		PPPoECodePADI: &packetSpec{
@@ -343,6 +412,8 @@ func newPacketFromBuffer(hdr *pppoeHeader, payload []byte) (packet *PPPoEPacket,
 	return
 }
 
+// ParsePacketBuffer parses a raw received frame into one or more PPPoE
+// packets.
 func ParsePacketBuffer(b []byte) (packets []*PPPoEPacket, err error) {
 	r := bytes.NewReader(b)
 	for r.Len() >= pppoePacketMinLength {
@@ -407,38 +478,64 @@ func (packet *PPPoEPacket) appendTag(tag *PPPoETag) (err error) {
 	return
 }
 
+// GetTag searches a packet's tags to find one of the specified type.
+//
+// The first tag matching the specified type is returned on success.
 func (packet *PPPoEPacket) GetTag(typ PPPoETagType) (tag *PPPoETag, err error) {
 	return findTag(typ, packet.Tags)
 }
 
+// AddServiceNameTag adds a service name tag to the packet.
+// The service name is an arbitrary string.
 func (packet *PPPoEPacket) AddServiceNameTag(name string) (err error) {
 	return packet.appendTag(newTag(PPPoETagTypeServiceName, len(name), []byte(name)))
 }
 
+// AddACNameTag adds an access concentrator name tag to the packet.
+// The AC name is an arbitrary string.
 func (packet *PPPoEPacket) AddACNameTag(name string) (err error) {
 	return packet.appendTag(newTag(PPPoETagTypeACName, len(name), []byte(name)))
 }
 
+// AddHostUniqTag adds a host unique tag to the packet.
+// The host unique value is an arbitrary byte slice which is used by
+// the client to associate a given response (PADO or PADS) to a particular
+// request (PADI or PADR).
 func (packet *PPPoEPacket) AddHostUniqTag(hostUniq []byte) (err error) {
 	return packet.appendTag(newTag(PPPoETagTypeHostUniq, len(hostUniq), hostUniq))
 }
 
+// AddACCookieTag adds an access concentrator cookie tag to the packet.
+// The AC cookie value is an arbitrary byte slice which is used by the
+// access concentrator to aid in protecting against DoS attacks.
+// Refer to RFC2516 for details.
 func (packet *PPPoEPacket) AddACCookieTag(cookie []byte) (err error) {
 	return packet.appendTag(newTag(PPPoETagTypeACCookie, len(cookie), cookie))
 }
 
+// AddServiceNameErrorTag adds a service name error tag to the packet.
+// The value may be an empty string, but should preferably be a human-readable
+// string explaining why the request was denied.
 func (packet *PPPoEPacket) AddServiceNameErrorTag(reason string) (err error) {
 	return packet.appendTag(newTag(PPPoETagTypeServiceNameError, len(reason), []byte(reason)))
 }
 
+// AddACSystemErrorTag adds an access concentrator system error tag to the packet.
+// The value may be an empty string, but should preferably be a human-readable
+// string explaining the nature of the error.
 func (packet *PPPoEPacket) AddACSystemErrorTag(reason string) (err error) {
 	return packet.appendTag(newTag(PPPoETagTypeACSystemError, len(reason), []byte(reason)))
 }
 
+// AddGenericErrorTag adds an generic error tag to the packet.
+// The value may be an empty string, but should preferably be a human-readable
+// string explaining the nature of the error.
 func (packet *PPPoEPacket) AddGenericErrorTag(reason string) (err error) {
 	return packet.appendTag(newTag(PPPoETagTypeGenericError, len(reason), []byte(reason)))
 }
 
+// AddTag adds a generic tag to the packet.
+// The caller is responsible for ensuring that the data type matches the tag type.
 func (packet *PPPoEPacket) AddTag(typ PPPoETagType, data []byte) (err error) {
 	return packet.appendTag(newTag(typ, len(data), data))
 }
@@ -455,6 +552,11 @@ func (packet *PPPoEPacket) tagListBytes() (encoded []byte, err error) {
 	return encBuf.Bytes(), nil
 }
 
+// ToBytes renders the PPPoE packet to a byte slice ready for transmission
+// over a PPPoEConn connection.
+//
+// Prior to calling ToBytes a packet should ideally be validated using Validate
+// to ensure it adheres to the RFC requirements.
 func (packet *PPPoEPacket) ToBytes() (encoded []byte, err error) {
 	encBuf := new(bytes.Buffer)
 

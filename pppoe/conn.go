@@ -9,6 +9,11 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// PPPoEConn represents a PPPoE discovery connection, allowing
+// receipt and transmission of PPPoE discovery packets.
+//
+// Because raw sockets are used for sending Ethernet frames, it is
+// necessary to have root permissions to create PPPoEConn instances.
 type PPPoEConn struct {
 	iface *net.Interface
 	fd    int
@@ -53,6 +58,8 @@ func newRawSocket(protocol int) (fd int, err error) {
 	return
 }
 
+// NewDiscoveryConnection creates a new PPPoE discovery connection on
+// the specified network interface.
 func NewDiscoveryConnection(ifname string) (conn *PPPoEConn, err error) {
 
 	iface, err := net.InterfaceByName(ifname)
@@ -92,6 +99,7 @@ func NewDiscoveryConnection(ifname string) (conn *PPPoEConn, err error) {
 	}, nil
 }
 
+// Close closes the discovery connection, releasing allocated resources.
 func (c *PPPoEConn) Close() (err error) {
 	if c.file != nil {
 		err = c.file.Close()
@@ -100,14 +108,18 @@ func (c *PPPoEConn) Close() (err error) {
 	return
 }
 
+// Send sends a frame over the discovery connection.
 func (c *PPPoEConn) Send(b []byte) (n int, err error) {
 	return c.file.Write(b)
 }
 
+// Recv receives one or more frames over the discovery connection.
 func (c *PPPoEConn) Recv(b []byte) (n int, err error) {
 	return c.file.Read(b)
 }
 
+// HWAddr returns the hardware address of the interface the discovery
+// connection is using.
 func (c *PPPoEConn) HWAddr() (addr [6]byte) {
 	if len(c.iface.HardwareAddr) >= 6 {
 		return [6]byte{
