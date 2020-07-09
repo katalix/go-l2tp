@@ -161,3 +161,8 @@ Depending on your Linux distribution it may be necessary to install an extra pac
 get the L2TP subsystem modules.  For example on Ubuntu:
 
     sudo apt-get install linux-modules-extra-$(uname -r)
+
+The script ***runtests.sh*** automates running all the tests (both those requiring
+root and not) and generates a html test coverage report:
+
+    ./runtests.sh && firefox ./coverage.html
