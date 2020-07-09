@@ -348,6 +348,13 @@ func (packet *PPPoEPacket) Validate() (err error) {
 	return nil
 }
 
+// pppoeTagHeader is the on-the-wire structure which we use for parsing
+// raw TLV tags received on a connection.
+type pppoeTagHeader struct {
+	Type   PPPoETagType
+	Length uint16
+}
+
 func newTagListFromBuffer(buf []byte) (tags []*PPPoETag, err error) {
 	r := bytes.NewReader(buf)
 	for r.Len() >= pppoeTagMinLength {
@@ -586,9 +593,4 @@ func (packet *PPPoEPacket) ToBytes() (encoded []byte, err error) {
 	_, _ = encBuf.Write(encodedTags)
 
 	return encBuf.Bytes(), nil
-}
-
-type pppoeTagHeader struct {
-	Type   PPPoETagType
-	Length uint16
 }
