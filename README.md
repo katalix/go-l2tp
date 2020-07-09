@@ -1,6 +1,6 @@
 # go-l2tp
 
-**go-l2tp** is a Go library for building
+**go-l2tp** is suite of Go libraries for building
 [L2TP](https://en.wikipedia.org/wiki/Layer_2_Tunneling_Protocol) applications
 on Linux systems.
 
@@ -10,6 +10,7 @@ on Linux systems.
 * AF_INET and AF_INET6 tunnel addresses
 * UDP and L2TPIP tunnel encapsulation
 * L2TPv2 control plane in client/LAC mode
+* [PPPoE (RFC2561)](https://tools.ietf.org/html/rfc2516) control and data plane via. Linux L2TP subsystem.
 
 ## Installation
 
@@ -29,6 +30,7 @@ Read on for instructions on coding using the library.
 
     import (
         "github.com/katalix/go-l2tp/l2tp"
+        "github.com/katalix/go-l2tp/pppoe"
         "github.com/katalix/go-l2tp/config"
     )
 
@@ -55,7 +57,9 @@ Read on for instructions on coding using the library.
 
 ## Tools
 
-go-l2tp includes two tools, **ql2tpd** and **kl2tpd**, which build on the library.
+go-l2tp includes three tools which build on the library.
+
+### ql2tpd
 
 **ql2tpd** is a minimal daemon for creating static L2TPv3 sessions.
 
@@ -70,6 +74,8 @@ packet over a minimal implementation of the RFC3931 reliable control message tra
 This allows for the detection of tunnel failure, which will then tear down the sessions
 running in that tunnel.  ***hello_timeout*** should only be enabled if the peer is also
 running **ql2tpd**.
+
+### kl2tpd
 
 **kl2tpd** is a client/LAC-mode daemon for creating L2TPv2 sessions.  It spawns the standard
 Linux **pppd** for PPP protocol support.
@@ -91,27 +97,40 @@ a single tunnel containing a single session:
     pseudowire = "ppp"
     pppd_args = "/home/bob/pppd.args"
 
+### kpppoed
+
+**kpppoed** is a PPPoE daemon for creating L2TPv2 Access Concentrator sessions in response
+to PPPoE requests.  It spawns **kl2tpd** for L2TP protocol support.
+
+**kpppoed** uses a minimal configuration file format which calls out the interface to listen
+on for PPPoE packets, the list of PPPoE services to offer, and the IP address of the LNS
+to use for establishing L2TPv2 sessions.  Here is an example configuration:
+
+    ac_name = "kpppoed-1.0"
+    interface_name = "eth0"
+    services = [ "myservice" ]
+    lns_ipaddr = "192.168.1.69:1701"
+
 ## Documentation
 
 The go-l2tp library and tools are documented using Go's documentation tool.  A top-level
-description of the library can be viewed as follows:
+description of the various libraries can be viewed as follows:
 
     go doc l2tp
+    go doc pppoe
+    go doc config
 
-This top level document includes details of the configuration file format used by the
-library, as well as the main APIs the library exposes.
+This top level document provides a summary of the main APIs the library exposes.
 
 You can view documentation of a particular API or type like this:
 
     go doc l2tp.Context
 
-Finally, documentation of the **ql2tpd** command can be viewed like this:
+Finally, documentation of various commands like this:
 
     go doc cmd/ql2tpd
-
-and the documentation of the **kl2tpd** command can be viewed like this:
-
     go doc cmd/kl2tpd
+    go doc cmd/kpppoed
 
 ## Testing
 
@@ -128,17 +147,17 @@ The tests requiring root can be run as follows:
     go test -exec sudo -run TestRequiresRoot ./...
 
 The tests are run using ***sudo***, which will need to be set up for your user,
-and require the Linux kernel L2TP modules to be loaded:
+and require the Linux kernel L2TP modules to be loaded.
+
+For the l2tp library tests:
 
     modprobe l2tp_core l2tp_netlink l2tp_eth l2tp_ip l2tp_ip6
+
+And for the pppoe library tests:
+
+    modprobe l2tp_ac_pppoe
 
 Depending on your Linux distribution it may be necessary to install an extra package to
 get the L2TP subsystem modules.  For example on Ubuntu:
 
     sudo apt-get install linux-modules-extra-$(uname -r)
-
-A convenience wrapper script ***l2tp/runtests.sh*** runs all the l2tp tests and
-produces a coverage html report:
-
-    ( cd l2tp && ./runtests.sh )
-    firefox l2tp/coverage.html
