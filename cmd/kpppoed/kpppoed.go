@@ -577,14 +577,11 @@ func (app *application) run() int {
 						}
 					}
 				case *l2tpSessionDown:
-					// We don't need to do anything to close the pppoe session here.
-					// The l2tpd implementation will terminate the daemon on the session
-					// going down and we'll tear down the pppoe session via. l2tpCompleteChan
-					// once the daemon exits.
 					level.Info(app.logger).Log(
 						"message", "l2tp session down",
 						"tunnel_id", event.l2tpTunnelID,
 						"session_id", event.l2tpSessionID)
+					app.closePPPoESession(event.pppoeSessionID, "l2tp session went down", true)
 				}
 			}
 		case <-app.closeChan:
