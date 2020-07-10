@@ -459,7 +459,11 @@ func (app *application) closePPPoESession(sid pppoe.PPPoESessionID,
 
 		// Kill off l2tpd
 		level.Info(app.logger).Log("message", "terminate l2tpd")
-		sess.l2tpd.terminate()
+		app.wg.Add(1)
+		go func() {
+			defer app.wg.Done()
+			sess.l2tpd.terminate()
+		}()
 
 		// Delete AC route
 		if hasACRoute {
