@@ -55,6 +55,7 @@ type kpppoedConfig struct {
 
 type pppoeSession struct {
 	lock             *sync.Mutex
+	logger           log.Logger
 	isOpen           bool
 	hasACRoute       bool
 	l2tpTid, l2tpSid uint32
@@ -311,10 +312,12 @@ func (app *application) handlePADR(pkt *pppoe.PPPoEPacket) (err error) {
 		}
 	}
 
+	sessionLogger := log.With(app.logger, "pppoe_session_id", sessionID)
+
 	// Spawn an l2tpd instance to bring up the L2TP tunnel and sessions
 	l2tpd, err := app.l2tpdRunner.spawn(sessionID,
 		app.config.lnsIPAddr,
-		app.logger,
+		sessionLogger,
 		app)
 	if err != nil {
 		errorReason = fmt.Sprintf("failed to instantiate L2TP daemon: %v", err)
@@ -351,12 +354,15 @@ func (app *application) handlePADR(pkt *pppoe.PPPoEPacket) (err error) {
 	// Keep track of the session now
 	sess := &pppoeSession{
 		lock:       &sync.Mutex{},
+		logger:     sessionLogger,
 		isOpen:     true,
 		hasACRoute: false,
 		sid:        sessionID,
 		peerHWAddr: pkt.SrcHWAddr,
 		l2tpd:      l2tpd,
 	}
+
+	level.Info(sess.logger).Log("message", "pppoe session established, bringing up L2TP")
 
 	app.sessions[sessionID] = sess
 
@@ -365,7 +371,7 @@ func (app *application) handlePADR(pkt *pppoe.PPPoEPacket) (err error) {
 		defer app.wg.Done()
 		err = sess.l2tpd.wait()
 		if err != nil {
-			level.Error(app.logger).Log(
+			level.Error(sess.logger).Log(
 				"message", "l2tp daemon exited with an error code",
 				"error", err)
 		}
@@ -454,23 +460,22 @@ func (app *application) closePPPoESession(sid pppoe.PPPoESessionID,
 		req = "network"
 	}
 
-	level.Info(app.logger).Log(
-		"message", "close pppoe session",
-		"session_id", sid,
+	level.Info(sess.logger).Log(
+		"message", "close",
 		"request_origin", req,
 		"shutdown_reason", reason)
 
 	if sendPADT {
 		err := app.sendPADT(sess, reason)
 		if err != nil {
-			level.Error(app.logger).Log(
+			level.Error(sess.logger).Log(
 				"message", "failed to send PADT",
 				"error", err)
 		}
 	}
 
 	// Kill off l2tpd
-	level.Info(app.logger).Log("message", "terminate l2tpd")
+	level.Info(sess.logger).Log("message", "terminate l2tpd")
 	app.wg.Add(1)
 	go func() {
 		defer app.wg.Done()
@@ -479,8 +484,36 @@ func (app *application) closePPPoESession(sid pppoe.PPPoESessionID,
 
 	// Delete AC route
 	if hasACRoute {
+		level.Info(sess.logger).Log("message", "remove kernel AC route")
 		_ = app.delRoute(sess)
 	}
+}
+
+func (app *application) onL2TPEstablished(sess *pppoeSession, tunnelID, sessionID uint32) (err error) {
+	level.Info(sess.logger).Log(
+		"message", "l2tp established",
+		"l2tp_tunnel_id", tunnelID,
+		"l2tp_session_id", sessionID)
+
+	sess.l2tpTid = tunnelID
+	sess.l2tpSid = sessionID
+	err = app.addRoute(sess)
+	if err != nil {
+		return
+	}
+
+	sess.lock.Lock()
+	sess.hasACRoute = true
+	sess.lock.Unlock()
+
+	level.Info(sess.logger).Log("message", "kernel AC route established")
+
+	return
+}
+
+func (app *application) onL2TPDown(sess *pppoeSession) {
+	level.Info(sess.logger).Log("message", "l2tp down")
+	app.closePPPoESession(sess.sid, "l2tp session went down", true)
 }
 
 // l2tpd event handler
@@ -505,7 +538,9 @@ func (app *application) run() int {
 			buf := make([]byte, 1500)
 			_, err := app.conn.Recv(buf)
 			if err != nil {
-				level.Error(app.logger).Log("message", "recv on PPPoE discovery connection failed", "error", err)
+				level.Error(app.logger).Log(
+					"message", "recv on PPPoE discovery connection failed",
+					"error", err)
 				break
 			}
 			app.rxChan <- buf
@@ -533,7 +568,6 @@ func (app *application) run() int {
 			}
 		case sess, ok := <-app.l2tpCompleteChan:
 			if ok {
-				level.Info(app.logger).Log("message", "l2tp daemon exited")
 				app.closePPPoESession(sess.sid, "l2tp daemon exited", true)
 				delete(app.sessions, sess.sid)
 			}
@@ -541,7 +575,9 @@ func (app *application) run() int {
 			if ok {
 				pkts, err := pppoe.ParsePacketBuffer(rx)
 				if err != nil {
-					level.Error(app.logger).Log("message", "failed to parse received message(s)", "error", err)
+					level.Error(app.logger).Log(
+						"message", "failed to parse received message(s)",
+						"error", err)
 					continue
 				}
 
@@ -558,32 +594,19 @@ func (app *application) run() int {
 			if ok {
 				switch event := ev.(type) {
 				case *l2tpSessionUp:
-					level.Info(app.logger).Log(
-						"message", "l2tp session up",
-						"tunnel_id", event.l2tpTunnelID,
-						"session_id", event.l2tpSessionID)
 					if session, got := app.sessions[event.pppoeSessionID]; got {
-						session.l2tpTid = event.l2tpTunnelID
-						session.l2tpSid = event.l2tpSessionID
-						err := app.addRoute(session)
+						err := app.onL2TPEstablished(session, event.l2tpTunnelID, event.l2tpSessionID)
 						if err != nil {
 							level.Error(app.logger).Log(
 								"message", "failed to instantiate ac kernel route",
 								"error", err)
 							app.closePPPoESession(session.sid, "failed to add kernel route", true)
-						} else {
-							level.Info(app.logger).Log("message", "kernel AC route established")
-							session.lock.Lock()
-							session.hasACRoute = true
-							session.lock.Unlock()
 						}
 					}
 				case *l2tpSessionDown:
-					level.Info(app.logger).Log(
-						"message", "l2tp session down",
-						"tunnel_id", event.l2tpTunnelID,
-						"session_id", event.l2tpSessionID)
-					app.closePPPoESession(event.pppoeSessionID, "l2tp session went down", true)
+					if session, got := app.sessions[event.pppoeSessionID]; got {
+						app.onL2TPDown(session)
+					}
 				}
 			}
 		case <-app.closeChan:
