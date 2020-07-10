@@ -425,19 +425,6 @@ func (app *application) closePPPoESession(sid pppoe.PPPoESessionID,
 	reason string,
 	sendPADT bool) {
 
-	var req string
-	if sendPADT {
-		req = "local"
-	} else {
-		req = "network"
-	}
-
-	level.Info(app.logger).Log(
-		"message", "close pppoe session",
-		"session_id", sid,
-		"request_origin", req,
-		"shutdown_reason", reason)
-
 	sess, ok := app.sessions[sid]
 	if !ok {
 		level.Warn(app.logger).Log(
@@ -455,29 +442,44 @@ func (app *application) closePPPoESession(sid pppoe.PPPoESessionID,
 	sess.hasACRoute = false
 	sess.lock.Unlock()
 
-	// Send PADT to the peer
-	if isOpen {
-		if sendPADT {
-			err := app.sendPADT(sess, reason)
-			if err != nil {
-				level.Error(app.logger).Log(
-					"message", "failed to send PADT",
-					"error", err)
-			}
-		}
+	// Don't do anything if the session is closed already.
+	if !isOpen {
+		return
+	}
 
-		// Kill off l2tpd
-		level.Info(app.logger).Log("message", "terminate l2tpd")
-		app.wg.Add(1)
-		go func() {
-			defer app.wg.Done()
-			sess.l2tpd.terminate()
-		}()
+	var req string
+	if sendPADT {
+		req = "local"
+	} else {
+		req = "network"
+	}
 
-		// Delete AC route
-		if hasACRoute {
-			_ = app.delRoute(sess)
+	level.Info(app.logger).Log(
+		"message", "close pppoe session",
+		"session_id", sid,
+		"request_origin", req,
+		"shutdown_reason", reason)
+
+	if sendPADT {
+		err := app.sendPADT(sess, reason)
+		if err != nil {
+			level.Error(app.logger).Log(
+				"message", "failed to send PADT",
+				"error", err)
 		}
+	}
+
+	// Kill off l2tpd
+	level.Info(app.logger).Log("message", "terminate l2tpd")
+	app.wg.Add(1)
+	go func() {
+		defer app.wg.Done()
+		sess.l2tpd.terminate()
+	}()
+
+	// Delete AC route
+	if hasACRoute {
+		_ = app.delRoute(sess)
 	}
 }
 
