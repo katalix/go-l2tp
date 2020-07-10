@@ -403,6 +403,24 @@ func (app *application) handlePacket(pkt *pppoe.PPPoEPacket) (err error) {
 	return fmt.Errorf("unhandled PPPoE code %v", pkt.Code)
 }
 
+func (app *application) sendPADT(sess *pppoeSession, reason string) (err error) {
+	padt, err := pppoe.NewPADT(app.conn.HWAddr(),
+		sess.peerHWAddr,
+		sess.sid)
+	if err != nil {
+		return
+	}
+
+	if reason != "" {
+		err = padt.AddGenericErrorTag(reason)
+		if err != nil {
+			return
+		}
+	}
+
+	return app.sendPacket(padt)
+}
+
 func (app *application) closePPPoESession(sid pppoe.PPPoESessionID,
 	reason string,
 	sendPADT bool) {
@@ -440,20 +458,11 @@ func (app *application) closePPPoESession(sid pppoe.PPPoESessionID,
 	// Send PADT to the peer
 	if isOpen {
 		if sendPADT {
-			padt, err := pppoe.NewPADT(app.conn.HWAddr(),
-				sess.peerHWAddr,
-				sid)
+			err := app.sendPADT(sess, reason)
 			if err != nil {
-				level.Error(app.logger).Log("message", "failed to build PADT",
-					"session_id", sid,
+				level.Error(app.logger).Log(
+					"message", "failed to send PADT",
 					"error", err)
-			} else {
-				err = app.sendPacket(padt)
-				if err != nil {
-					level.Error(app.logger).Log("message", "failed to send PADT",
-						"session_id", sid,
-						"error", err)
-				}
 			}
 		}
 
