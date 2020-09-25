@@ -68,10 +68,8 @@ type SessionConfig struct {
 	RecvSeq bool
 	// IsLNS if unset allows the LNS to enable data packet sequence numbers per RFC2661 section 5.4
 	IsLNS bool
-	// ReorderTimeout sets the maximum amount of time to hold a data packet in the reorder
-	// queue when sequence numbers are enabled.  This number is defined in jiffies for the
-	// running kernel (ref: man 7 time: sysconf(_SC_CLK_TCK))
-	// TODO: make this use something a bit more sane...
+	// ReorderTimeout sets the maximum amount of time, in milliseconds, to hold a data packet
+	// in the reorder queue when sequence numbers are enabled.
 	ReorderTimeout uint64
 	// LocalCookie sets the RFC3931 cookie for the session.
 	// Transmitted data packets will include the cookie.

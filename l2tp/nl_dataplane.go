@@ -51,15 +51,6 @@ func tunnelCfgToNl(cfg *TunnelConfig) (*nll2tp.TunnelConfig, error) {
 }
 
 func sessionCfgToNl(tid, ptid ControlConnID, cfg *SessionConfig) (*nll2tp.SessionConfig, error) {
-	reorderTimeout := uint64(0)
-
-	if cfg.ReorderTimeout != 0 {
-		// TODO: I initially thought sysconf SC_CLK_TCK would allow us to perform
-		// translation from milliseconds to HZ.  But sadly that's not the case since
-		// SC_CLK_TCK reports USER_HZ.
-		// It may be necessary to add a netlink attribute to allow this to be addressed.
-		return nil, fmt.Errorf("currently cannot convert reorder timeout to HZ")
-	}
 
 	// TODO: facilitate kernel level debug
 	// TODO: IsLNS defaulting to false allows the peer to decide,
@@ -73,7 +64,7 @@ func sessionCfgToNl(tid, ptid ControlConnID, cfg *SessionConfig) (*nll2tp.Sessio
 		SendSeq:        cfg.SeqNum,
 		RecvSeq:        cfg.SeqNum,
 		IsLNS:          false,
-		ReorderTimeout: reorderTimeout,
+		ReorderTimeout: uint64(cfg.ReorderTimeout.Milliseconds()),
 		LocalCookie:    cfg.Cookie,
 		PeerCookie:     cfg.PeerCookie,
 		IfName:         cfg.InterfaceName,
