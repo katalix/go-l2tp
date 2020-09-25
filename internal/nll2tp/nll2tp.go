@@ -700,7 +700,7 @@ func sessionCreateAttr(config *SessionConfig) ([]netlink.Attribute, error) {
 	if config.IfName != "" {
 		attr = append(attr, netlink.Attribute{
 			Type: AttrIfname,
-			Data: []byte(config.IfName),
+			Data: nlenc.Bytes(config.IfName),
 		})
 	}
 
