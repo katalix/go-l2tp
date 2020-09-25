@@ -49,7 +49,11 @@ func newKl2tpdRunner() (runner *kl2tpdRunner, err error) {
 	}, nil
 }
 
-func (runner *kl2tpdRunner) genCfg(peerIPAddr string, out *os.File) (err error) {
+func (runner *kl2tpdRunner) genCfg(peerIPAddr string,
+	sessionId pppoe.PPPoESessionID,
+	ifName string,
+	peerMac [6]byte,
+	out *os.File) (err error) {
 	cfg := []string{
 		`[tunnel.t1]`,
 		fmt.Sprintf(`peer = "%s"`, peerIPAddr),
@@ -57,6 +61,15 @@ func (runner *kl2tpdRunner) genCfg(peerIPAddr string, out *os.File) (err error) 
 		`encap = "udp"`,
 		`[tunnel.t1.session.s1]`,
 		`pseudowire = "pppac"`,
+		fmt.Sprintf(`pppoe_session_id = %d`, sessionId),
+		fmt.Sprintf(`interface_name = "%s"`, ifName),
+		fmt.Sprintf(`pppoe_peer_mac = [ 0x%x, 0x%x, 0x%x, 0x%x, 0x%x, 0x%x ]`,
+			peerMac[0],
+			peerMac[1],
+			peerMac[2],
+			peerMac[3],
+			peerMac[4],
+			peerMac[5]),
 	}
 	for _, s := range cfg {
 		_, err = out.WriteString(fmt.Sprintf("%s\n", s))
@@ -106,7 +119,7 @@ func (runner *kl2tpdRunner) spawn(sessionID pppoe.PPPoESessionID,
 	}
 	defer cfgFile.Close()
 
-	err = runner.genCfg(lnsIPAddr, cfgFile)
+	err = runner.genCfg(lnsIPAddr, sessionID, ifName, peerMAC, cfgFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate kl2tpd configuration: %v", err)
 	}
