@@ -338,6 +338,7 @@ func (ds *dynamicSession) fsmActOnIcrp(args []interface{}) {
 			"error", err)
 		// TODO: CDN args
 		ds.fsmActClose(nil)
+		return
 	}
 
 	ds.ifname, err = ds.dp.GetInterfaceName()
