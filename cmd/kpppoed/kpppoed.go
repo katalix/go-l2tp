@@ -145,7 +145,7 @@ func (cfg *kpppoedConfig) ParseSessionParameter(tunnel *config.NamedTunnel, sess
 	return fmt.Errorf("unrecognised parameter %v", key)
 }
 
-func newApplication(acNL acNetlink, l2tpdRunner l2tpdRunner, cfg *kpppoedConfig, verbose bool) (app *application, err error) {
+func newApplication(l2tpdRunner l2tpdRunner, cfg *kpppoedConfig, verbose bool) (app *application, err error) {
 	app = &application{
 		l2tpdRunner:      l2tpdRunner,
 		config:           cfg,
@@ -157,9 +157,6 @@ func newApplication(acNL acNetlink, l2tpdRunner l2tpdRunner, cfg *kpppoedConfig,
 		l2tpCompleteChan: make(chan *pppoeSession),
 	}
 
-	if acNL == nil {
-		return nil, fmt.Errorf("must have AC netlink implementation")
-	}
 	if l2tpdRunner == nil {
 		return nil, fmt.Errorf("must have l2tpd runner")
 	}
@@ -609,7 +606,7 @@ func main() {
 		stdlog.Fatalf("failed to instantiate kl2tpd runner: %v", err)
 	}
 
-	app, err := newApplication(&acpppoeNL{}, l2tpdRunner, &cfg, *verbosePtr)
+	app, err := newApplication(l2tpdRunner, &cfg, *verbosePtr)
 	if err != nil {
 		stdlog.Fatalf("failed to instantiate application: %v", err)
 	}

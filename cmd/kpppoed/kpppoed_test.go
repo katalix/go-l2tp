@@ -55,7 +55,7 @@ type kpppoedTestApp struct {
 
 func newKpppoedTestApp(cfg *kpppoedConfig) (testApp *kpppoedTestApp, err error) {
 	testApp = &kpppoedTestApp{}
-	testApp.app, err = newApplication(&nilNL{}, &nilL2tpdRunner{}, cfg, true)
+	testApp.app, err = newApplication(&nilL2tpdRunner{}, cfg, true)
 	if err != nil {
 		return nil, err
 	}
