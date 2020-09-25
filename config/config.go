@@ -99,8 +99,8 @@ configuration parameters for that instance as key:value pairs.
 	psid = 1234
 
 	# pseudowire specifies the type of layer 2 frames carried by the session.
-	# Currently supported values are "ppp" and "eth".
-	# L2TPv2 tunnels support PPP pseudowires only.
+	# Currently supported values are "ppp", "eth", and "pppac".
+	# L2TPv2 tunnels support PPP and PPPAC pseudowires only.
 	pseudowire = "eth"
 
 	# seqnum, if set, enables the transmission of sequence numbers with
@@ -138,6 +138,15 @@ configuration parameters for that instance as key:value pairs.
 	# Currently supported values are "none" and "default".
 	# By default no Layer 2 specific sublayer is used.
 	l2spec_type = "default"
+
+	# pppoe_session_id specifies the assigned PPPoE session ID for the session.
+	# Per RFC2516, the PPPoE session ID is in the range 1 - 65535
+	# This parameter only applies to pppac pseudowires.
+	pppoe_session_id = 1234
+
+	# pppoe_peer_mac specifies the MAC address of the PPPoE peer for the session.
+	# This parameter only applies to pppac pseudowires.
+	pppoe_peer_mac = [ 0x02, 0x42, 0x94, 0xd1, 0x4e, 0x9a ]
 */
 package config
 
@@ -346,7 +355,7 @@ func toPseudowireType(v interface{}) (l2tp.PseudowireType, error) {
 		case "pppac":
 			return l2tp.PseudowireTypePPPAC, nil
 		}
-		return 0, fmt.Errorf("expect 'ppp', 'eth', or 'ppp_ac'")
+		return 0, fmt.Errorf("expect 'ppp', 'eth', or 'pppac'")
 	}
 	return 0, err
 }
@@ -417,6 +426,10 @@ func (cfg *Config) newSessionConfig(tunnel *NamedTunnel, name string, scfg map[s
 			ns.Config.InterfaceName, err = toString(v)
 		case "l2spec_type":
 			ns.Config.L2SpecType, err = toL2SpecType(v)
+		case "pppoe_session_id":
+			ns.Config.PPPoESessionId, err = toUint16(v)
+		case "pppoe_peer_mac":
+			ns.Config.PPPoEPeerMac, err = toBytes(v)
 		default:
 			err = cfg.customParser.ParseSessionParameter(tunnel, ns, k, v)
 		}

@@ -83,6 +83,11 @@ func TestGetTunnels(t *testing.T) {
 				 psid = 1237812
 				 interface_name = "becky"
 				 l2spec_type = "default"
+
+				 [tunnel.t1.session.s3]
+				 pseudowire = "pppac"
+				 pppoe_session_id = 5612
+				 pppoe_peer_mac = [ 0xca, 0x6b, 0x7e, 0x93, 0xc4, 0xc3 ]
 				`,
 			want: []NamedTunnel{
 				{
@@ -113,6 +118,14 @@ func TestGetTunnels(t *testing.T) {
 								PeerSessionID: 1237812,
 								InterfaceName: "becky",
 								L2SpecType:    l2tp.L2SpecTypeDefault,
+							},
+						},
+						{
+							Name: "s3",
+							Config: &l2tp.SessionConfig{
+								Pseudowire:     l2tp.PseudowireTypePPPAC,
+								PPPoESessionId: 5612,
+								PPPoEPeerMac:   [6]byte{0xca, 0x6b, 0x7e, 0x93, 0xc4, 0xc3},
 							},
 						},
 					},
@@ -193,7 +206,7 @@ func TestBadConfig(t *testing.T) {
 			in: `[tunnel.t1]
 				 [tunnel.t1.session.s1]
 				 pseudowire = "monkey"`,
-			estr: "expect 'ppp', 'eth', or 'ppp_ac'",
+			estr: "expect 'ppp', 'eth', or 'pppac'",
 		},
 		{
 			name: "Bad value (unrecognised L2SpecType)",
