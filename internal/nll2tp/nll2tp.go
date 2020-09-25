@@ -79,14 +79,21 @@ type SessionConfig struct {
 	// Received data packets with a cookie mismatch are discarded.
 	// The PeerCookie may be either 4 or 8 bytes in length if set.
 	PeerCookie []byte
-	// IfName specifies the interface name to use for an RFC3931 Ethernet pseudowire.
-	// By default the kernel generates a name "l2tpethX".
+	// IfName use depends on the pseudowire type.
+	// For an RFC3931 Ethernet pseudowire, IfName specifies the interface name to use for
+	// the L2TP Ethernet interface.  By default the kernel generates a name "l2tpethX".
+	// For an RFC2661 PPP/AC pseudowire, IfName specifies the name of the interface associated
+	// with the PPPoE session.
 	IfName string
 	// L2SpecType specifies the Layer 2 specific sublayer field to be used in data packets
 	// as per RFC3931 section 3.2.2
 	L2SpecType L2tpL2specType
 	// DebugFlags specifies the kernel debugging flags to use for the session instance.
 	DebugFlags L2tpDebugFlags
+	// PPPoESessionId specifies the assigned PPPoE session ID for PPP/AC pseudowires.
+	PPPoESessionId uint16
+	// PPPoEPeerMac specifies the PPPoE peer mac for PPP/AC pseudowires.
+	PPPoEPeerMac [6]byte
 }
 
 // SessionStatistics includes statistics on dataplane receive and transmit.
