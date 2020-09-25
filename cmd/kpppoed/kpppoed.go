@@ -316,6 +316,8 @@ func (app *application) handlePADR(pkt *pppoe.PPPoEPacket) (err error) {
 
 	// Spawn an l2tpd instance to bring up the L2TP tunnel and sessions
 	l2tpd, err := app.l2tpdRunner.spawn(sessionID,
+		app.config.ifName,
+		pkt.SrcHWAddr,
 		app.config.lnsIPAddr,
 		sessionLogger,
 		app)

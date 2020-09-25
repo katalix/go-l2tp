@@ -22,7 +22,12 @@ type l2tpEventHandler interface {
 }
 
 type l2tpdRunner interface {
-	spawn(sessionID pppoe.PPPoESessionID, lnsIPAddr string, logger log.Logger, eventHandler l2tpEventHandler) (l2tpd, error)
+	spawn(sessionID pppoe.PPPoESessionID,
+		ifName string,
+		peerMAC [6]byte,
+		lnsIPAddr string,
+		logger log.Logger,
+		eventHandler l2tpEventHandler) (l2tpd, error)
 }
 
 type l2tpd interface {

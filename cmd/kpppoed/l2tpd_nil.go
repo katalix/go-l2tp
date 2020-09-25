@@ -14,7 +14,12 @@ type nilL2tpdRunner struct {
 type nilL2tpd struct {
 }
 
-func (runner *nilL2tpdRunner) spawn(sessionID pppoe.PPPoESessionID, lnsIPAddr string, logger log.Logger, eventHandler l2tpEventHandler) (l2tpd, error) {
+func (runner *nilL2tpdRunner) spawn(sessionID pppoe.PPPoESessionID,
+	ifName string,
+	peerMAC [6]byte,
+	lnsIPAddr string,
+	logger log.Logger,
+	eventHandler l2tpEventHandler) (l2tpd, error) {
 	return &nilL2tpd{}, nil
 }
 

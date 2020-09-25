@@ -67,6 +67,8 @@ func (runner *kl2tpdRunner) genCfg(peerIPAddr string, out *os.File) (err error) 
 	return
 }
 func (runner *kl2tpdRunner) spawn(sessionID pppoe.PPPoESessionID,
+	ifName string,
+	peerMAC [6]byte,
 	lnsIPAddr string,
 	logger log.Logger,
 	eventHandler l2tpEventHandler) (daemon l2tpd, err error) {
