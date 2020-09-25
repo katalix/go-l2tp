@@ -57,7 +57,6 @@ type pppoeSession struct {
 	lock             *sync.Mutex
 	logger           log.Logger
 	isOpen           bool
-	hasACRoute       bool
 	l2tpTid, l2tpSid uint32
 	sid              pppoe.PPPoESessionID
 	peerHWAddr       [6]byte
@@ -68,7 +67,6 @@ type application struct {
 	wg               sync.WaitGroup
 	config           *kpppoedConfig
 	logger           log.Logger
-	nl               acNetlinkConn
 	conn             *pppoe.PPPoEConn
 	l2tpdRunner      l2tpdRunner
 	sessions         map[pppoe.PPPoESessionID]*pppoeSession
@@ -183,11 +181,6 @@ func newApplication(acNL acNetlink, l2tpdRunner l2tpdRunner, cfg *kpppoedConfig,
 	app.conn, err = pppoe.NewDiscoveryConnection(app.config.ifName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create PPPoE connection: %v", err)
-	}
-
-	app.nl, err = acNL.Dial()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create AC/PPPoE netlink connection: %v", err)
 	}
 
 	return
@@ -358,7 +351,6 @@ func (app *application) handlePADR(pkt *pppoe.PPPoEPacket) (err error) {
 		lock:       &sync.Mutex{},
 		logger:     sessionLogger,
 		isOpen:     true,
-		hasACRoute: false,
 		sid:        sessionID,
 		peerHWAddr: pkt.SrcHWAddr,
 		l2tpd:      l2tpd,
@@ -442,12 +434,9 @@ func (app *application) closePPPoESession(sid pppoe.PPPoESessionID,
 	}
 
 	isOpen := false
-	hasACRoute := false
 	sess.lock.Lock()
 	isOpen = sess.isOpen
-	hasACRoute = sess.hasACRoute
 	sess.isOpen = false
-	sess.hasACRoute = false
 	sess.lock.Unlock()
 
 	// Don't do anything if the session is closed already.
@@ -483,15 +472,9 @@ func (app *application) closePPPoESession(sid pppoe.PPPoESessionID,
 		defer app.wg.Done()
 		sess.l2tpd.terminate()
 	}()
-
-	// Delete AC route
-	if hasACRoute {
-		level.Info(sess.logger).Log("message", "remove kernel AC route")
-		_ = app.delRoute(sess)
-	}
 }
 
-func (app *application) onL2TPEstablished(sess *pppoeSession, tunnelID, sessionID uint32) (err error) {
+func (app *application) onL2TPEstablished(sess *pppoeSession, tunnelID, sessionID uint32) {
 	level.Info(sess.logger).Log(
 		"message", "l2tp established",
 		"l2tp_tunnel_id", tunnelID,
@@ -499,16 +482,6 @@ func (app *application) onL2TPEstablished(sess *pppoeSession, tunnelID, sessionI
 
 	sess.l2tpTid = tunnelID
 	sess.l2tpSid = sessionID
-	err = app.addRoute(sess)
-	if err != nil {
-		return
-	}
-
-	sess.lock.Lock()
-	sess.hasACRoute = true
-	sess.lock.Unlock()
-
-	level.Info(sess.logger).Log("message", "kernel AC route established")
 
 	return
 }
@@ -521,14 +494,6 @@ func (app *application) onL2TPDown(sess *pppoeSession) {
 // l2tpd event handler
 func (app *application) handleEvent(ev interface{}) {
 	app.l2tpdEvtChan <- ev
-}
-
-func (app *application) addRoute(session *pppoeSession) (err error) {
-	return app.nl.addACRoute(session.l2tpTid, session.l2tpSid, uint16(session.sid), app.config.ifName)
-}
-
-func (app *application) delRoute(session *pppoeSession) (err error) {
-	return app.nl.delACRoute(session.l2tpTid, session.l2tpSid, uint16(session.sid), app.config.ifName)
 }
 
 func (app *application) run() int {
@@ -597,13 +562,7 @@ func (app *application) run() int {
 				switch event := ev.(type) {
 				case *l2tpSessionUp:
 					if session, got := app.sessions[event.pppoeSessionID]; got {
-						err := app.onL2TPEstablished(session, event.l2tpTunnelID, event.l2tpSessionID)
-						if err != nil {
-							level.Error(app.logger).Log(
-								"message", "failed to instantiate ac kernel route",
-								"error", err)
-							app.closePPPoESession(session.sid, "failed to add kernel route", true)
-						}
+						app.onL2TPEstablished(session, event.l2tpTunnelID, event.l2tpSessionID)
 					}
 				case *l2tpSessionDown:
 					if session, got := app.sessions[event.pppoeSessionID]; got {
