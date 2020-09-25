@@ -724,6 +724,17 @@ func sessionCreateAttr(config *SessionConfig) ([]netlink.Attribute, error) {
 		return nil, fmt.Errorf("unhandled L2 Spec Type %v", config.L2SpecType)
 	}
 
+	if config.PPPoESessionId != 0 {
+		attr = append(attr, netlink.Attribute{
+			Type: AttrPPPoESessionId,
+			Data: nlenc.Uint16Bytes(config.PPPoESessionId),
+		})
+		attr = append(attr, netlink.Attribute{
+			Type: AttrPPPoEPeerMac,
+			Data: config.PPPoEPeerMac[:],
+		})
+	}
+
 	return attr, nil
 }
 

@@ -69,7 +69,10 @@ func sessionCfgToNl(tid, ptid ControlConnID, cfg *SessionConfig) (*nll2tp.Sessio
 		PeerCookie:     cfg.PeerCookie,
 		IfName:         cfg.InterfaceName,
 		L2SpecType:     nll2tp.L2tpL2specType(cfg.L2SpecType),
-		DebugFlags:     nll2tp.L2tpDebugFlags(0)}, nil
+		DebugFlags:     nll2tp.L2tpDebugFlags(0),
+		PPPoESessionId: cfg.PPPoESessionId,
+		PPPoEPeerMac:   cfg.PPPoEPeerMac,
+	}, nil
 }
 
 func (dpf *nlDataPlane) NewTunnel(tcfg *TunnelConfig, sal, sap unix.Sockaddr, fd int) (TunnelDataPlane, error) {

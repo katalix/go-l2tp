@@ -429,7 +429,14 @@ func (cfg *Config) newSessionConfig(tunnel *NamedTunnel, name string, scfg map[s
 		case "pppoe_session_id":
 			ns.Config.PPPoESessionId, err = toUint16(v)
 		case "pppoe_peer_mac":
-			ns.Config.PPPoEPeerMac, err = toBytes(v)
+			mac, err := toBytes(v)
+			if err == nil {
+				if len(mac) == 6 {
+					ns.Config.PPPoEPeerMac = [6]byte{mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]}
+				} else {
+					err = fmt.Errorf("MAC address must be 6 bytes long")
+				}
+			}
 		default:
 			err = cfg.customParser.ParseSessionParameter(tunnel, ns, k, v)
 		}
