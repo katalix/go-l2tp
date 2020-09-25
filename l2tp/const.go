@@ -249,4 +249,12 @@ type SessionConfig struct {
 	// be used in data packet headers as per RFC3931 section 3.2.2.
 	// By default no Layer 2 specific sublayer is used.
 	L2SpecType L2SpecType
+
+	// PPPoESessionId specifies the assigned PPPoE ID of the session.
+	// This parameter applies to PseudowireTypePPPAC only.
+	PPPoESessionId uint16
+
+	// PPPoEPeerMac specifies the MAC address of the PPPoE peer.
+	// This parameter applies to PseudowireTypePPPAC only.
+	PPPoEPeerMac [6]byte
 }
