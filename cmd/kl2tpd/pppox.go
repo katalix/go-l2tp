@@ -150,39 +150,39 @@ func newSockaddrPPPoL2TP4(tunnelID, sessionID, peerTunnelID, peerSessionID l2tp.
 	return (*C.struct_sockaddr)(unsafe.Pointer(&sa)), C.sizeof_struct_sockaddr_pppol2tp, nil
 }
 
-func socketPPPoL2TPv4(tunnelID, sessionID, peerTunnelID, peerSessionID l2tp.ControlConnID) (fd int, err error) {
+func socketPPPoL2TPv4(tunnelID, sessionID, peerTunnelID, peerSessionID l2tp.ControlConnID) (int, error) {
 	addr, addrLen, err := newSockaddrPPPoL2TP4(tunnelID, sessionID, peerTunnelID, peerSessionID)
 	if err != nil {
 		return -1, fmt.Errorf("failed to build struct sockaddr_pppol2tp: %v", err)
 	}
 
-	_fd, err := C.socket(C.AF_PPPOX, C.SOCK_DGRAM, C.PX_PROTO_OL2TP)
-	if _fd < 0 {
+	fd, err := C.socket(C.AF_PPPOX, C.SOCK_DGRAM, C.PX_PROTO_OL2TP)
+	if fd < 0 {
 		return -1, fmt.Errorf("failed to open pppox socket: %v", err)
 	}
 
-	ret, err := C.connect(_fd, addr, addrLen)
+	ret, err := C.connect(fd, addr, addrLen)
 	if ret < 0 {
-		C.close(_fd)
+		C.close(fd)
 		return -1, fmt.Errorf("failed to connect pppox socket: %v", err)
 	}
 	return int(fd), nil
 }
 
-func socketPPPoE(sessionID uint16, destHWAddr [6]byte, interfaceName string) (fd int, err error) {
+func socketPPPoE(sessionID uint16, destHWAddr [6]byte, interfaceName string) (int, error) {
 	addr, addrLen, err := newSockaddrPPPoE(sessionID, destHWAddr, interfaceName)
 	if err != nil {
 		return -1, fmt.Errorf("failed to build struct sockaddr_pppox: %v", err)
 	}
 
-	_fd, err := C.socket(C.AF_PPPOX, C.SOCK_DGRAM, C.PX_PROTO_OE)
-	if _fd < 0 {
+	fd, err := C.socket(C.AF_PPPOX, C.SOCK_DGRAM, C.PX_PROTO_OE)
+	if fd < 0 {
 		return -1, fmt.Errorf("failed to open pppox socket: %v", err)
 	}
 
-	ret, err := C.connect(_fd, addr, addrLen)
+	ret, err := C.connect(fd, addr, addrLen)
 	if ret < 0 {
-		C.close(_fd)
+		C.close(fd)
 		return -1, fmt.Errorf("failed to connect pppox socket: %v", err)
 	}
 	return int(fd), nil
