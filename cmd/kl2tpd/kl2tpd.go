@@ -183,6 +183,66 @@ fail:
 	return &sessionPPPArgs{}
 }
 
+func (app *application) instantiatePPPPseudowire(ev *l2tp.SessionUpEvent) (pw pseudowire) {
+	pppd, err := newPPPDaemon(ev.Session,
+		ev.TunnelConfig.TunnelID,
+		ev.SessionConfig.SessionID,
+		ev.TunnelConfig.PeerTunnelID,
+		ev.SessionConfig.PeerSessionID)
+	if err != nil {
+		level.Error(app.logger).Log(
+			"message", "failed to create pppol2tp instance",
+			"error", err)
+		return nil
+	}
+
+	pppArgs := app.getSessionPPPArgs(ev.TunnelName, ev.SessionName)
+	pppd.cmd.Args = append(pppd.cmd.Args, pppArgs.pppdArgs...)
+
+	err = pppd.cmd.Start()
+	if err != nil {
+		level.Error(app.logger).Log(
+			"message", "pppd failed to start",
+			"error", err,
+			"error_message", pppdExitCodeString(err),
+			"stderr", pppd.stderrBuf.String())
+		return nil
+	}
+
+	app.sessionPW[ev.TunnelName][ev.SessionName] = pppd
+
+	app.wg.Add(1)
+	go func() {
+		defer app.wg.Done()
+		err = pppd.cmd.Wait()
+		if err != nil {
+			level.Error(app.logger).Log(
+				"message", "pppd exited with an error code",
+				"error", err,
+				"error_message", pppdExitCodeString(err))
+		}
+		app.pwCompleteChan <- pppd
+	}()
+	return pppd
+}
+
+func (app *application) instantiatePPPACPseudowire(ev *l2tp.SessionUpEvent) (pw pseudowire) {
+	return nil
+}
+
+func (app *application) instantiatePseudowire(ev *l2tp.SessionUpEvent) (pw pseudowire) {
+	switch ev.SessionConfig.Pseudowire {
+	case l2tp.PseudowireTypePPP:
+		return app.instantiatePPPPseudowire(ev)
+	case l2tp.PseudowireTypePPPAC:
+		return app.instantiatePPPACPseudowire(ev)
+	}
+	level.Error(app.logger).Log(
+		"message", "unsupported pseudowire type",
+		"pseudowire_type", ev.SessionConfig.Pseudowire)
+	return nil
+}
+
 func (app *application) HandleEvent(event interface{}) {
 	switch ev := event.(type) {
 	case *l2tp.TunnelUpEvent:
@@ -204,54 +264,10 @@ func (app *application) HandleEvent(event interface{}) {
 			"peer_tunnel_id", ev.TunnelConfig.PeerTunnelID,
 			"peer_session_id", ev.SessionConfig.PeerSessionID)
 
-		if ev.SessionConfig.Pseudowire == l2tp.PseudowireTypePPPAC {
-			level.Info(app.logger).Log("message", "session running as AC, don't bring up pppd")
-			// cf. handling of l2tp.SessionDownEvent
-			app.sessionPW[ev.TunnelName][ev.SessionName] = nil
-			break
-		}
-
-		pppd, err := newPPPDaemon(ev.Session,
-			ev.TunnelConfig.TunnelID,
-			ev.SessionConfig.SessionID,
-			ev.TunnelConfig.PeerTunnelID,
-			ev.SessionConfig.PeerSessionID)
-		if err != nil {
-			level.Error(app.logger).Log(
-				"message", "failed to create pppol2tp instance",
-				"error", err)
+		app.sessionPW[ev.TunnelName][ev.SessionName] = app.instantiatePseudowire(ev)
+		if app.sessionPW[ev.TunnelName][ev.SessionName] == nil {
 			app.closeSession(ev.Session)
-			break
 		}
-
-		pppArgs := app.getSessionPPPArgs(ev.TunnelName, ev.SessionName)
-		pppd.cmd.Args = append(pppd.cmd.Args, pppArgs.pppdArgs...)
-
-		err = pppd.cmd.Start()
-		if err != nil {
-			level.Error(app.logger).Log(
-				"message", "pppd failed to start",
-				"error", err,
-				"error_message", pppdExitCodeString(err),
-				"stderr", pppd.stderrBuf.String())
-			app.closeSession(ev.Session)
-			break
-		}
-
-		app.sessionPW[ev.TunnelName][ev.SessionName] = pppd
-
-		app.wg.Add(1)
-		go func() {
-			defer app.wg.Done()
-			err = pppd.cmd.Wait()
-			if err != nil {
-				level.Error(app.logger).Log(
-					"message", "pppd exited with an error code",
-					"error", err,
-					"error_message", pppdExitCodeString(err))
-			}
-			app.pwCompleteChan <- pppd
-		}()
 
 	case *l2tp.SessionDownEvent:
 
@@ -265,7 +281,6 @@ func (app *application) HandleEvent(event interface{}) {
 			"peer_tunnel_id", ev.TunnelConfig.PeerTunnelID,
 			"peer_session_id", ev.SessionConfig.PeerSessionID)
 
-		// if the session is running in AC mode, there won't be a local pppd
 		if app.sessionPW[ev.TunnelName][ev.SessionName] != nil {
 			level.Info(app.logger).Log("message", "killing pseudowire")
 			app.sessionPW[ev.TunnelName][ev.SessionName].close()
