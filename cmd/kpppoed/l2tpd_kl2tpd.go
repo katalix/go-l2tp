@@ -243,9 +243,6 @@ func (daemon *kl2tpd) scanLog(stderrPipe io.ReadCloser) {
 					l2tpSessionID:  uint32(l2tpSessionID),
 				})
 			case kl2tpdSessionDestroyed, kl2tpdTunnelDestroyed:
-				if !isUp {
-					continue
-				}
 				isUp = false
 				daemon.onEvent(&l2tpSessionDown{
 					pppoeSessionID: daemon.sid,
