@@ -9,6 +9,8 @@ import (
 	"github.com/katalix/go-l2tp/l2tp"
 )
 
+var _ pseudowire = (*pppDaemon)(nil)
+
 type pppDaemon struct {
 	session   l2tp.Session
 	fd        int
@@ -93,4 +95,12 @@ func newPPPDaemon(session l2tp.Session, tunnelID, sessionID, peerTunnelID, peerS
 		stdoutBuf: &stdout,
 		stderrBuf: &stderr,
 	}, nil
+}
+
+func (pppd *pppDaemon) close() {
+	pppd.cmd.Process.Signal(os.Interrupt)
+}
+
+func (pppd *pppDaemon) getSession() l2tp.Session {
+	return pppd.session
 }

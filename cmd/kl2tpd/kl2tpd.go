@@ -50,16 +50,27 @@ type kl2tpdConfig struct {
 	pppArgs map[string]map[string]*sessionPPPArgs
 }
 
+// An interface for managing a pseudowire instance.
+// The core l2tp code creates the L2TP session control plane
+// and kernel l2tp subsystem data plane instance.
+// kl2tpd may then need to e.g. instantiate pppd for a PPP
+// pseudowire, or bridge pppox sockets for a PPPAC pseudowire.
+// This interface abstracts that away from kl2tpd core.
+type pseudowire interface {
+	close()
+	getSession() l2tp.Session
+}
+
 type application struct {
 	cfg     *kl2tpdConfig
 	logger  log.Logger
 	l2tpCtx *l2tp.Context
-	// sessionPPPd[tunnel_name][session_name]
-	sessionPPPd     map[string]map[string]*pppDaemon
-	sigChan         chan os.Signal
-	pppCompleteChan chan *pppDaemon
-	closeChan       chan interface{}
-	wg              sync.WaitGroup
+	// sessionPW[tunnel_name][session_name]
+	sessionPW      map[string]map[string]pseudowire
+	sigChan        chan os.Signal
+	pwCompleteChan chan pseudowire
+	closeChan      chan interface{}
+	wg             sync.WaitGroup
 }
 
 func newKl2tpdConfig() (cfg *kl2tpdConfig) {
@@ -125,11 +136,11 @@ func (cfg *kl2tpdConfig) ParseSessionParameter(tunnel *config.NamedTunnel, sessi
 func newApplication(cfg *kl2tpdConfig, verbose, nullDataplane bool) (app *application, err error) {
 
 	app = &application{
-		cfg:             cfg,
-		sigChan:         make(chan os.Signal, 1),
-		sessionPPPd:     make(map[string]map[string]*pppDaemon),
-		pppCompleteChan: make(chan *pppDaemon),
-		closeChan:       make(chan interface{}),
+		cfg:            cfg,
+		sigChan:        make(chan os.Signal, 1),
+		sessionPW:      make(map[string]map[string]pseudowire),
+		pwCompleteChan: make(chan pseudowire),
+		closeChan:      make(chan interface{}),
 	}
 
 	signal.Notify(app.sigChan, unix.SIGINT, unix.SIGTERM)
@@ -175,12 +186,12 @@ fail:
 func (app *application) HandleEvent(event interface{}) {
 	switch ev := event.(type) {
 	case *l2tp.TunnelUpEvent:
-		if _, ok := app.sessionPPPd[ev.TunnelName]; !ok {
-			app.sessionPPPd[ev.TunnelName] = make(map[string]*pppDaemon)
+		if _, ok := app.sessionPW[ev.TunnelName]; !ok {
+			app.sessionPW[ev.TunnelName] = make(map[string]pseudowire)
 		}
 
 	case *l2tp.TunnelDownEvent:
-		delete(app.sessionPPPd, ev.TunnelName)
+		delete(app.sessionPW, ev.TunnelName)
 
 	case *l2tp.SessionUpEvent:
 
@@ -196,7 +207,7 @@ func (app *application) HandleEvent(event interface{}) {
 		if ev.SessionConfig.Pseudowire == l2tp.PseudowireTypePPPAC {
 			level.Info(app.logger).Log("message", "session running as AC, don't bring up pppd")
 			// cf. handling of l2tp.SessionDownEvent
-			app.sessionPPPd[ev.TunnelName][ev.SessionName] = nil
+			app.sessionPW[ev.TunnelName][ev.SessionName] = nil
 			break
 		}
 
@@ -227,7 +238,7 @@ func (app *application) HandleEvent(event interface{}) {
 			break
 		}
 
-		app.sessionPPPd[ev.TunnelName][ev.SessionName] = pppd
+		app.sessionPW[ev.TunnelName][ev.SessionName] = pppd
 
 		app.wg.Add(1)
 		go func() {
@@ -239,7 +250,7 @@ func (app *application) HandleEvent(event interface{}) {
 					"error", err,
 					"error_message", pppdExitCodeString(err))
 			}
-			app.pppCompleteChan <- pppd
+			app.pwCompleteChan <- pppd
 		}()
 
 	case *l2tp.SessionDownEvent:
@@ -255,10 +266,10 @@ func (app *application) HandleEvent(event interface{}) {
 			"peer_session_id", ev.SessionConfig.PeerSessionID)
 
 		// if the session is running in AC mode, there won't be a local pppd
-		if app.sessionPPPd[ev.TunnelName][ev.SessionName] != nil {
-			level.Info(app.logger).Log("message", "killing pppd")
-			app.sessionPPPd[ev.TunnelName][ev.SessionName].cmd.Process.Signal(os.Interrupt)
-			delete(app.sessionPPPd[ev.TunnelName], ev.SessionName)
+		if app.sessionPW[ev.TunnelName][ev.SessionName] != nil {
+			level.Info(app.logger).Log("message", "killing pseudowire")
+			app.sessionPW[ev.TunnelName][ev.SessionName].close()
+			delete(app.sessionPW[ev.TunnelName], ev.SessionName)
 		}
 	}
 }
@@ -324,13 +335,13 @@ func (app *application) run() int {
 			} else {
 				level.Info(app.logger).Log("message", "pending graceful shutdown")
 			}
-		case pppol2tp, ok := <-app.pppCompleteChan:
+		case pw, ok := <-app.pwCompleteChan:
 			if !ok {
 				close(app.closeChan)
 			}
-			level.Info(app.logger).Log("message", "pppd terminated")
+			level.Info(app.logger).Log("message", "pseudowire terminated")
 			if !shutdown {
-				app.closeSession(pppol2tp.session)
+				app.closeSession(pw.getSession())
 			}
 		case <-app.closeChan:
 			return 0
