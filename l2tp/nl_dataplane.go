@@ -52,6 +52,14 @@ func tunnelCfgToNl(cfg *TunnelConfig) (*nll2tp.TunnelConfig, error) {
 
 func sessionCfgToNl(tid, ptid ControlConnID, cfg *SessionConfig) (*nll2tp.SessionConfig, error) {
 
+	// In kernel-land, the PPP/AC pseudowire is implemented using
+	// an l2tp_ppp session, and a pppol2tp channel bridged to a
+	// pppoe channel.  Hence we should ask for a PPP pseudowire here.
+	pwtype := nll2tp.L2tpPwtype(cfg.Pseudowire)
+	if pwtype == nll2tp.PwtypePppAc {
+		pwtype = nll2tp.PwtypePpp
+	}
+
 	// TODO: facilitate kernel level debug
 	// TODO: IsLNS defaulting to false allows the peer to decide,
 	// not sure whether this is a good idea or not really.
@@ -60,7 +68,7 @@ func sessionCfgToNl(tid, ptid ControlConnID, cfg *SessionConfig) (*nll2tp.Sessio
 		Ptid:           nll2tp.L2tpTunnelID(ptid),
 		Sid:            nll2tp.L2tpSessionID(cfg.SessionID),
 		Psid:           nll2tp.L2tpSessionID(cfg.PeerSessionID),
-		PseudowireType: nll2tp.L2tpPwtype(cfg.Pseudowire),
+		PseudowireType: pwtype,
 		SendSeq:        cfg.SeqNum,
 		RecvSeq:        cfg.SeqNum,
 		IsLNS:          false,
