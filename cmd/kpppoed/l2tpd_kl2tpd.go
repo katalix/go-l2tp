@@ -29,6 +29,22 @@ const (
 	kl2tpdTunnelDestroyed    kl2tpEvent = 4
 )
 
+func (e kl2tpEvent) String() string {
+	switch e {
+	case kl2tpdTunnelCreated:
+		return "tunnel created"
+	case kl2tpdSessionCreated:
+		return "session created"
+	case kl2tpdSessionEstablished:
+		return "session established"
+	case kl2tpdSessionDestroyed:
+		return "session destroyed"
+	case kl2tpdTunnelDestroyed:
+		return "tunnel destroyed"
+	}
+	return "unknown event"
+}
+
 type kl2tpdRunner struct {
 	execPath string
 }
@@ -190,6 +206,9 @@ func (daemon *kl2tpd) scanLog(stderrPipe io.ReadCloser) {
 			if match == nil {
 				continue
 			}
+			level.Debug(daemon.logger).Log(
+				"message", "kl2tpd event received",
+				"event_type", et)
 			switch et {
 			case kl2tpdTunnelCreated:
 				l2tpTunnelID, err = strconv.Atoi(match[1])
