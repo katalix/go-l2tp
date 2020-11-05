@@ -54,10 +54,10 @@ type application struct {
 	cfg     *kl2tpdConfig
 	logger  log.Logger
 	l2tpCtx *l2tp.Context
-	// sessionPPPoL2TP[tunnel_name][session_name]
-	sessionPPPoL2TP map[string]map[string]*pppol2tp
+	// sessionPPPd[tunnel_name][session_name]
+	sessionPPPd     map[string]map[string]*pppDaemon
 	sigChan         chan os.Signal
-	pppCompleteChan chan *pppol2tp
+	pppCompleteChan chan *pppDaemon
 	closeChan       chan interface{}
 	wg              sync.WaitGroup
 }
@@ -127,8 +127,8 @@ func newApplication(cfg *kl2tpdConfig, verbose, nullDataplane bool) (app *applic
 	app = &application{
 		cfg:             cfg,
 		sigChan:         make(chan os.Signal, 1),
-		sessionPPPoL2TP: make(map[string]map[string]*pppol2tp),
-		pppCompleteChan: make(chan *pppol2tp),
+		sessionPPPd:     make(map[string]map[string]*pppDaemon),
+		pppCompleteChan: make(chan *pppDaemon),
 		closeChan:       make(chan interface{}),
 	}
 
@@ -175,12 +175,12 @@ fail:
 func (app *application) HandleEvent(event interface{}) {
 	switch ev := event.(type) {
 	case *l2tp.TunnelUpEvent:
-		if _, ok := app.sessionPPPoL2TP[ev.TunnelName]; !ok {
-			app.sessionPPPoL2TP[ev.TunnelName] = make(map[string]*pppol2tp)
+		if _, ok := app.sessionPPPd[ev.TunnelName]; !ok {
+			app.sessionPPPd[ev.TunnelName] = make(map[string]*pppDaemon)
 		}
 
 	case *l2tp.TunnelDownEvent:
-		delete(app.sessionPPPoL2TP, ev.TunnelName)
+		delete(app.sessionPPPd, ev.TunnelName)
 
 	case *l2tp.SessionUpEvent:
 
@@ -196,11 +196,11 @@ func (app *application) HandleEvent(event interface{}) {
 		if ev.SessionConfig.Pseudowire == l2tp.PseudowireTypePPPAC {
 			level.Info(app.logger).Log("message", "session running as AC, don't bring up pppd")
 			// cf. handling of l2tp.SessionDownEvent
-			app.sessionPPPoL2TP[ev.TunnelName][ev.SessionName] = nil
+			app.sessionPPPd[ev.TunnelName][ev.SessionName] = nil
 			break
 		}
 
-		pppol2tp, err := newPPPoL2TP(ev.Session,
+		pppd, err := newPPPDaemon(ev.Session,
 			ev.TunnelConfig.TunnelID,
 			ev.SessionConfig.SessionID,
 			ev.TunnelConfig.PeerTunnelID,
@@ -214,32 +214,32 @@ func (app *application) HandleEvent(event interface{}) {
 		}
 
 		pppArgs := app.getSessionPPPArgs(ev.TunnelName, ev.SessionName)
-		pppol2tp.pppd.Args = append(pppol2tp.pppd.Args, pppArgs.pppdArgs...)
+		pppd.cmd.Args = append(pppd.cmd.Args, pppArgs.pppdArgs...)
 
-		err = pppol2tp.pppd.Start()
+		err = pppd.cmd.Start()
 		if err != nil {
 			level.Error(app.logger).Log(
 				"message", "pppd failed to start",
 				"error", err,
 				"error_message", pppdExitCodeString(err),
-				"stderr", pppol2tp.stderrBuf.String())
+				"stderr", pppd.stderrBuf.String())
 			app.closeSession(ev.Session)
 			break
 		}
 
-		app.sessionPPPoL2TP[ev.TunnelName][ev.SessionName] = pppol2tp
+		app.sessionPPPd[ev.TunnelName][ev.SessionName] = pppd
 
 		app.wg.Add(1)
 		go func() {
 			defer app.wg.Done()
-			err = pppol2tp.pppd.Wait()
+			err = pppd.cmd.Wait()
 			if err != nil {
 				level.Error(app.logger).Log(
 					"message", "pppd exited with an error code",
 					"error", err,
 					"error_message", pppdExitCodeString(err))
 			}
-			app.pppCompleteChan <- pppol2tp
+			app.pppCompleteChan <- pppd
 		}()
 
 	case *l2tp.SessionDownEvent:
@@ -255,10 +255,10 @@ func (app *application) HandleEvent(event interface{}) {
 			"peer_session_id", ev.SessionConfig.PeerSessionID)
 
 		// if the session is running in AC mode, there won't be a local pppd
-		if app.sessionPPPoL2TP[ev.TunnelName][ev.SessionName] != nil {
+		if app.sessionPPPd[ev.TunnelName][ev.SessionName] != nil {
 			level.Info(app.logger).Log("message", "killing pppd")
-			app.sessionPPPoL2TP[ev.TunnelName][ev.SessionName].pppd.Process.Signal(os.Interrupt)
-			delete(app.sessionPPPoL2TP[ev.TunnelName], ev.SessionName)
+			app.sessionPPPd[ev.TunnelName][ev.SessionName].cmd.Process.Signal(os.Interrupt)
+			delete(app.sessionPPPd[ev.TunnelName], ev.SessionName)
 		}
 	}
 }

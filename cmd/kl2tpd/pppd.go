@@ -9,11 +9,11 @@ import (
 	"github.com/katalix/go-l2tp/l2tp"
 )
 
-type pppol2tp struct {
+type pppDaemon struct {
 	session   l2tp.Session
 	fd        int
 	file      *os.File
-	pppd      *exec.Cmd
+	cmd       *exec.Cmd
 	stdoutBuf *bytes.Buffer
 	stderrBuf *bytes.Buffer
 }
@@ -65,7 +65,7 @@ func pppdExitCodeString(err error) string {
 	return err.Error()
 }
 
-func newPPPoL2TP(session l2tp.Session, tunnelID, sessionID, peerTunnelID, peerSessionID l2tp.ControlConnID) (*pppol2tp, error) {
+func newPPPDaemon(session l2tp.Session, tunnelID, sessionID, peerTunnelID, peerSessionID l2tp.ControlConnID) (*pppDaemon, error) {
 
 	fd, err := socketPPPoL2TPv4(tunnelID, sessionID, peerTunnelID, peerSessionID)
 	if err != nil {
@@ -74,22 +74,22 @@ func newPPPoL2TP(session l2tp.Session, tunnelID, sessionID, peerTunnelID, peerSe
 
 	var stdout, stderr bytes.Buffer
 	file := os.NewFile(uintptr(fd), "pppol2tp")
-	pppd := exec.Command(
+	cmd := exec.Command(
 		"/usr/sbin/pppd",
 		"plugin", "pppol2tp.so",
 		"pppol2tp", "3",
 		"pppol2tp_tunnel_id", fmt.Sprintf("%v", tunnelID),
 		"pppol2tp_session_id", fmt.Sprintf("%v", sessionID),
 		"nodetach")
-	pppd.Stdout = &stdout
-	pppd.Stderr = &stderr
-	pppd.ExtraFiles = append(pppd.ExtraFiles, file)
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	cmd.ExtraFiles = append(cmd.ExtraFiles, file)
 
-	return &pppol2tp{
+	return &pppDaemon{
 		session:   session,
 		fd:        int(fd),
 		file:      file,
-		pppd:      pppd,
+		cmd:       cmd,
 		stdoutBuf: &stdout,
 		stderrBuf: &stderr,
 	}, nil
