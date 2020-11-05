@@ -27,6 +27,7 @@ const (
 	kl2tpdSessionEstablished kl2tpEvent = 2
 	kl2tpdSessionDestroyed   kl2tpEvent = 3
 	kl2tpdTunnelDestroyed    kl2tpEvent = 4
+	kl2tpdErrorMessage       kl2tpEvent = 5
 )
 
 func (e kl2tpEvent) String() string {
@@ -41,6 +42,8 @@ func (e kl2tpEvent) String() string {
 		return "session destroyed"
 	case kl2tpdTunnelDestroyed:
 		return "tunnel destroyed"
+	case kl2tpdErrorMessage:
+		return "error message"
 	}
 	return "unknown event"
 }
@@ -128,6 +131,8 @@ func (runner *kl2tpdRunner) spawn(sessionID pppoe.PPPoESessionID,
 		"^.*session_name=s1 message=close")
 	d.logRegexp[kl2tpdTunnelDestroyed] = regexp.MustCompile(
 		"^.*tunnel_name=t1 message=close")
+	d.logRegexp[kl2tpdErrorMessage] = regexp.MustCompile(
+		"^.*level=error")
 
 	cfgFile, err := ioutil.TempFile(os.TempDir(), "kpppoed.kl2tpd.")
 	if err != nil {
@@ -250,6 +255,10 @@ func (daemon *kl2tpd) scanLog(stderrPipe io.ReadCloser) {
 					l2tpSessionID:  uint32(l2tpSessionID),
 				})
 				daemon.kl2tpd.Process.Signal(os.Interrupt)
+			case kl2tpdErrorMessage:
+				level.Error(daemon.logger).Log(
+					"message", "kl2tpd error",
+					"log", line)
 			}
 		}
 	}
