@@ -70,8 +70,6 @@ func sessionCfgToNl(tid, ptid ControlConnID, cfg *SessionConfig) (*nll2tp.Sessio
 		IfName:         cfg.InterfaceName,
 		L2SpecType:     nll2tp.L2tpL2specType(cfg.L2SpecType),
 		DebugFlags:     nll2tp.L2tpDebugFlags(0),
-		PPPoESessionId: cfg.PPPoESessionId,
-		PPPoEPeerMac:   cfg.PPPoEPeerMac,
 	}, nil
 }
 

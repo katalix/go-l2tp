@@ -90,10 +90,6 @@ type SessionConfig struct {
 	L2SpecType L2tpL2specType
 	// DebugFlags specifies the kernel debugging flags to use for the session instance.
 	DebugFlags L2tpDebugFlags
-	// PPPoESessionId specifies the assigned PPPoE session ID for PPP/AC pseudowires.
-	PPPoESessionId uint16
-	// PPPoEPeerMac specifies the PPPoE peer mac for PPP/AC pseudowires.
-	PPPoEPeerMac [6]byte
 }
 
 // SessionStatistics includes statistics on dataplane receive and transmit.
@@ -722,17 +718,6 @@ func sessionCreateAttr(config *SessionConfig) ([]netlink.Attribute, error) {
 		})
 	default:
 		return nil, fmt.Errorf("unhandled L2 Spec Type %v", config.L2SpecType)
-	}
-
-	if config.PPPoESessionId != 0 {
-		attr = append(attr, netlink.Attribute{
-			Type: AttrPPPoESessionId,
-			Data: nlenc.Uint16Bytes(config.PPPoESessionId),
-		})
-		attr = append(attr, netlink.Attribute{
-			Type: AttrPPPoEPeerMac,
-			Data: config.PPPoEPeerMac[:],
-		})
 	}
 
 	return attr, nil

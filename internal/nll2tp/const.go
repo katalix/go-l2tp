@@ -114,10 +114,6 @@ const (
 	AttrUdpZeroCsum6Rx = 34
 	// AttrPad as declared in nll2tp/l2tp.h:131
 	AttrPad = 35
-	// AttrPPPoESessionId
-	AttrPPPoESessionId = 36
-	// AttrPPPoEPeerMac
-	AttrPPPoEPeerMac = 37
 )
 
 const (
