@@ -227,7 +227,21 @@ func (app *application) instantiatePPPPseudowire(ev *l2tp.SessionUpEvent) (pw ps
 }
 
 func (app *application) instantiatePPPACPseudowire(ev *l2tp.SessionUpEvent) (pw pseudowire) {
-	return nil
+	pb, err := newPPPBridge(ev.Session,
+		ev.TunnelConfig.TunnelID,
+		ev.SessionConfig.SessionID,
+		ev.TunnelConfig.PeerTunnelID,
+		ev.SessionConfig.PeerSessionID,
+		ev.SessionConfig.PPPoESessionId,
+		ev.SessionConfig.PPPoEPeerMac,
+		ev.SessionConfig.InterfaceName)
+	if err != nil {
+		level.Error(app.logger).Log(
+			"message", "ppp/ac bridge failed to start",
+			"error", err)
+		return nil
+	}
+	return pb
 }
 
 func (app *application) instantiatePseudowire(ev *l2tp.SessionUpEvent) (pw pseudowire) {
