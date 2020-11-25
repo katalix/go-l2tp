@@ -45,11 +45,6 @@ func (c *pppChannel) bridge(to *pppChannel) (err error) {
 		return fmt.Errorf("failed to bridge ppp channels: %v", err)
 	}
 
-	err = unix.IoctlSetPointerInt(to.pppSk, PPPIOCBRIDGECHAN, c.channelIndex)
-	if err != nil {
-		return fmt.Errorf("failed to bridge ppp channels: %v", err)
-	}
-
 	return nil
 }
 
