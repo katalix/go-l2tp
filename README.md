@@ -22,7 +22,7 @@ Please follow the instructions from the Go project to get your installation up a
 
 You can now install go-l2tp as follows:
 
-    go get github.com/katalix/go-l2tp
+    go install github.com/katalix/go-l2tp/...@latest
 
 Read on for instructions on coding using the library.
 
