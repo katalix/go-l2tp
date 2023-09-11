@@ -138,13 +138,19 @@ func TestGetTunnels(t *testing.T) {
 		if err != nil {
 			t.Fatalf("LoadString(%v): %v", c.in, err)
 		}
-		for _, want := range c.want {
-			got, err := cfg.findTunnelByName(want.Name)
+		for _, want_t := range c.want {
+			got_t, err := cfg.findTunnelByName(want_t.Name)
 			if err != nil {
 				t.Fatalf("missing tunnel: %v", err)
 			}
-			if !reflect.DeepEqual(got, &want) {
-				t.Fatalf("got %v, want %v", got, want)
+			for _, want_s := range want_t.Sessions {
+				got_s, err := got_t.findSessionByName(want_s.Name)
+				if err != nil {
+					t.Fatalf("missing session: %v", err)
+				}
+				if !reflect.DeepEqual(got_s, &want_s) {
+					t.Fatalf("got %v, want %v", got_s, want_s)
+				}
 			}
 		}
 	}
@@ -157,6 +163,15 @@ func (c *Config) findTunnelByName(name string) (*NamedTunnel, error) {
 		}
 	}
 	return nil, fmt.Errorf("no tunnel of name %s", name)
+}
+
+func (t *NamedTunnel) findSessionByName(name string) (*NamedSession, error) {
+	for _, s := range t.Sessions {
+		if s.Name == name {
+			return &s, nil
+		}
+	}
+	return nil, fmt.Errorf("no session of name %s", name)
 }
 
 func TestBadConfig(t *testing.T) {
