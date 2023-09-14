@@ -36,24 +36,24 @@ Read on for instructions on coding using the library.
 
 ## Usage
 
-	# Note we're ignoring errors for brevity.
+    # Note we're ignoring errors for brevity.
 
-	# Read configuration using the config package.
-	# This is optional: you can build your own configuration
-	# structures if you prefer.
-	config, _ := config.LoadFile("./my-l2tp-config.toml")
+    # Read configuration using the config package.
+    # This is optional: you can build your own configuration
+    # structures if you prefer.
+    config, _ := config.LoadFile("./my-l2tp-config.toml")
 
-	# Creation of L2TP instances requires an L2TP context.
-	# We're disabling logging and using the default Linux data plane.
-	l2tpctx, _ := l2tp.NewContext(l2tp.LinuxNetlinkDataPlane, nil)
+    # Creation of L2TP instances requires an L2TP context.
+    # We're disabling logging and using the default Linux data plane.
+    l2tpctx, _ := l2tp.NewContext(l2tp.LinuxNetlinkDataPlane, nil)
 
-	# Create tunnel and session instances based on the config
-	for _, tcfg := range config.Tunnels {
-		tunl, _ := l2tpctx.NewStaticTunnel(tcfg.Name, tcfg.Config)
-		for _, scfg := range tcfg.Sessions {
-			_, _, := tunl.NewSession(scfg.Name, scfg.Config)
-		}
-	}
+    # Create tunnel and session instances based on the config
+    for _, tcfg := range config.Tunnels {
+        tunl, _ := l2tpctx.NewStaticTunnel(tcfg.Name, tcfg.Config)
+            for _, scfg := range tcfg.Sessions {
+                _, _, := tunl.NewSession(scfg.Name, scfg.Config)
+            }
+    }
 
 ## Tools
 
