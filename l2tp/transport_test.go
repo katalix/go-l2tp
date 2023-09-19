@@ -3,6 +3,7 @@ package l2tp
 import (
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -349,10 +350,17 @@ func TestBasicSendReceive(t *testing.T) {
 	}
 	for i, c := range cases {
 		t.Run(
-			fmt.Sprintf("%d: send/recv %s %s L2TPv%v", i, c.local, c.peer, c.xcfg.Version),
+			fmt.Sprintf("%d: send/recv %s %s L2TPv%v %s", i, c.local, c.peer, c.xcfg.Version, c.encap),
 			func(t *testing.T) {
 				tx, err := transportTestnewTransport(&c)
 				if err != nil {
+					// On systems without l2tp_[ip6] modules loaded we will
+					// see EncapTypeIP failing to create the control plane
+					// socket with EPROTONOSUPPORT.  Skip the test in that
+					// scenario.
+					if c.encap == EncapTypeIP && strings.Contains(err.Error(), "protocol not supported") {
+						t.Skip("System does not support L2TP IP encapsulation")
+					}
 					t.Fatalf("transportTestnewTransport(%v) said: %v", c, err)
 				}
 				defer tx.close()
