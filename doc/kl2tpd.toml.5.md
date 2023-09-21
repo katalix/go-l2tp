@@ -102,8 +102,8 @@ Here is the full list of tunnel configuration options:
 	# If unset the host's name will be queried and the returned value used.
 	host_name "basilbrush.local"
 
-	# framing_caps sets the framing capabilites the tunnel will advertise
-	# in the Framing Capabilites AVP per RFC2661.
+	# framing_caps sets the framing capabilities the tunnel will advertise
+	# in the Framing Capabilities AVP per RFC2661.
 	# The default is to advertise both sync and async framing.
 	framing_caps = ["sync","async"]
 

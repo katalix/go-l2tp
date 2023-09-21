@@ -186,8 +186,8 @@ type TunnelConfig struct {
 	// If unset the host's name will be queried and the returned value used.
 	HostName string
 
-	// FramingCaps sets the framing capabilites the tunnel will advertise
-	// in the Framing Capabilites AVP per RFC2661.
+	// FramingCaps sets the framing capabilities the tunnel will advertise
+	// in the Framing Capabilities AVP per RFC2661.
 	// The default is to advertise both sync and async framing.
 	FramingCaps FramingCapability
 }
