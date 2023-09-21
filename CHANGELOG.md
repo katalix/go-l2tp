@@ -1,3 +1,7 @@
+## v0.1.3
+
+- Documentation spelling fix.
+
 ## v0.1.2
 
 - Skip IP encap transport tests when the host lacks protocol support.

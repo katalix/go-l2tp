@@ -1,4 +1,4 @@
-VERSION := v0.1.1
+VERSION := v0.1.3
 DATE := $(shell date +"%B %Y")
 
 MANPAGES := kl2tpd.1
