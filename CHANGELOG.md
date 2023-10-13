@@ -1,3 +1,7 @@
+## v0.1.4
+
+- Fix up manpage roff syntax.
+
 ## v0.1.3
 
 - Documentation spelling fix.
