@@ -1,3 +1,7 @@
+## v0.1.6
+
+- Fix up manpage sections in markdown/pandoc metadata.
+
 ## v0.1.5
 
 - Fix up manpage install location.
