@@ -1,3 +1,7 @@
+## v0.1.5
+
+- Fix up manpage install location.
+
 ## v0.1.4
 
 - Fix up manpage roff syntax.
