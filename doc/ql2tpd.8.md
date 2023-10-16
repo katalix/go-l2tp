@@ -1,4 +1,4 @@
-% ql2tpd(1) go-l2tp _VERSION_ | go-l2tp
+% ql2tpd(8) go-l2tp _VERSION_ | go-l2tp
 % Katalix Systems, Ltd
 % _DATE_
 

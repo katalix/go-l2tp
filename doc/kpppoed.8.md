@@ -1,4 +1,4 @@
-% kpppoed(1) go-l2tp _VERSION_ | go-l2tp
+% kpppoed(8) go-l2tp _VERSION_ | go-l2tp
 % Katalix Systems, Ltd
 % _DATE_
 
@@ -51,4 +51,4 @@ It uses a small set of key:value pairs to configure the PPPoE server:
 
 # SEE ALSO
 
-**kpppoed.toml**(5), **kl2tpd**(1)
+**kpppoed.toml**(5), **kl2tpd**(8)
