@@ -1,11 +1,11 @@
 VERSION := v0.1.4
 DATE := $(shell date +"%B %Y")
 
-MANPAGES := kl2tpd.1
+MANPAGES := kl2tpd.8
 MANPAGES += kl2tpd.toml.5
-MANPAGES += ql2tpd.1
+MANPAGES += ql2tpd.8
 MANPAGES += ql2tpd.toml.5
-MANPAGES += kpppoed.1
+MANPAGES += kpppoed.8
 
 .PHONY: default clean
 
