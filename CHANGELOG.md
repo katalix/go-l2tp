@@ -1,3 +1,8 @@
+## v0.17
+
+- Skip L2TPIP6 transport test, which is now failing in Debian/Ubuntu due to
+  a kernel regression which has been backported into various stable kernels.
+
 ## v0.1.6
 
 - Fix up manpage sections in markdown/pandoc metadata.
