@@ -110,7 +110,7 @@ var avpInfoTable = [...]avpInfo{
 	{avpType: avpTypeTunnelID, VendorID: vendorIDIetf, isMandatory: true, dataType: avpDataTypeUint16},
 	{avpType: avpTypeRxWindowSize, VendorID: vendorIDIetf, isMandatory: true, dataType: avpDataTypeUint16},
 	{avpType: avpTypeChallenge, VendorID: vendorIDIetf, isMandatory: true, dataType: avpDataTypeBytes},
-	{avpType: avpTypeQ931CauseCode, VendorID: vendorIDIetf, isMandatory: true, dataType: avpDataTypeUnimplemented}, // TODO
+	{avpType: avpTypeQ931CauseCode, VendorID: vendorIDIetf, isMandatory: true, dataType: avpDataTypeBytes}, // TODO: handle fully
 	{avpType: avpTypeChallengeResponse, VendorID: vendorIDIetf, isMandatory: true, dataType: avpDataTypeBytes},
 	{avpType: avpTypeSessionID, VendorID: vendorIDIetf, isMandatory: true, dataType: avpDataTypeUint16},
 	{avpType: avpTypeCallSerialNumber, VendorID: vendorIDIetf, isMandatory: true, dataType: avpDataTypeUint32},
@@ -118,7 +118,7 @@ var avpInfoTable = [...]avpInfo{
 	{avpType: avpTypeMaximumBps, VendorID: vendorIDIetf, isMandatory: true, dataType: avpDataTypeUint32},
 	{avpType: avpTypeBearerType, VendorID: vendorIDIetf, isMandatory: true, dataType: avpDataTypeUint32},
 	{avpType: avpTypeFramingType, VendorID: vendorIDIetf, isMandatory: true, dataType: avpDataTypeUint32},
-	{avpType: avpTypePacketProcDelay, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeUnimplemented}, // TODO
+	{avpType: avpTypePacketProcDelay, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeBytes}, // Draft only: ignore
 	{avpType: avpTypeCalledNumber, VendorID: vendorIDIetf, isMandatory: true, dataType: avpDataTypeString},
 	{avpType: avpTypeCallingNumber, VendorID: vendorIDIetf, isMandatory: true, dataType: avpDataTypeString},
 	{avpType: avpTypeSubAddress, VendorID: vendorIDIetf, isMandatory: true, dataType: avpDataTypeString},
@@ -132,8 +132,8 @@ var avpInfoTable = [...]avpInfo{
 	{avpType: avpTypeProxyAuthChallenge, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeBytes},
 	{avpType: avpTypeProxyAuthID, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeBytes},
 	{avpType: avpTypeProxyAuthResponse, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeBytes},
-	{avpType: avpTypeCallErrors, VendorID: vendorIDIetf, isMandatory: true, dataType: avpDataTypeUnimplemented}, // TODO
-	{avpType: avpTypeAccm, VendorID: vendorIDIetf, isMandatory: true, dataType: avpDataTypeUnimplemented},       // TODO
+	{avpType: avpTypeCallErrors, VendorID: vendorIDIetf, isMandatory: true, dataType: avpDataTypeBytes}, // TODO: handle fully
+	{avpType: avpTypeAccm, VendorID: vendorIDIetf, isMandatory: true, dataType: avpDataTypeBytes},       // TODO: handle fully
 	{avpType: avpTypeRandomVector, VendorID: vendorIDIetf, isMandatory: true, dataType: avpDataTypeBytes},
 	{avpType: avpTypePrivGroupID, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeString},
 	{avpType: avpTypeRxConnectSpeed, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeUint32},
@@ -160,7 +160,7 @@ var avpInfoTable = [...]avpInfo{
 	{avpType: avpTypeMessageDigest, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeBytes},
 	{avpType: avpTypeRouterID, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeUint32},
 	{avpType: avpTypeAssignedConnID, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeUint32},
-	{avpType: avpTypePseudowireCaps, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeUnimplemented},
+	{avpType: avpTypePseudowireCaps, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeUnimplemented}, // TODO: L2TPv3
 	{avpType: avpTypeLocalSessionID, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeUint32},
 	{avpType: avpTypeRemoteSessionID, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeUint32},
 	{avpType: avpTypeAssignedCookie, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeBytes},
