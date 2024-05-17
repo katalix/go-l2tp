@@ -330,6 +330,8 @@ func (dt *dynamicTunnel) handleV2Msg(msg *v2ControlMessage, from unix.Sockaddr) 
 		{avpMsgTypeIcrp, "sessionmsg"},
 		{avpMsgTypeIccn, "sessionmsg"},
 		{avpMsgTypeCdn, "sessionmsg"},
+		{avpMsgTypeSli, "sli"},
+		{avpMsgTypeWen, "wen"},
 	}
 
 	for _, em := range eventMap {
@@ -503,6 +505,15 @@ func (dt *dynamicTunnel) fsmActForwardSessionMsg(args []interface{}) {
 	}
 }
 
+func (dt *dynamicTunnel) fsmActIgnoreMsg(args []interface{}) {
+
+	msg, _ := fsmArgsToV2MsgFrom(args)
+
+	level.Warn(dt.logger).Log(
+		"message", "ignoring unimplemented v2 control message",
+		"message_type", msg.getType())
+}
+
 // Closes all tunnel resources and unlinks child sessions.
 // The tunnel goroutine will terminate after this call completes
 // because the transport recv channel will have been closed.
@@ -599,6 +610,7 @@ func newDynamicTunnel(name string, parent *Context, sal, sap unix.Sockaddr, cfg 
 			{from: "established", events: []string{"stopccn"}, cb: dt.fsmActOnStopccn, to: "dead"},
 			{from: "established", events: []string{"newsession"}, cb: dt.fsmActStartSession, to: "established"},
 			{from: "established", events: []string{"sessionmsg"}, cb: dt.fsmActForwardSessionMsg, to: "established"},
+			{from: "established", events: []string{"sli", "wen"}, cb: dt.fsmActIgnoreMsg, to: "established"},
 			{
 				from: "established",
 				events: []string{
