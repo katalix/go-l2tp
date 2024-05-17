@@ -170,6 +170,22 @@ func v2CdnMsgSpec() *msgSpec {
 	return &spec
 }
 
+func v2WenMsgSpec() *msgSpec {
+	/* Ref: RFC2661 section 6.13 */
+	spec := msgSpec{make(map[avpType]avpSpec)}
+	spec.m[avpTypeMessage] = mustExist
+	spec.m[avpTypeCallErrors] = mustExist
+	return &spec
+}
+
+func v2SliMsgSpec() *msgSpec {
+	/* Ref: RFC2661 section 6.14 */
+	spec := msgSpec{make(map[avpType]avpSpec)}
+	spec.m[avpTypeMessage] = mustExist
+	spec.m[avpTypeAccm] = mustExist
+	return &spec
+}
+
 func getV2MsgSpec(t avpMsgType) (*msgSpec, error) {
 	switch t {
 	case avpMsgTypeSccrq:
@@ -190,6 +206,10 @@ func getV2MsgSpec(t avpMsgType) (*msgSpec, error) {
 		return v2IccnMsgSpec(), nil
 	case avpMsgTypeCdn:
 		return v2CdnMsgSpec(), nil
+	case avpMsgTypeWen:
+		return v2WenMsgSpec(), nil
+	case avpMsgTypeSli:
+		return v2SliMsgSpec(), nil
 	}
 	return nil, fmt.Errorf("no specification for v2 message %v", t)
 }
