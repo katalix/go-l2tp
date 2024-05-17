@@ -583,6 +583,17 @@ func parseMessageBuffer(b []byte) (messages []controlMessage, err error) {
 			return nil, err
 		}
 
+		// Drop any data packets passed up from kernelspace: this can
+		// occur if the peer starts sending pseudowire data before we
+		// have instantiated the dataplane for the the session in the
+		// kernel.
+		//
+		// There's not much we can do with this data except hope the
+		// peer will retransmit it, so just log the issue.
+		if 0 == h.FlagsVer&0x8000 {
+			return nil, fmt.Errorf("ignore data packet passed up from the dataplane")
+		}
+
 		// Throw out malformed packets
 		if int(h.Len-commonHeaderLen) > r.Len() {
 			return nil, fmt.Errorf("malformed header: length %d exceeds buffer bounds of %d", h.Len, r.Len())
