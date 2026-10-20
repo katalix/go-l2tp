@@ -100,7 +100,7 @@ const (
 var avpInfoTable = [...]avpInfo{
 	{avpType: avpTypeMessage, VendorID: vendorIDIetf, isMandatory: true, dataType: avpDataTypeMsgID},
 	{avpType: avpTypeResultCode, VendorID: vendorIDIetf, isMandatory: true, dataType: avpDataTypeResultCode},
-	{avpType: avpTypeProtocolVersion, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeBytes},
+	{avpType: avpTypeProtocolVersion, VendorID: vendorIDIetf, isMandatory: true, dataType: avpDataTypeBytes},
 	{avpType: avpTypeFramingCap, VendorID: vendorIDIetf, isMandatory: true, dataType: avpDataTypeUint32},
 	{avpType: avpTypeBearerCap, VendorID: vendorIDIetf, isMandatory: true, dataType: avpDataTypeUint32},
 	{avpType: avpTypeTiebreaker, VendorID: vendorIDIetf, isMandatory: false, dataType: avpDataTypeBytes},

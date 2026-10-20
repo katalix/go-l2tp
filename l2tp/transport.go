@@ -417,7 +417,7 @@ func (xport *transport) recvFrame(rawMsg *rawMsg) (messages []controlMessage, er
 // Find the next message which can be handled (either stale or in-sequence)
 func (xport *transport) dequeueRxMessage() *recvMsg {
 	for i := 0; i < len(xport.rxQueue); i++ {
-		m := xport.rxQueue[0]
+		m := xport.rxQueue[i]
 		if xport.slowStart.msgIsInSequence(m.msg) || xport.slowStart.msgIsStale(m.msg) {
 			xport.rxQueue = append(xport.rxQueue[:i], xport.rxQueue[i+1:]...)
 			return m

@@ -683,3 +683,63 @@ func TestAvpDataTypeStringer(t *testing.T) {
 		}
 	}
 }
+
+// rfc2661MandatoryAVPs lists the M bits required by RFC2661 section 4.4.
+// Type 20 is absent because it was only ever defined in a draft.
+var rfc2661MandatoryAVPs = map[avpType]bool{
+	avpTypeMessage:               true,
+	avpTypeResultCode:            true,
+	avpTypeProtocolVersion:       true,
+	avpTypeFramingCap:            true,
+	avpTypeBearerCap:             true,
+	avpTypeTiebreaker:            false,
+	avpTypeFirmwareRevision:      false,
+	avpTypeHostName:              true,
+	avpTypeVendorName:            false,
+	avpTypeTunnelID:              true,
+	avpTypeRxWindowSize:          true,
+	avpTypeChallenge:             true,
+	avpTypeQ931CauseCode:         true,
+	avpTypeChallengeResponse:     true,
+	avpTypeSessionID:             true,
+	avpTypeCallSerialNumber:      true,
+	avpTypeMinimumBps:            true,
+	avpTypeMaximumBps:            true,
+	avpTypeBearerType:            true,
+	avpTypeFramingType:           true,
+	avpTypeCalledNumber:          true,
+	avpTypeCallingNumber:         true,
+	avpTypeSubAddress:            true,
+	avpTypeConnectSpeed:          true,
+	avpTypePhysicalChannelID:     false,
+	avpTypeInitialRcvdLcpConfreq: false,
+	avpTypeLastSentLcpConfreq:    false,
+	avpTypeLastRcvdLcpConfreq:    false,
+	avpTypeProxyAuthType:         false,
+	avpTypeProxyAuthName:         false,
+	avpTypeProxyAuthChallenge:    false,
+	avpTypeProxyAuthID:           false,
+	avpTypeProxyAuthResponse:     false,
+	avpTypeCallErrors:            true,
+	avpTypeAccm:                  true,
+	avpTypeRandomVector:          true,
+	avpTypePrivGroupID:           false,
+	avpTypeRxConnectSpeed:        false,
+	avpTypeSequencingRequired:    true,
+}
+
+func TestAVPInfoMandatoryRFC2661(t *testing.T) {
+	if len(rfc2661MandatoryAVPs) != 39 {
+		t.Fatalf("RFC2661 defines 39 AVPs, table has %d", len(rfc2661MandatoryAVPs))
+	}
+	for typ, want := range rfc2661MandatoryAVPs {
+		info, err := getAVPInfo(typ, vendorIDIetf)
+		if err != nil {
+			t.Errorf("getAVPInfo(%v) said: %v", typ, err)
+			continue
+		}
+		if info.isMandatory != want {
+			t.Errorf("%v isMandatory == %v, want %v", typ, info.isMandatory, want)
+		}
+	}
+}

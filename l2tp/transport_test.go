@@ -3,6 +3,7 @@ package l2tp
 import (
 	"fmt"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -398,5 +399,156 @@ func TestBasicSendReceive(t *testing.T) {
 					t.Errorf("test receiver function reported an error: %v", err)
 				}
 			})
+	}
+}
+
+// newRxQueueTestTransport returns a transport with no control plane and no
+// goroutines, so that the receive queue can be driven directly.
+func newRxQueueTestTransport(nr uint16) *transport {
+	return &transport{
+		logger:    log.NewNopLogger(),
+		slowStart: slowStartState{nr: nr},
+	}
+}
+
+func newRxQueueTestMsg(msgType avpMsgType, ns uint16) (*recvMsg, error) {
+	avps := []avp{}
+	if msgType != avpMsgTypeAck {
+		a, err := newAvp(vendorIDIetf, avpTypeMessage, msgType)
+		if err != nil {
+			return nil, err
+		}
+		avps = append(avps, *a)
+	}
+	msg, err := newV2ControlMessage(42, 0, avps)
+	if err != nil {
+		return nil, err
+	}
+	msg.setTransportSeqNum(ns, 0)
+	return &recvMsg{msg: msg}, nil
+}
+
+// rxQueueReceive queues each message and processes the queue after each
+// arrival, as the receiver goroutine does, and returns the ns of every
+// message handed up in the order they were handed up.
+func rxQueueReceive(xport *transport, arrivals []*recvMsg) (delivered []uint16) {
+	// Each message can be handed up at most once, so this never blocks.
+	xport.recvChan = make(chan *recvMsg, len(arrivals))
+	for _, m := range arrivals {
+		xport.rxQueue = append(xport.rxQueue, m)
+		xport.processRxQueue()
+		for len(xport.recvChan) > 0 {
+			delivered = append(delivered, (<-xport.recvChan).msg.ns())
+		}
+	}
+	return delivered
+}
+
+func TestRxQueueDelivery(t *testing.T) {
+	type arrival struct {
+		msgType avpMsgType
+		ns      uint16
+	}
+	cases := []struct {
+		name      string
+		nr        uint16
+		arrivals  []arrival
+		delivered []uint16
+		wantNr    uint16
+		queued    int
+	}{
+		{
+			// A peer acking a retransmitted SCCRQ can have that ack overtake
+			// its SCCRP.  The ack carries the ns of the peer's next message,
+			// so it waits behind the SCCRP and must not advance nr itself.
+			name:      "ack ahead of SCCRP",
+			arrivals:  []arrival{{avpMsgTypeAck, 1}, {avpMsgTypeSccrp, 0}},
+			delivered: []uint16{0},
+			wantNr:    1,
+		},
+		{
+			name:      "duplicate behind a later message",
+			nr:        1,
+			arrivals:  []arrival{{avpMsgTypeHello, 2}, {avpMsgTypeHello, 0}, {avpMsgTypeHello, 1}},
+			delivered: []uint16{1, 2},
+			wantNr:    3,
+		},
+		{
+			name:      "sequence number wrap",
+			nr:        65535,
+			arrivals:  []arrival{{avpMsgTypeHello, 0}, {avpMsgTypeHello, 65535}},
+			delivered: []uint16{65535, 0},
+			wantNr:    1,
+		},
+		{
+			name:     "later message waits for its predecessor",
+			arrivals: []arrival{{avpMsgTypeHello, 1}},
+			wantNr:   0,
+			queued:   1,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			xport := newRxQueueTestTransport(c.nr)
+			var arrivals []*recvMsg
+			for _, a := range c.arrivals {
+				m, err := newRxQueueTestMsg(a.msgType, a.ns)
+				if err != nil {
+					t.Fatalf("newRxQueueTestMsg(%v, %d): %v", a.msgType, a.ns, err)
+				}
+				arrivals = append(arrivals, m)
+			}
+			got := rxQueueReceive(xport, arrivals)
+			if !reflect.DeepEqual(got, c.delivered) {
+				t.Errorf("delivered ns %v, want %v", got, c.delivered)
+			}
+			if _, nr := xport.slowStart.getSequenceNumbers(); nr != c.wantNr {
+				t.Errorf("nr == %d, want %d", nr, c.wantNr)
+			}
+			if len(xport.rxQueue) != c.queued {
+				t.Errorf("%d messages left queued, want %d", len(xport.rxQueue), c.queued)
+			}
+		})
+	}
+}
+
+// permuteSeqNums returns every ordering of seqs.
+func permuteSeqNums(seqs []uint16) [][]uint16 {
+	if len(seqs) <= 1 {
+		return [][]uint16{append([]uint16{}, seqs...)}
+	}
+	var orders [][]uint16
+	for i := range seqs {
+		rest := append(append([]uint16{}, seqs[:i]...), seqs[i+1:]...)
+		for _, p := range permuteSeqNums(rest) {
+			orders = append(orders, append([]uint16{seqs[i]}, p...))
+		}
+	}
+	return orders
+}
+
+func TestRxQueueArrivalOrder(t *testing.T) {
+	// Control messages can be reordered in flight.  However a window of
+	// messages arrives, each must be handed up once and in sequence.  Four
+	// is the default transmit window.
+	window := []uint16{0, 1, 2, 3}
+	orders := permuteSeqNums(window)
+	if len(orders) != 24 {
+		t.Fatalf("permuteSeqNums(%v) returned %d orders, want 24", window, len(orders))
+	}
+	for _, order := range orders {
+		xport := newRxQueueTestTransport(0)
+		var arrivals []*recvMsg
+		for _, ns := range order {
+			m, err := newRxQueueTestMsg(avpMsgTypeHello, ns)
+			if err != nil {
+				t.Fatalf("newRxQueueTestMsg(%v, %d): %v", avpMsgTypeHello, ns, err)
+			}
+			arrivals = append(arrivals, m)
+		}
+		got := rxQueueReceive(xport, arrivals)
+		if !reflect.DeepEqual(got, window) {
+			t.Errorf("arrival order %v: delivered ns %v, want %v", order, got, window)
+		}
 	}
 }

@@ -261,3 +261,58 @@ func TestV2TunnelBuildValidate(t *testing.T) {
 		}
 	}
 }
+
+func TestV2MessageMandatoryBits(t *testing.T) {
+	tcfg := &TunnelConfig{
+		HostName:     "lac",
+		FramingCaps:  FramingCapSync | FramingCapAsync,
+		TunnelID:     1,
+		PeerTunnelID: 2,
+	}
+	scfg := &SessionConfig{SessionID: 3, PeerSessionID: 4}
+	rc := &resultCode{result: avpStopCCNResultCodeClearConnection}
+
+	cases := []struct {
+		name  string
+		build func() (*v2ControlMessage, error)
+	}{
+		{"SCCRQ", func() (*v2ControlMessage, error) { return newV2Sccrq(tcfg) }},
+		{"SCCRP", func() (*v2ControlMessage, error) { return newV2Sccrp(tcfg) }},
+		{"SCCCN", func() (*v2ControlMessage, error) { return newV2Scccn(tcfg) }},
+		{"StopCCN", func() (*v2ControlMessage, error) { return newV2Stopccn(rc, tcfg) }},
+		{"HELLO", func() (*v2ControlMessage, error) { return newV2Hello(tcfg) }},
+		{"ICRQ", func() (*v2ControlMessage, error) { return newV2Icrq(5, tcfg.PeerTunnelID, scfg) }},
+		{"ICRP", func() (*v2ControlMessage, error) { return newV2Icrp(tcfg.PeerTunnelID, scfg) }},
+		{"ICCN", func() (*v2ControlMessage, error) { return newV2Iccn(tcfg.PeerTunnelID, scfg) }},
+		{"CDN", func() (*v2ControlMessage, error) { return newV2Cdn(tcfg.PeerTunnelID, rc, scfg) }},
+	}
+	for _, c := range cases {
+		msg, err := c.build()
+		if err != nil {
+			t.Fatalf("%s: build said: %v", c.name, err)
+		}
+		b, err := msg.toBytes()
+		if err != nil {
+			t.Fatalf("%s: toBytes() said: %v", c.name, err)
+		}
+		// Check the encoded flags, since those are what the peer sees.
+		got, err := parseMessageBuffer(b)
+		if err != nil || len(got) != 1 {
+			t.Fatalf("%s: parseMessageBuffer() returned %d messages: %v", c.name, len(got), err)
+		}
+		avps := got[0].getAvps()
+		if len(avps) == 0 {
+			t.Errorf("%s: no AVPs on the wire", c.name)
+		}
+		for _, a := range avps {
+			want, ok := rfc2661MandatoryAVPs[a.getType()]
+			if !ok {
+				t.Errorf("%s: %v is not an RFC2661 AVP", c.name, a.getType())
+				continue
+			}
+			if a.isMandatory() != want {
+				t.Errorf("%s: %v M bit == %v, want %v", c.name, a.getType(), a.isMandatory(), want)
+			}
+		}
+	}
+}
